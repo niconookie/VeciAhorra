@@ -1,0 +1,28 @@
+{
+    "name": "veciahorra/marketplace",
+    "description": "Marketplace para múltiples minimarkets desarrollado sobre WordPress y WooCommerce.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "version": "1.0.0",
+
+    "authors": [
+        {
+            "name": "Nicolás Ávila",
+            "role": "Founder"
+        }
+    ],
+
+    "autoload": {
+        "psr-4": {
+            "VeciAhorra\\": "app/"
+        }
+    },
+
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true
+    },
+
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
