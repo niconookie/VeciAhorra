@@ -1,5 +1,3 @@
-# VeciAhorra
-Marketplace para múltiples minimarkets desarrollado con WordPress y WooCommerce.
 # Estado del Proyecto
 
 ## Versión actual

@@ -7,5 +7,17 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'Composer\\InstalledVersions' => $vendorDir . '/composer/InstalledVersions.php',
+    'VeciAhorra\\Core\\Application' => $baseDir . '/app/Core/Application.php',
     'VeciAhorra\\Core\\Bootstrap' => $baseDir . '/app/Core/Bootstrap.php',
+    'VeciAhorra\\Core\\Config' => $baseDir . '/app/Core/Config.php',
+    'VeciAhorra\\Database\\Builder\\Blueprint' => $baseDir . '/app/Database/Builder/Blueprint.php',
+    'VeciAhorra\\Database\\Builder\\Column' => $baseDir . '/app/Database/Builder/Column.php',
+    'VeciAhorra\\Database\\Builder\\SqlGenerator' => $baseDir . '/app/Database/Builder/SqlGenerator.php',
+    'VeciAhorra\\Database\\Builder\\TableBuilder' => $baseDir . '/app/Database/Builder/TableBuilder.php',
+    'VeciAhorra\\Database\\Contracts\\TableInterface' => $baseDir . '/app/Database/Contracts/TableInterface.php',
+    'VeciAhorra\\Database\\Database' => $baseDir . '/app/Database/Database.php',
+    'VeciAhorra\\Database\\Installer' => $baseDir . '/app/Database/Installer.php',
+    'VeciAhorra\\Database\\MigrationManager' => $baseDir . '/app/Database/MigrationManager.php',
+    'VeciAhorra\\Database\\Schema' => $baseDir . '/app/Database/Schema.php',
+    'VeciAhorra\\Database\\Tables\\StoresTable' => $baseDir . '/app/Database/Tables/StoresTable.php',
 );

@@ -22,7 +22,19 @@ class ComposerStaticInit7d1abe35a25051a7eba5315ecb122328
 
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
+        'VeciAhorra\\Core\\Application' => __DIR__ . '/../..' . '/app/Core/Application.php',
         'VeciAhorra\\Core\\Bootstrap' => __DIR__ . '/../..' . '/app/Core/Bootstrap.php',
+        'VeciAhorra\\Core\\Config' => __DIR__ . '/../..' . '/app/Core/Config.php',
+        'VeciAhorra\\Database\\Builder\\Blueprint' => __DIR__ . '/../..' . '/app/Database/Builder/Blueprint.php',
+        'VeciAhorra\\Database\\Builder\\Column' => __DIR__ . '/../..' . '/app/Database/Builder/Column.php',
+        'VeciAhorra\\Database\\Builder\\SqlGenerator' => __DIR__ . '/../..' . '/app/Database/Builder/SqlGenerator.php',
+        'VeciAhorra\\Database\\Builder\\TableBuilder' => __DIR__ . '/../..' . '/app/Database/Builder/TableBuilder.php',
+        'VeciAhorra\\Database\\Contracts\\TableInterface' => __DIR__ . '/../..' . '/app/Database/Contracts/TableInterface.php',
+        'VeciAhorra\\Database\\Database' => __DIR__ . '/../..' . '/app/Database/Database.php',
+        'VeciAhorra\\Database\\Installer' => __DIR__ . '/../..' . '/app/Database/Installer.php',
+        'VeciAhorra\\Database\\MigrationManager' => __DIR__ . '/../..' . '/app/Database/MigrationManager.php',
+        'VeciAhorra\\Database\\Schema' => __DIR__ . '/../..' . '/app/Database/Schema.php',
+        'VeciAhorra\\Database\\Tables\\StoresTable' => __DIR__ . '/../..' . '/app/Database/Tables/StoresTable.php',
     );
 
     public static function getInitializer(ClassLoader $loader)

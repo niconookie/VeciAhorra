@@ -3,33 +3,24 @@
  * Plugin Name: VeciAhorra
  * Plugin URI: https://veciahorra.cl
  * Description: Marketplace para múltiples minimarkets desarrollado sobre WordPress y WooCommerce.
- * Version: 1.0.0
+ * Version: 0.1.0
  * Requires at least: 6.7
  * Requires PHP: 8.2
  * Author: Nicolás Ávila
  * License: GPL v2 or later
  * Text Domain: veciahorra
  */
-<?php
-/**
- * Plugin Name: VeciAhorra
- * Plugin URI: https://veciahorra.cl
- * Description: Marketplace para múltiples minimarkets desarrollado sobre WordPress y WooCommerce.
- * Version: 1.0.0-alpha.1
- * Requires at least: 6.7
- * Requires PHP: 8.2
- * Author: Nicolás Ávila
- * License: GPL-2.0-or-later
- * Text Domain: veciahorra
- */
+
 
 declare(strict_types=1);
+
+use VeciAhorra\Database\Installer;
 
 if (! defined('ABSPATH')) {
     exit;
 }
 
-define('VA_VERSION', '1.0.0-alpha.1');
+define('VA_VERSION', '0.1.0');
 define('VA_PLUGIN_FILE', __FILE__);
 define('VA_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('VA_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -52,6 +43,16 @@ if (file_exists($autoload)) {
 
     return;
 }
+/*
+|--------------------------------------------------------------------------
+| Activación del Plugin
+|--------------------------------------------------------------------------
+*/
+
+register_activation_hook(
+    __FILE__,
+    [Installer::class, 'install']
+);
 
 /*
 |--------------------------------------------------------------------------

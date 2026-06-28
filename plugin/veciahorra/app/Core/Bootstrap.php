@@ -26,12 +26,9 @@ final class Bootstrap
      * Carga los servicios principales.
      */
     private static function load(): void
-    {
-        // Próximamente:
-        // Application
-        // Installer
-        // Dashboard
-        // Config
-        // Logger
-    }
+{
+    $application = new Application();
+
+    $application->run();
+}
 }
