@@ -23,20 +23,75 @@ final class StoresTable implements TableInterface
     /**
      * Define la estructura.
      */
-    public function define(TableBuilder $table): void
-    {
-        $table
+   public function define(TableBuilder $table): void
+{
+    $table
 
-            ->id()
+        ->id()
 
-            ->string('business_name', 150)
+        /*
+        |--------------------------------------------------------------------------
+        | Información General
+        |--------------------------------------------------------------------------
+        */
+        ->string('business_name', 150)
 
-            ->string('owner_name', 150)
+        ->string('legal_name', 150)
 
-            ->string('rut', 20)
+        ->string('owner_name', 150)
 
-            ->string('email', 150)
+        ->string('rut', 20)
 
-            ->string('phone', 30);
-    }
+        /*
+        |--------------------------------------------------------------------------
+        | Contacto
+        |--------------------------------------------------------------------------
+        */
+        ->string('email', 150)
+
+        ->string('phone', 30)
+
+        ->string('mobile', 30)
+            ->nullable()
+
+        /*
+        |--------------------------------------------------------------------------
+        | Dirección
+        |--------------------------------------------------------------------------
+        */
+        ->string('address', 255)
+            ->nullable()
+
+        ->string('commune', 120)
+            ->nullable()
+
+        ->string('city', 120)
+            ->nullable()
+
+        ->string('region', 120)
+            ->nullable()
+
+        /*
+        |--------------------------------------------------------------------------
+        | Estado
+        |--------------------------------------------------------------------------
+        */
+        ->string('status', 20)
+            ->default('pending')
+
+        ->string('onboarding_status', 30)
+            ->default('draft')
+
+        /*
+        |--------------------------------------------------------------------------
+        | Auditoría
+        |--------------------------------------------------------------------------
+        */
+        ->datetime('approved_at')
+            ->nullable()
+
+        ->datetime('created_at')
+
+        ->datetime('updated_at');
+}
 }

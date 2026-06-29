@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace VeciAhorra\Database\Builder;
 
 /**
- * Construye una tabla utilizando Blueprint
- * y genera su SQL mediante SqlGenerator.
+ * Construye tablas utilizando Blueprint
+ * y genera el SQL mediante SqlGenerator.
  */
 final class TableBuilder
 {
@@ -25,33 +25,115 @@ final class TableBuilder
         return new self($tableName);
     }
 
-    /**
-     * Reenvía automáticamente los métodos al Blueprint.
-     */
-    public function __call(string $method, array $arguments): self
-    {
-        if (!method_exists($this->blueprint, $method)) {
-            throw new \BadMethodCallException(
-                "Method {$method} does not exist in Blueprint."
-            );
-        }
+    /*
+    |--------------------------------------------------------------------------
+    | Tipos de columnas
+    |--------------------------------------------------------------------------
+    */
 
-        $this->blueprint->$method(...$arguments);
+    public function id(): self
+    {
+        $this->blueprint->id();
 
         return $this;
     }
 
-    /**
-     * Genera el SQL.
-     */
-    public function build(
-    string $charsetCollate = ''
-    ): string
+    public function string(
+        string $name,
+        int $length = 255
+    ): self {
 
-    return $generator->createTable(
-        $this->tableName,
-        $this->blueprint,
-        $charsetCollate
-    );
-    
+        $this->blueprint->string($name, $length);
+
+        return $this;
+    }
+
+    public function text(string $name): self
+    {
+        $this->blueprint->text($name);
+
+        return $this;
+    }
+
+    public function integer(string $name): self
+    {
+        $this->blueprint->integer($name);
+
+        return $this;
+    }
+
+    public function decimal(
+        string $name,
+        int $precision = 10,
+        int $scale = 2
+    ): self {
+
+        $this->blueprint->decimal(
+            $name,
+            $precision,
+            $scale
+        );
+
+        return $this;
+    }
+
+    public function datetime(string $name): self
+    {
+        $this->blueprint->datetime($name);
+
+        return $this;
+    }
+
+    public function time(string $name): self
+    {
+        $this->blueprint->time($name);
+
+        return $this;
+    }
+
+    public function boolean(string $name): self
+    {
+        $this->blueprint->boolean($name);
+
+        return $this;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Modificadores
+    |--------------------------------------------------------------------------
+    */
+
+    public function nullable(): self
+    {
+        $this->blueprint->nullable();
+
+        return $this;
+    }
+
+    public function default(string $value): self
+    {
+        $this->blueprint->default($value);
+
+        return $this;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SQL
+    |--------------------------------------------------------------------------
+    */
+
+    public function build(
+        string $charsetCollate = ''
+    ): string {
+
+        $generator = new SqlGenerator();
+
+        return $generator->createTable(
+            $this->tableName,
+            $this->blueprint,
+            $charsetCollate
+        );
+    }
 }

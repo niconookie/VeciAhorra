@@ -62,23 +62,25 @@ final class Column
     }
 
     public function toSql(): string
-    {
-        $sql = "{$this->name} {$this->type}";
+{
+    $sql = "{$this->name} {$this->type}";
 
-        if (!$this->nullable) {
-            $sql .= " NOT NULL";
-        }
-
-        if ($this->default !== null) {
-            $sql .= " DEFAULT '{$this->default}'";
-        }
-
-        if ($this->autoIncrement) {
-            $sql .= " AUTO_INCREMENT";
-        }
-
-        return $sql;
+    if ($this->nullable) {
+        $sql .= " NULL";
+    } else {
+        $sql .= " NOT NULL";
     }
+
+    if ($this->default !== null) {
+        $sql .= " DEFAULT '{$this->default}'";
+    }
+
+    if ($this->autoIncrement) {
+        $sql .= " AUTO_INCREMENT";
+    }
+
+    return $sql;
+}
 
     public function isPrimary(): bool
     {

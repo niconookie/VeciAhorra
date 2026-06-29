@@ -1,0 +1,219 @@
+<?php
+
+declare(strict_types=1);
+
+namespace VeciAhorra\Modules\Stores\Repositories;
+
+use VeciAhorra\Database\BaseRepository;
+use VeciAhorra\Database\Collection;
+use VeciAhorra\Modules\Stores\Models\Store;
+
+/**
+ * Repositorio de Minimarkets.
+ */
+final class StoreRepository extends BaseRepository
+{
+    /**
+     * Nombre lógico de la tabla.
+     */
+    protected string $table = 'stores';
+
+    /**
+     * Modelo asociado.
+     */
+    protected function model(): string
+    {
+        return Store::class;
+    }
+
+    /**
+     * Busca minimarkets.
+     */
+    public function search(?string $term): Collection
+    {
+        if (empty($term)) {
+            return $this->all();
+        }
+
+        $term = '%' . $this->db()->esc_like($term) . '%';
+
+        $rows = $this->db()->get_results(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT *
+                     FROM %s
+                     WHERE business_name LIKE %%s
+                        OR owner_name LIKE %%s
+                        OR email LIKE %%s
+                        OR phone LIKE %%s
+                     ORDER BY id DESC',
+                    $this->table($this->table)
+                ),
+                $term,
+                $term,
+                $term,
+                $term
+            ),
+            ARRAY_A
+        );
+
+        $collection = new Collection();
+
+        foreach ($rows as $row) {
+            $collection->add($this->hydrate($row));
+        }
+
+        return $collection;
+    }
+
+    /**
+     * Obtiene una página de resultados.
+     */
+    public function paginate(
+        int $page,
+        int $perPage,
+        ?string $term = null,
+        ?string $status = null,
+        string $orderBy = 'id',
+        string $direction = 'DESC'
+    ): Collection {
+
+        $offset = ($page - 1) * $perPage;
+
+        $conditions = [];
+        $params = [];
+
+        if (!empty($term)) {
+
+            $conditions[] = '(
+                business_name LIKE %s
+                OR owner_name LIKE %s
+                OR email LIKE %s
+                OR phone LIKE %s
+            )';
+
+            $term = '%' . $this->db()->esc_like($term) . '%';
+
+            $params = [
+                $term,
+                $term,
+                $term,
+                $term,
+            ];
+        }
+
+        if (!empty($status)) {
+            $conditions[] = 'status = %s';
+            $params[] = $status;
+        }
+
+        $where = empty($conditions)
+            ? ''
+            : 'WHERE ' . implode("\nAND ", $conditions);
+
+        $allowed = [
+            'id',
+            'business_name',
+            'owner_name',
+            'status',
+        ];
+
+        if (!in_array($orderBy, $allowed, true)) {
+            $orderBy = 'id';
+        }
+
+        $direction = strtoupper($direction);
+
+        if (!in_array($direction, ['ASC', 'DESC'], true)) {
+            $direction = 'DESC';
+        }
+
+        $sql = sprintf(
+            'SELECT *
+             FROM %s
+             %s
+             ORDER BY %s %s
+             LIMIT %%d OFFSET %%d',
+            $this->table($this->table),
+            $where,
+            $orderBy,
+            $direction
+        );
+
+        $params[] = $perPage;
+        $params[] = $offset;
+
+        $rows = $this->db()->get_results(
+            $this->db()->prepare(
+                $sql,
+                ...$params
+            ),
+            ARRAY_A
+        );
+
+        $collection = new Collection();
+
+        foreach ($rows as $row) {
+            $collection->add($this->hydrate($row));
+        }
+
+        return $collection;
+    }
+
+    /**
+     * Cuenta los registros.
+     */
+    public function count(
+        ?string $term = null,
+        ?string $status = null
+    ): int
+    {
+        $conditions = [];
+        $params = [];
+
+        if (!empty($term)) {
+
+            $conditions[] = '(
+                business_name LIKE %s
+                OR owner_name LIKE %s
+                OR email LIKE %s
+                OR phone LIKE %s
+            )';
+
+            $term = '%' . $this->db()->esc_like($term) . '%';
+
+            $params = [
+                $term,
+                $term,
+                $term,
+                $term,
+            ];
+        }
+
+        if (!empty($status)) {
+            $conditions[] = 'status = %s';
+            $params[] = $status;
+        }
+
+        $where = empty($conditions)
+            ? ''
+            : 'WHERE ' . implode("\nAND ", $conditions);
+
+        $sql = sprintf(
+            'SELECT COUNT(*) FROM %s %s',
+            $this->table($this->table),
+            $where
+        );
+
+        if (empty($params)) {
+            return (int) $this->db()->get_var($sql);
+        }
+
+        return (int) $this->db()->get_var(
+            $this->db()->prepare(
+                $sql,
+                ...$params
+            )
+        );
+    }
+}

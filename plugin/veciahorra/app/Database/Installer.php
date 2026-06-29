@@ -58,4 +58,5 @@ dbDelta($sql);
 
     MigrationManager::updateVersion();
 }
+
 }
