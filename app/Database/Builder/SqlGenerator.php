@@ -34,6 +34,10 @@ final class SqlGenerator
             $columns[] = 'PRIMARY KEY (' . implode(', ', $primary) . ')';
         }
 
+        foreach ($blueprint->indexes() as $index) {
+            $columns[] = $index->toSql();
+        }
+
         return sprintf(
             "CREATE TABLE %s (\n%s\n) ENGINE=InnoDB %s;",
             $tableName,

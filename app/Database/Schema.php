@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Database;
 
 use VeciAhorra\Database\Contracts\TableInterface;
+use VeciAhorra\Database\Tables\ProductsTable;
 use VeciAhorra\Database\Tables\StoresTable;
 
 /**
@@ -22,9 +23,9 @@ final class Schema
         return [
 
             new StoresTable(),
+            new ProductsTable(),
 
             // Próximamente...
-            // new ProductsTable(),
             // new OrdersTable(),
             // new CouriersTable(),
             // new InventoryTable(),

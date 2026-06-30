@@ -18,6 +18,11 @@ final class Blueprint
     private array $columns = [];
 
     /**
+     * @var Index[]
+     */
+    private array $indexes = [];
+
+    /**
  * Última columna agregada.
  */
 private ?Column $lastColumn = null;
@@ -89,6 +94,19 @@ public function integer(string $name): self
         new Column(
             $name,
             'INT'
+        )
+    );
+}
+
+/**
+ * Columna BIGINT UNSIGNED.
+ */
+public function bigIntegerUnsigned(string $name): self
+{
+    return $this->add(
+        new Column(
+            $name,
+            'BIGINT UNSIGNED'
         )
     );
 }
@@ -173,6 +191,30 @@ public function default(string $value): self
     return $this;
 }
 
+/**
+ * Agrega un índice normal.
+ *
+ * @param string[] $columns
+ */
+public function index(string $name, array $columns): self
+{
+    $this->indexes[] = new Index($name, $columns);
+
+    return $this;
+}
+
+/**
+ * Agrega un índice único.
+ *
+ * @param string[] $columns
+ */
+public function unique(string $name, array $columns): self
+{
+    $this->indexes[] = new Index($name, $columns, true);
+
+    return $this;
+}
+
     /**
      * Retorna todas las columnas.
      *
@@ -181,5 +223,15 @@ public function default(string $value): self
     public function columns(): array
     {
         return $this->columns;
+    }
+
+    /**
+     * Retorna todos los índices.
+     *
+     * @return Index[]
+     */
+    public function indexes(): array
+    {
+        return $this->indexes;
     }
 }

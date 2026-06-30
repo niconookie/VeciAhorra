@@ -14,7 +14,17 @@ final class Config
     /**
      * Versión actual del plugin.
      */
-    public const VERSION = '0.2.0';
+    public const PLUGIN_VERSION = '0.3.0';
+
+    /**
+     * Versión actual del esquema de base de datos.
+     */
+    public const SCHEMA_VERSION = '0.3.0';
+
+    /**
+     * Alias temporal para compatibilidad con consumidores existentes.
+     */
+    public const VERSION = self::PLUGIN_VERSION;
 
     /**
      * Nombre del plugin.

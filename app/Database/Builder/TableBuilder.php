@@ -62,6 +62,13 @@ final class TableBuilder
         return $this;
     }
 
+    public function bigIntegerUnsigned(string $name): self
+    {
+        $this->blueprint->bigIntegerUnsigned($name);
+
+        return $this;
+    }
+
     public function decimal(
         string $name,
         int $precision = 10,
@@ -114,6 +121,26 @@ final class TableBuilder
     public function default(string $value): self
     {
         $this->blueprint->default($value);
+
+        return $this;
+    }
+
+    /**
+     * @param string|string[] $columns
+     */
+    public function index(string|array $columns, string $name): self
+    {
+        $this->blueprint->index($name, (array) $columns);
+
+        return $this;
+    }
+
+    /**
+     * @param string|string[] $columns
+     */
+    public function unique(string|array $columns, string $name): self
+    {
+        $this->blueprint->unique($name, (array) $columns);
 
         return $this;
     }

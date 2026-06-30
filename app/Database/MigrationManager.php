@@ -34,7 +34,7 @@ final class MigrationManager
     {
         update_option(
             self::OPTION_NAME,
-            Config::VERSION
+            Config::SCHEMA_VERSION
         );
     }
 
@@ -45,7 +45,7 @@ final class MigrationManager
     {
         return version_compare(
             self::installedVersion(),
-            Config::VERSION,
+            Config::SCHEMA_VERSION,
             '<'
         );
     }
