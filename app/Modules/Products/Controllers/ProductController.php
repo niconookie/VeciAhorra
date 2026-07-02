@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Throwable;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
+use VeciAhorra\Modules\Products\Requests\ProductBulkRequest;
 use VeciAhorra\Modules\Products\Requests\ProductListRequest;
 use VeciAhorra\Modules\Products\Requests\ProductRequest;
 use VeciAhorra\Modules\Products\Services\ProductService;
@@ -133,6 +134,94 @@ final class ProductController
                 'data' => [
                     'id' => $id,
                     'status' => $data['status'],
+                ],
+            ];
+        } catch (Throwable $exception) {
+            return $this->translateException($exception);
+        }
+    }
+
+    public function bulkUpdateStatus(array $input): array
+    {
+        try {
+            $request = new ProductBulkRequest($input);
+            $data = $request->validateForStatus();
+            $affected = $this->service->bulkUpdateStatus(
+                $data['ids'],
+                $data['status']
+            );
+
+            return [
+                'success' => true,
+                'data' => [
+                    'requested' => count($data['ids']),
+                    'affected' => $affected,
+                ],
+            ];
+        } catch (Throwable $exception) {
+            return $this->translateException($exception);
+        }
+    }
+
+    public function bulkUpdateCategory(array $input): array
+    {
+        try {
+            $request = new ProductBulkRequest($input);
+            $data = $request->validateForCategory();
+            $affected = $this->service->bulkUpdateCategory(
+                $data['ids'],
+                $data['category_id']
+            );
+
+            return [
+                'success' => true,
+                'data' => [
+                    'requested' => count($data['ids']),
+                    'affected' => $affected,
+                ],
+            ];
+        } catch (Throwable $exception) {
+            return $this->translateException($exception);
+        }
+    }
+
+    public function bulkUpdateBrand(array $input): array
+    {
+        try {
+            $request = new ProductBulkRequest($input);
+            $data = $request->validateForBrand();
+            $affected = $this->service->bulkUpdateBrand(
+                $data['ids'],
+                $data['brand_id']
+            );
+
+            return [
+                'success' => true,
+                'data' => [
+                    'requested' => count($data['ids']),
+                    'affected' => $affected,
+                ],
+            ];
+        } catch (Throwable $exception) {
+            return $this->translateException($exception);
+        }
+    }
+
+    public function bulkUpdateUnit(array $input): array
+    {
+        try {
+            $request = new ProductBulkRequest($input);
+            $data = $request->validateForUnit();
+            $affected = $this->service->bulkUpdateUnit(
+                $data['ids'],
+                $data['unit_id']
+            );
+
+            return [
+                'success' => true,
+                'data' => [
+                    'requested' => count($data['ids']),
+                    'affected' => $affected,
                 ],
             ];
         } catch (Throwable $exception) {
