@@ -176,6 +176,87 @@ final class ProductService
     }
 
     /**
+     * Actualiza masivamente el estado de productos.
+     */
+    public function bulkUpdateStatus(
+        array $ids,
+        string $status
+    ): int {
+        $this->assertBulkIds($ids);
+        $this->assertBulkStatus($status);
+        $updatedAt = current_time('mysql');
+
+        return $this->repository->bulkUpdateStatus(
+            $ids,
+            $status,
+            $updatedAt
+        );
+    }
+
+    /**
+     * Actualiza masivamente la categoria de productos.
+     */
+    public function bulkUpdateCategory(
+        array $ids,
+        ?int $categoryId
+    ): int {
+        $this->assertBulkIds($ids);
+        $this->assertNullablePositiveId(
+            $categoryId,
+            'categoria'
+        );
+        $updatedAt = current_time('mysql');
+
+        return $this->repository->bulkUpdateCategory(
+            $ids,
+            $categoryId,
+            $updatedAt
+        );
+    }
+
+    /**
+     * Actualiza masivamente la marca de productos.
+     */
+    public function bulkUpdateBrand(
+        array $ids,
+        ?int $brandId
+    ): int {
+        $this->assertBulkIds($ids);
+        $this->assertNullablePositiveId(
+            $brandId,
+            'marca'
+        );
+        $updatedAt = current_time('mysql');
+
+        return $this->repository->bulkUpdateBrand(
+            $ids,
+            $brandId,
+            $updatedAt
+        );
+    }
+
+    /**
+     * Actualiza masivamente la unidad de productos.
+     */
+    public function bulkUpdateUnit(
+        array $ids,
+        ?int $unitId
+    ): int {
+        $this->assertBulkIds($ids);
+        $this->assertNullablePositiveId(
+            $unitId,
+            'unidad'
+        );
+        $updatedAt = current_time('mysql');
+
+        return $this->repository->bulkUpdateUnit(
+            $ids,
+            $unitId,
+            $updatedAt
+        );
+    }
+
+    /**
      * Desactiva un producto sin eliminarlo físicamente.
      */
     public function deactivate(int $id): void
@@ -316,6 +397,53 @@ final class ProductService
                 'El estado del producto no es válido.'
             );
         }
+    }
+
+    /**
+     * Comprueba que una operacion masiva reciba productos.
+     */
+    private function assertBulkIds(array $ids): void
+    {
+        if ($ids !== []) {
+            return;
+        }
+
+        throw new InvalidArgumentException(
+            'La operacion masiva requiere al menos un producto.'
+        );
+    }
+
+    /**
+     * Comprueba el estado permitido para operaciones masivas.
+     */
+    private function assertBulkStatus(string $status): void
+    {
+        if (in_array($status, ['active', 'inactive'], true)) {
+            return;
+        }
+
+        throw new InvalidArgumentException(
+            'El estado masivo debe ser active o inactive.'
+        );
+    }
+
+    /**
+     * Comprueba un identificador relacional nullable.
+     */
+    private function assertNullablePositiveId(
+        ?int $id,
+        string $label
+    ): void {
+        if ($id === null || $id > 0) {
+            return;
+        }
+
+        throw new InvalidArgumentException(
+            sprintf(
+                'El identificador de %s debe ser positivo o null.',
+                $label
+            )
+        );
     }
 
     /**
