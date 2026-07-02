@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Products\Repositories;
 
+use InvalidArgumentException;
 use VeciAhorra\Database\BaseRepository;
 use VeciAhorra\Database\Collection;
 use VeciAhorra\Exceptions\PersistenceException;
@@ -14,6 +15,13 @@ use VeciAhorra\Modules\Products\Models\Product;
  */
 final class ProductRepository extends BaseRepository
 {
+    private const BULK_UPDATE_FIELDS = [
+        'status',
+        'category_id',
+        'brand_id',
+        'unit_id',
+    ];
+
     /**
      * Nombre lógico de la tabla.
      */
@@ -268,6 +276,137 @@ final class ProductRepository extends BaseRepository
         if ($result === false) {
             throw new PersistenceException(
                 'No fue posible actualizar el estado del producto.'
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Actualiza masivamente el estado de productos.
+     */
+    public function bulkUpdateStatus(
+        array $ids,
+        string $status,
+        string $updatedAt
+    ): int {
+        return $this->bulkUpdateField(
+            $ids,
+            'status',
+            $status,
+            $updatedAt
+        );
+    }
+
+    /**
+     * Actualiza masivamente la categoria de productos.
+     */
+    public function bulkUpdateCategory(
+        array $ids,
+        ?int $categoryId,
+        string $updatedAt
+    ): int {
+        return $this->bulkUpdateField(
+            $ids,
+            'category_id',
+            $categoryId,
+            $updatedAt
+        );
+    }
+
+    /**
+     * Actualiza masivamente la marca de productos.
+     */
+    public function bulkUpdateBrand(
+        array $ids,
+        ?int $brandId,
+        string $updatedAt
+    ): int {
+        return $this->bulkUpdateField(
+            $ids,
+            'brand_id',
+            $brandId,
+            $updatedAt
+        );
+    }
+
+    /**
+     * Actualiza masivamente la unidad de productos.
+     */
+    public function bulkUpdateUnit(
+        array $ids,
+        ?int $unitId,
+        string $updatedAt
+    ): int {
+        return $this->bulkUpdateField(
+            $ids,
+            'unit_id',
+            $unitId,
+            $updatedAt
+        );
+    }
+
+    /**
+     * Actualiza un campo permitido para varios productos.
+     */
+    private function bulkUpdateField(
+        array $ids,
+        string $field,
+        string|int|null $value,
+        string $updatedAt
+    ): int {
+        if (! in_array($field, self::BULK_UPDATE_FIELDS, true)) {
+            throw new InvalidArgumentException(
+                'El campo de actualizacion masiva no es valido.'
+            );
+        }
+
+        if ($ids === []) {
+            return 0;
+        }
+
+        $idPlaceholders = implode(
+            ', ',
+            array_fill(0, count($ids), '%d')
+        );
+        $params = [];
+
+        if ($value === null) {
+            $assignment = sprintf('%s = NULL', $field);
+        } else {
+            $valuePlaceholder = $field === 'status'
+                ? '%s'
+                : '%d';
+            $assignment = sprintf(
+                '%s = %s',
+                $field,
+                $valuePlaceholder
+            );
+            $params[] = $value;
+        }
+
+        $sql = sprintf(
+            'UPDATE %s
+             SET %s, updated_at = %%s
+             WHERE id IN (%s)',
+            $this->table($this->table),
+            $assignment,
+            $idPlaceholders
+        );
+
+        $params[] = $updatedAt;
+        $params = array_merge($params, $ids);
+
+        $result = $this->db()->query(
+            $this->db()->prepare(
+                $sql,
+                ...$params
+            )
+        );
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible actualizar masivamente los productos.'
             );
         }
 
