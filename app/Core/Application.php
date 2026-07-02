@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Core;
 
 use VeciAhorra\Admin\Menu;
+use VeciAhorra\Modules\Products\Admin\ProductsPage;
 use VeciAhorra\Modules\Products\Routes\ProductRoutes;
 
 /**
@@ -41,6 +42,11 @@ final class Application
         $this->container
             ->make(Menu::class)
             ->register();
+
+        $productsPage = $this->container->make(
+            ProductsPage::class
+        );
+        $productsPage->register();
 
         /*
         |--------------------------------------------------------------------------
