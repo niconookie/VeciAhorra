@@ -72,6 +72,58 @@ final class ProductRoutes
 
         register_rest_route(
             self::NAMESPACE,
+            self::RESOURCE . '/bulk/status',
+            [
+                'methods' => 'PATCH',
+                'callback' => [$this, 'bulkUpdateStatus'],
+                'permission_callback' => [
+                    $this,
+                    'canManageProducts',
+                ],
+            ]
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
+            self::RESOURCE . '/bulk/category',
+            [
+                'methods' => 'PATCH',
+                'callback' => [$this, 'bulkUpdateCategory'],
+                'permission_callback' => [
+                    $this,
+                    'canManageProducts',
+                ],
+            ]
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
+            self::RESOURCE . '/bulk/brand',
+            [
+                'methods' => 'PATCH',
+                'callback' => [$this, 'bulkUpdateBrand'],
+                'permission_callback' => [
+                    $this,
+                    'canManageProducts',
+                ],
+            ]
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
+            self::RESOURCE . '/bulk/unit',
+            [
+                'methods' => 'PATCH',
+                'callback' => [$this, 'bulkUpdateUnit'],
+                'permission_callback' => [
+                    $this,
+                    'canManageProducts',
+                ],
+            ]
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
             self::RESOURCE . '/(?P<id>\d+)',
             [
                 [
@@ -97,7 +149,7 @@ final class ProductRoutes
 
         register_rest_route(
             self::NAMESPACE,
-            self::RESOURCE . '/(?P<id>[^/]+)/status',
+            self::RESOURCE . '/(?P<id>\d+)/status',
             [
                 'methods' => 'PATCH',
                 'callback' => [$this, 'updateStatus'],
@@ -202,6 +254,74 @@ final class ProductRoutes
                 (int) $request->get_url_params()['id'],
                 $body
             )
+        );
+    }
+
+    /**
+     * Delega el cambio masivo de estado.
+     */
+    public function bulkUpdateStatus(
+        WP_REST_Request $request
+    ): WP_REST_Response {
+        $body = $this->jsonObject($request);
+
+        if ($body instanceof WP_REST_Response) {
+            return $body;
+        }
+
+        return $this->toResponse(
+            $this->controller->bulkUpdateStatus($body)
+        );
+    }
+
+    /**
+     * Delega el cambio masivo de categoria.
+     */
+    public function bulkUpdateCategory(
+        WP_REST_Request $request
+    ): WP_REST_Response {
+        $body = $this->jsonObject($request);
+
+        if ($body instanceof WP_REST_Response) {
+            return $body;
+        }
+
+        return $this->toResponse(
+            $this->controller->bulkUpdateCategory($body)
+        );
+    }
+
+    /**
+     * Delega el cambio masivo de marca.
+     */
+    public function bulkUpdateBrand(
+        WP_REST_Request $request
+    ): WP_REST_Response {
+        $body = $this->jsonObject($request);
+
+        if ($body instanceof WP_REST_Response) {
+            return $body;
+        }
+
+        return $this->toResponse(
+            $this->controller->bulkUpdateBrand($body)
+        );
+    }
+
+    /**
+     * Delega el cambio masivo de unidad.
+     */
+    public function bulkUpdateUnit(
+        WP_REST_Request $request
+    ): WP_REST_Response {
+        $body = $this->jsonObject($request);
+
+        if ($body instanceof WP_REST_Response) {
+            return $body;
+        }
+
+        return $this->toResponse(
+            $this->controller->bulkUpdateUnit($body)
         );
     }
 
