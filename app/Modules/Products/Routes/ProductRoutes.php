@@ -19,16 +19,6 @@ final class ProductRoutes
 
     private const RESOURCE = '/products';
 
-    private const ORDERABLE_FIELDS = [
-        'id',
-        'name',
-        'slug',
-        'sku',
-        'status',
-        'created_at',
-        'updated_at',
-    ];
-
     private const REST_STATUSES = [
         'active',
         'inactive',
@@ -55,7 +45,6 @@ final class ProductRoutes
                         $this,
                         'canManageProducts',
                     ],
-                    'args' => $this->indexArgs(),
                 ],
                 [
                     'methods' => WP_REST_Server::CREATABLE,
@@ -114,17 +103,10 @@ final class ProductRoutes
     public function index(
         WP_REST_Request $request
     ): WP_REST_Response {
-        $query = $this->indexQuery($request);
+        $input = $request->get_query_params();
 
         return $this->toResponse(
-            $this->controller->index(
-                $query['page'],
-                $query['per_page'],
-                $query['term'],
-                $query['status'],
-                $query['order_by'],
-                $query['direction']
-            )
+            $this->controller->index($input)
         );
     }
 
@@ -220,69 +202,6 @@ final class ProductRoutes
     }
 
     /**
-     * Define y normaliza los parámetros del listado.
-     *
-     * @return array<string, array<string, mixed>>
-     */
-    private function indexArgs(): array
-    {
-        return [
-            'page' => $this->positiveIntegerArg(1),
-            'per_page' => [
-                'default' => 20,
-                'validate_callback' => static fn (
-                    mixed $value
-                ): bool => self::isPositiveInteger($value)
-                    && (int) $value <= 100,
-                'sanitize_callback' => static fn (
-                    mixed $value
-                ): int => (int) $value,
-            ],
-            'term' => [
-                'validate_callback' => static fn (
-                    mixed $value
-                ): bool => is_string($value),
-                'sanitize_callback' => static fn (
-                    mixed $value
-                ): string => trim(sanitize_text_field($value)),
-            ],
-            'status' => [
-                'validate_callback' => static fn (
-                    mixed $value
-                ): bool => is_string($value)
-                    && in_array(
-                        sanitize_key($value),
-                        ['draft', 'active', 'inactive'],
-                        true
-                    ),
-                'sanitize_callback' => static fn (
-                    mixed $value
-                ): string => sanitize_key($value),
-            ],
-            'order_by' => [
-                'default' => 'id',
-                'validate_callback' => static fn (
-                    mixed $value
-                ): bool => is_string($value)
-                    && in_array($value, self::ORDERABLE_FIELDS, true),
-                'sanitize_callback' => static fn (
-                    mixed $value
-                ): string => $value,
-            ],
-            'direction' => [
-                'default' => 'DESC',
-                'validate_callback' => static fn (
-                    mixed $value
-                ): bool => is_string($value)
-                    && in_array(strtoupper($value), ['ASC', 'DESC'], true),
-                'sanitize_callback' => static fn (
-                    mixed $value
-                ): string => strtoupper($value),
-            ],
-        ];
-    }
-
-    /**
      * Define la validación del parámetro de ruta ID.
      *
      * @return array<string, array<string, mixed>>
@@ -311,24 +230,6 @@ final class ProductRoutes
                     return (int) ($urlParams['id'] ?? 0);
                 },
             ],
-        ];
-    }
-
-    /**
-     * Construye la definición de un entero positivo.
-     *
-     * @return array<string, mixed>
-     */
-    private function positiveIntegerArg(int $default): array
-    {
-        return [
-            'default' => $default,
-            'validate_callback' => static fn (
-                mixed $value
-            ): bool => self::isPositiveInteger($value),
-            'sanitize_callback' => static fn (
-                mixed $value
-            ): int => (int) $value,
         ];
     }
 
@@ -366,45 +267,6 @@ final class ProductRoutes
         }
 
         return strcmp($value, $maximum) <= 0;
-    }
-
-    /**
-     * Obtiene exclusivamente los query parameters normalizados.
-     *
-     * @return array{
-     *     page: int,
-     *     per_page: int,
-     *     term: string|null,
-     *     status: string|null,
-     *     order_by: string,
-     *     direction: string
-     * }
-     */
-    private function indexQuery(WP_REST_Request $request): array
-    {
-        $query = $request->get_query_params();
-        $term = isset($query['term'])
-            ? trim((string) $query['term'])
-            : '';
-
-        return [
-            'page' => isset($query['page'])
-                ? (int) $query['page']
-                : 1,
-            'per_page' => isset($query['per_page'])
-                ? (int) $query['per_page']
-                : 20,
-            'term' => $term === '' ? null : $term,
-            'status' => isset($query['status'])
-                ? (string) $query['status']
-                : null,
-            'order_by' => isset($query['order_by'])
-                ? (string) $query['order_by']
-                : 'id',
-            'direction' => isset($query['direction'])
-                ? strtoupper((string) $query['direction'])
-                : 'DESC',
-        ];
     }
 
     /**
@@ -505,7 +367,6 @@ final class ProductRoutes
         return match ($code) {
             'validation_error' => 422,
             'product_not_found' => 404,
-            'product_list_request_required' => 501,
             'persistence_error',
             'internal_error' => 500,
             default => 500,

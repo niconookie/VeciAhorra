@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Throwable;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
+use VeciAhorra\Modules\Products\Requests\ProductListRequest;
 use VeciAhorra\Modules\Products\Requests\ProductRequest;
 use VeciAhorra\Modules\Products\Services\ProductService;
 
@@ -18,21 +19,42 @@ final class ProductController
     ) {
     }
 
-    public function index(
-        int $page = 1,
-        int $perPage = 20,
-        ?string $term = null,
-        ?string $status = null,
-        string $orderBy = 'id',
-        string $direction = 'DESC'
-    ): array {
-        return [
-            'success' => false,
-            'error' => [
-                'code' => 'product_list_request_required',
-                'message' => 'El listado de productos requiere ProductListRequest.',
-            ],
-        ];
+    public function index(array $input): array
+    {
+        try {
+            $request = new ProductListRequest($input);
+            $query = $request->validated();
+
+            $products = $this->service->paginate(
+                $query['page'],
+                $query['per_page'],
+                $query['term'],
+                $query['status'],
+                $query['order_by'],
+                $query['direction']
+            );
+            $total = $this->service->count(
+                $query['term'],
+                $query['status']
+            );
+
+            return [
+                'success' => true,
+                'data' => $products->toArray(),
+                'meta' => [
+                    'page' => $query['page'],
+                    'per_page' => $query['per_page'],
+                    'total' => $total,
+                    'total_pages' => $total === 0
+                        ? 0
+                        : (int) ceil(
+                            $total / $query['per_page']
+                        ),
+                ],
+            ];
+        } catch (Throwable $exception) {
+            return $this->translateException($exception);
+        }
     }
 
     public function show(int $id): array
