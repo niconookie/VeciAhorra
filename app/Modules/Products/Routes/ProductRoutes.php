@@ -59,7 +59,7 @@ final class ProductRoutes
 
         register_rest_route(
             self::NAMESPACE,
-            self::RESOURCE . '/(?P<id>[^/]+)',
+            self::RESOURCE . '/(?P<id>\d+)',
             [
                 [
                     'methods' => WP_REST_Server::READABLE,
