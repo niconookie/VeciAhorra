@@ -3,9 +3,6 @@
 declare(strict_types=1);
 
 use VeciAhorra\Core\Config;
-use VeciAhorra\Modules\Products\Controllers\ProductController;
-use VeciAhorra\Modules\Products\Routes\ProductRoutes;
-use VeciAhorra\Modules\Products\Services\ProductService;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -87,16 +84,6 @@ assertTrue(
 );
 
 wp_set_current_user((int) $administratorIds[0]);
-
-add_action('rest_api_init', static function (): void {
-    $routes = new ProductRoutes(
-        new ProductController(
-            new ProductService()
-        )
-    );
-
-    $routes->register();
-});
 
 $table = $wpdb->prefix . Config::TABLE_PREFIX . 'products';
 $transactionStarted = $wpdb->query('START TRANSACTION');

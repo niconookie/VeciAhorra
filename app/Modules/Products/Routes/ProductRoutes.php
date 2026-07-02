@@ -59,6 +59,19 @@ final class ProductRoutes
 
         register_rest_route(
             self::NAMESPACE,
+            self::RESOURCE . '/search',
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'index'],
+                'permission_callback' => [
+                    $this,
+                    'canManageProducts',
+                ],
+            ]
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
             self::RESOURCE . '/(?P<id>\d+)',
             [
                 [

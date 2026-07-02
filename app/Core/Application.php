@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Core;
 
 use VeciAhorra\Admin\Menu;
+use VeciAhorra\Modules\Products\Routes\ProductRoutes;
 
 /**
  * Clase principal de la aplicación.
@@ -47,7 +48,14 @@ final class Application
         |--------------------------------------------------------------------------
         */
 
-        // Aquí iremos registrando los módulos.
+        $productRoutes = $this->container->make(
+            ProductRoutes::class
+        );
+
+        add_action(
+            'rest_api_init',
+            [$productRoutes, 'register']
+        );
     }
 
     /**
