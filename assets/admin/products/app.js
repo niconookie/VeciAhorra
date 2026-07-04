@@ -13,11 +13,17 @@ function initialize() {
     const nodes = findRequiredNodes();
     const api = createProductsApi(config);
     const store = createProductsStore(api);
-    const view = createProductsView(nodes, () => store.loadProducts());
+    const view = createProductsView(nodes, {
+        onInputTerm: (term) => store.setInputTerm(term),
+        onSearch: () => store.search(),
+        onClear: () => store.search(''),
+        onReload: () => store.reload(),
+        onPage: (page) => store.goToPage(page),
+    });
 
     store.subscribe(view.render);
     view.render(store.getState());
-    store.loadProducts();
+    store.reload();
 }
 
 function readConfig() {

@@ -10,6 +10,12 @@ export const STATUS_ERROR = 'error';
 export function createProductsStore(api) {
     let state = {
         status: STATUS_IDLE,
+        inputTerm: '',
+        query: {
+            term: '',
+            page: 1,
+            perPage: 20,
+        },
         products: [],
         meta: null,
         error: null,
@@ -36,21 +42,82 @@ export function createProductsStore(api) {
         listeners.forEach((listener) => listener(createSnapshot(state)));
     }
 
-    async function loadProducts() {
+    function setInputTerm(term) {
+        setState({
+            inputTerm: typeof term === 'string' ? term : '',
+        });
+    }
+
+    function search(term = state.inputTerm) {
+        if (state.status === STATUS_LOADING) {
+            return Promise.resolve();
+        }
+
+        const normalizedTerm = typeof term === 'string' ? term.trim() : '';
+
+        return executeQuery(
+            {
+                ...state.query,
+                term: normalizedTerm,
+                page: 1,
+            },
+            normalizedTerm
+        );
+    }
+
+    function reload() {
+        if (state.status === STATUS_LOADING) {
+            return Promise.resolve();
+        }
+
+        return executeQuery(state.query, state.inputTerm);
+    }
+
+    function goToPage(page) {
+        if (state.status === STATUS_LOADING || !Number.isInteger(page)) {
+            return Promise.resolve();
+        }
+
+        const totalPages = state.meta?.totalPages ?? 0;
+
+        if (page < 1 || totalPages === 0 || page > totalPages) {
+            return Promise.resolve();
+        }
+
+        return executeQuery(
+            { ...state.query, page },
+            state.inputTerm
+        );
+    }
+
+    async function executeQuery(query, inputTerm) {
         const requestId = ++latestRequest;
 
         setState({
             status: STATUS_LOADING,
+            inputTerm,
+            query: { ...query },
             products: [],
             meta: null,
             error: null,
         });
 
         try {
-            const response = await api.getProducts();
+            const response = await api.getProducts(query);
 
             if (requestId !== latestRequest) {
                 return;
+            }
+
+            if (
+                response.meta.total > 0
+                && response.meta.total_pages > 0
+                && response.meta.page > response.meta.total_pages
+            ) {
+                return executeQuery(
+                    { ...query, page: response.meta.total_pages },
+                    inputTerm
+                );
             }
 
             const products = response.data.map(normalizeProduct);
@@ -75,7 +142,14 @@ export function createProductsStore(api) {
         }
     }
 
-    return { getState, subscribe, loadProducts };
+    return {
+        getState,
+        subscribe,
+        setInputTerm,
+        search,
+        reload,
+        goToPage,
+    };
 }
 
 function normalizeProduct(product) {
@@ -130,6 +204,7 @@ function displayValue(value) {
 function createSnapshot(state) {
     return {
         ...state,
+        query: { ...state.query },
         products: state.products.map((product) => ({ ...product })),
         meta: state.meta === null ? null : { ...state.meta },
         error: state.error === null ? null : { ...state.error },

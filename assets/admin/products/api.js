@@ -103,11 +103,29 @@ export function createProductsApi({ restUrl, nonce }) {
         return payload;
     }
 
-    function getProducts() {
-        return request('/products', { method: 'GET' });
+    function getProducts({ term = '', page = 1, perPage = 20 } = {}) {
+        return request(
+            buildProductsUrl({ term, page, perPage }),
+            { method: 'GET' }
+        );
     }
 
     return { request, getProducts };
+}
+
+function buildProductsUrl({ term, page, perPage }) {
+    const normalizedTerm = typeof term === 'string' ? term.trim() : '';
+    const endpoint = normalizedTerm === '' ? '/products' : '/products/search';
+    const params = new URLSearchParams({
+        page: String(page),
+        per_page: String(perPage),
+    });
+
+    if (normalizedTerm !== '') {
+        params.set('term', normalizedTerm);
+    }
+
+    return `${endpoint}?${params.toString()}`;
 }
 
 function errorFromPayload(payload, type, status, retryable) {

@@ -20,7 +20,21 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    justify-content: space-between;
     min-height: 40px;
+}
+
+.veciahorra-products-admin__search {
+    align-items: center;
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.veciahorra-products-admin__search-input {
+    max-width: 360px;
+    width: 100%;
 }
 
 .veciahorra-products-admin__table {
@@ -46,9 +60,32 @@
 }
 
 .veciahorra-products-admin__pagination {
+    align-items: center;
     display: flex;
-    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: space-between;
     min-height: 32px;
+}
+
+.veciahorra-products-admin__pagination-controls {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+}
+
+.veciahorra-products-admin__results-count,
+.veciahorra-products-admin__page-indicator {
+    color: #50575e;
+}
+
+.veciahorra-products-admin__page-indicator {
+    min-width: 110px;
+    text-align: center;
+}
+
+.veciahorra-products-admin__pagination:empty {
+    justify-content: flex-end;
 }
 
 .veciahorra-products-admin .is-loading {
@@ -136,11 +173,31 @@
     }
 
     .veciahorra-products-admin__toolbar {
-        justify-content: flex-end;
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .veciahorra-products-admin__search {
+        align-items: stretch;
+    }
+
+    .veciahorra-products-admin__search label,
+    .veciahorra-products-admin__search-input {
+        max-width: none;
+        width: 100%;
     }
 
     .veciahorra-products-admin__reload {
         min-height: 40px;
+    }
+
+    .veciahorra-products-admin__pagination {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .veciahorra-products-admin__pagination-controls {
+        justify-content: space-between;
     }
 }
 
