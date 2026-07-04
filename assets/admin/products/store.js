@@ -4,11 +4,56 @@ export const STATUS_SUCCESS = 'success';
 export const STATUS_EMPTY = 'empty';
 export const STATUS_ERROR = 'error';
 
+export const VIEW_LIST = 'list';
+export const VIEW_PRODUCT_FORM = 'product-form';
+
+export const FORM_MODE_CREATE = 'create';
+export const FORM_MODE_EDIT = 'edit';
+export const FORM_MODE_READONLY = 'readonly';
+
+export const FORM_STATUS_IDLE = 'idle';
+export const FORM_STATUS_LOADING = 'loading';
+export const FORM_STATUS_READY = 'ready';
+export const FORM_STATUS_SAVING = 'saving';
+export const FORM_STATUS_SUCCESS = 'success';
+export const FORM_STATUS_ERROR = 'error';
+
+const FORM_FIELDS = [
+    'name',
+    'sku',
+    'description',
+    'wooProductId',
+    'categoryId',
+    'brandId',
+    'unitId',
+    'imageId',
+];
+
+const ID_FIELDS = [
+    'wooProductId',
+    'categoryId',
+    'brandId',
+    'unitId',
+    'imageId',
+];
+
+const PAYLOAD_FIELDS = {
+    name: 'name',
+    sku: 'sku',
+    description: 'description',
+    wooProductId: 'woo_product_id',
+    categoryId: 'category_id',
+    brandId: 'brand_id',
+    unitId: 'unit_id',
+    imageId: 'image_id',
+};
+
 /**
  * Crea el estado mínimo de la lista de productos.
  */
 export function createProductsStore(api) {
     let state = {
+        currentView: VIEW_LIST,
         status: STATUS_IDLE,
         inputTerm: '',
         query: {
@@ -19,8 +64,11 @@ export function createProductsStore(api) {
         products: [],
         meta: null,
         error: null,
+        form: createInitialFormState(),
     };
     let latestRequest = 0;
+    let latestFormRequest = 0;
+    let listNeedsReload = false;
     const listeners = new Set();
 
     function getState() {
@@ -90,6 +138,243 @@ export function createProductsStore(api) {
         );
     }
 
+    function openCreateForm() {
+        if (state.form.status === FORM_STATUS_SAVING) {
+            return false;
+        }
+
+        latestFormRequest++;
+        const values = createEmptyFormValues();
+
+        setState({
+            currentView: VIEW_PRODUCT_FORM,
+            form: {
+                ...createInitialFormState(),
+                mode: FORM_MODE_CREATE,
+                status: FORM_STATUS_READY,
+                values,
+                initialValues: { ...values },
+            },
+        });
+
+        return true;
+    }
+
+    async function openEditForm(id) {
+        if (state.form.status === FORM_STATUS_SAVING) {
+            return false;
+        }
+
+        const requestId = ++latestFormRequest;
+
+        setState({
+            currentView: VIEW_PRODUCT_FORM,
+            form: {
+                ...createInitialFormState(),
+                mode: FORM_MODE_EDIT,
+                status: FORM_STATUS_LOADING,
+                productId: id,
+            },
+        });
+
+        try {
+            const response = await api.getProduct(id);
+
+            if (requestId !== latestFormRequest) {
+                return false;
+            }
+
+            setFormFromProduct(response.data, FORM_MODE_EDIT);
+
+            return true;
+        } catch (error) {
+            if (requestId !== latestFormRequest) {
+                return false;
+            }
+
+            setState({
+                form: {
+                    ...state.form,
+                    status: FORM_STATUS_ERROR,
+                    error: normalizeError(error),
+                },
+            });
+
+            return false;
+        }
+    }
+
+    function setFormField(field, value) {
+        if (
+            !FORM_FIELDS.includes(field)
+            || state.currentView !== VIEW_PRODUCT_FORM
+            || state.form.status === FORM_STATUS_SAVING
+            || state.form.status === FORM_STATUS_LOADING
+            || state.form.mode === FORM_MODE_READONLY
+        ) {
+            return false;
+        }
+
+        const values = {
+            ...state.form.values,
+            [field]: value === null || value === undefined
+                ? ''
+                : String(value),
+        };
+        const fieldErrors = { ...state.form.fieldErrors };
+        delete fieldErrors[field];
+
+        setState({
+            form: {
+                ...state.form,
+                status: FORM_STATUS_READY,
+                values,
+                dirty: !formValuesEqual(values, state.form.initialValues),
+                fieldErrors,
+                error: null,
+                message: null,
+            },
+        });
+
+        return true;
+    }
+
+    async function saveProduct() {
+        if (
+            state.currentView !== VIEW_PRODUCT_FORM
+            || state.form.status === FORM_STATUS_SAVING
+            || state.form.status === FORM_STATUS_LOADING
+            || state.form.mode === FORM_MODE_READONLY
+            || ![FORM_MODE_CREATE, FORM_MODE_EDIT].includes(state.form.mode)
+        ) {
+            return false;
+        }
+
+        if (
+            state.form.mode === FORM_MODE_EDIT
+            && state.form.initialValues === null
+        ) {
+            setMissingProductDetailError();
+
+            return false;
+        }
+
+        const validation = validateFormValues(state.form.values);
+
+        if (Object.keys(validation.errors).length > 0) {
+            setState({
+                form: {
+                    ...state.form,
+                    status: FORM_STATUS_READY,
+                    fieldErrors: validation.errors,
+                    error: null,
+                    message: null,
+                },
+            });
+
+            return false;
+        }
+
+        if (state.form.mode === FORM_MODE_CREATE) {
+            return createProduct(validation.payload);
+        }
+
+        const changes = buildChangedPayload(
+            validation.payload,
+            state.form.initialValues
+        );
+
+        if (Object.keys(changes).length === 0) {
+            setState({
+                form: {
+                    ...state.form,
+                    status: FORM_STATUS_READY,
+                    dirty: false,
+                    fieldErrors: {},
+                    error: null,
+                    message: 'No hay cambios para guardar.',
+                },
+            });
+
+            return true;
+        }
+
+        return updateProduct(changes, validation.payload);
+    }
+
+    async function changeProductStatus(status) {
+        if (
+            state.currentView !== VIEW_PRODUCT_FORM
+            || state.form.status === FORM_STATUS_SAVING
+            || state.form.status === FORM_STATUS_LOADING
+            || state.form.mode !== FORM_MODE_EDIT
+            || !['active', 'inactive'].includes(status)
+            || state.form.productId === null
+        ) {
+            return false;
+        }
+
+        if (state.form.initialValues === null) {
+            setMissingProductDetailError();
+
+            return false;
+        }
+
+        if (status === state.form.productStatus) {
+            return true;
+        }
+
+        setFormSaving();
+
+        try {
+            const response = await api.updateProductStatus(
+                state.form.productId,
+                status
+            );
+
+            listNeedsReload = true;
+            setState({
+                form: {
+                    ...state.form,
+                    status: FORM_STATUS_SUCCESS,
+                    productStatus: response.data.status,
+                    error: null,
+                    message: 'Estado del producto actualizado.',
+                },
+            });
+
+            return true;
+        } catch (error) {
+            setFormOperationError(error);
+
+            return false;
+        }
+    }
+
+    async function returnToList({ force = false } = {}) {
+        if (
+            state.form.status === FORM_STATUS_SAVING
+            || (state.form.dirty && !force)
+        ) {
+            return false;
+        }
+
+        latestFormRequest++;
+        const shouldReload = listNeedsReload;
+        listNeedsReload = false;
+
+        setState({
+            currentView: VIEW_LIST,
+            form: createInitialFormState(),
+        });
+
+        if (shouldReload) {
+            await executeQuery(state.query, state.inputTerm);
+        }
+
+        return true;
+    }
+
     async function executeQuery(query, inputTerm) {
         const requestId = ++latestRequest;
 
@@ -149,7 +434,308 @@ export function createProductsStore(api) {
         search,
         reload,
         goToPage,
+        openCreateForm,
+        openEditForm,
+        setFormField,
+        saveProduct,
+        changeProductStatus,
+        returnToList,
     };
+
+    async function createProduct(payload) {
+        setFormSaving();
+
+        try {
+            const created = await api.createProduct(payload);
+            const productId = created.data.id;
+
+            listNeedsReload = true;
+
+            try {
+                const detail = await api.getProduct(productId);
+                setFormFromProduct(
+                    detail.data,
+                    FORM_MODE_EDIT,
+                    'Producto creado correctamente.'
+                );
+
+                return true;
+            } catch (error) {
+                const values = valuesFromPayload(payload);
+
+                setState({
+                    form: {
+                        ...state.form,
+                        mode: FORM_MODE_EDIT,
+                        status: FORM_STATUS_ERROR,
+                        productId,
+                        values,
+                        initialValues: { ...values },
+                        productStatus: 'draft',
+                        dirty: false,
+                        error: normalizeError(error),
+                        message: 'El producto fue creado, pero no fue posible recargarlo.',
+                    },
+                });
+
+                return false;
+            }
+        } catch (error) {
+            setFormOperationError(error);
+
+            return false;
+        }
+    }
+
+    async function updateProduct(changes, normalizedPayload) {
+        const productId = state.form.productId;
+        setFormSaving();
+
+        try {
+            await api.updateProduct(productId, changes);
+            listNeedsReload = true;
+
+            try {
+                const detail = await api.getProduct(productId);
+                setFormFromProduct(
+                    detail.data,
+                    FORM_MODE_EDIT,
+                    'Producto actualizado correctamente.'
+                );
+
+                return true;
+            } catch (error) {
+                const values = valuesFromPayload(normalizedPayload);
+
+                setState({
+                    form: {
+                        ...state.form,
+                        status: FORM_STATUS_ERROR,
+                        values,
+                        initialValues: { ...values },
+                        dirty: false,
+                        error: normalizeError(error),
+                        message: 'Los cambios fueron guardados, pero no fue posible recargar el producto.',
+                    },
+                });
+
+                return false;
+            }
+        } catch (error) {
+            setFormOperationError(error);
+
+            return false;
+        }
+    }
+
+    function setFormFromProduct(product, mode, message = null) {
+        const values = normalizeProductDetail(product);
+
+        setState({
+            currentView: VIEW_PRODUCT_FORM,
+            form: {
+                ...createInitialFormState(),
+                mode,
+                status: message === null
+                    ? FORM_STATUS_READY
+                    : FORM_STATUS_SUCCESS,
+                productId: product.id,
+                values,
+                initialValues: { ...values },
+                productStatus: product.status,
+                message,
+            },
+        });
+    }
+
+    function setFormSaving() {
+        setState({
+            form: {
+                ...state.form,
+                status: FORM_STATUS_SAVING,
+                fieldErrors: {},
+                error: null,
+                message: null,
+            },
+        });
+    }
+
+    function setFormOperationError(error) {
+        setState({
+            form: {
+                ...state.form,
+                status: FORM_STATUS_ERROR,
+                error: normalizeError(error),
+                message: null,
+            },
+        });
+    }
+
+    function setMissingProductDetailError() {
+        setState({
+            form: {
+                ...state.form,
+                status: FORM_STATUS_ERROR,
+                error: {
+                    type: 'invalid_state',
+                    status: null,
+                    code: 'product_detail_not_loaded',
+                    message: 'No se cargó el detalle del producto. Vuelve a intentarlo.',
+                    retryable: true,
+                },
+                message: null,
+            },
+        });
+    }
+}
+
+function createInitialFormState() {
+    return {
+        mode: FORM_MODE_CREATE,
+        status: FORM_STATUS_IDLE,
+        dirty: false,
+        productId: null,
+        values: createEmptyFormValues(),
+        initialValues: null,
+        productStatus: 'draft',
+        fieldErrors: {},
+        error: null,
+        message: null,
+    };
+}
+
+function createEmptyFormValues() {
+    return {
+        name: '',
+        sku: '',
+        description: '',
+        wooProductId: '',
+        categoryId: '',
+        brandId: '',
+        unitId: '',
+        imageId: '',
+    };
+}
+
+function normalizeProductDetail(product) {
+    return {
+        name: textValue(product.name),
+        sku: textValue(product.sku),
+        description: textValue(product.description),
+        wooProductId: textValue(product.woo_product_id),
+        categoryId: textValue(product.category_id),
+        brandId: textValue(product.brand_id),
+        unitId: textValue(product.unit_id),
+        imageId: textValue(product.image_id),
+    };
+}
+
+function validateFormValues(values) {
+    const errors = {};
+    const name = values.name.trim();
+    const sku = values.sku.trim();
+    const description = values.description.trim();
+
+    if (name === '') {
+        errors.name = 'El nombre del producto es obligatorio.';
+    } else if (textLength(name) > 180) {
+        errors.name = 'El nombre del producto supera el máximo de 180 caracteres.';
+    }
+
+    if (textLength(sku) > 100) {
+        errors.sku = 'El SKU supera el máximo de 100 caracteres.';
+    }
+
+    const payload = {
+        name,
+        sku: sku === '' ? null : sku,
+        description: description === '' ? null : description,
+    };
+
+    ID_FIELDS.forEach((field) => {
+        const value = values[field].trim();
+
+        if (value === '') {
+            payload[PAYLOAD_FIELDS[field]] = null;
+            return;
+        }
+
+        if (!/^[1-9]\d*$/.test(value)) {
+            errors[field] = 'El valor debe ser un entero positivo.';
+            return;
+        }
+
+        const number = Number(value);
+
+        if (!Number.isSafeInteger(number)) {
+            errors[field] = 'El valor supera el máximo permitido.';
+            return;
+        }
+
+        payload[PAYLOAD_FIELDS[field]] = number;
+    });
+
+    return { errors, payload };
+}
+
+function buildChangedPayload(currentPayload, initialValues) {
+    const initial = validateFormValues(
+        initialValues ?? createEmptyFormValues()
+    ).payload;
+    const changes = {};
+
+    Object.keys(currentPayload).forEach((field) => {
+        if (currentPayload[field] !== initial[field]) {
+            changes[field] = currentPayload[field];
+        }
+    });
+
+    return changes;
+}
+
+function valuesFromPayload(payload) {
+    const values = createEmptyFormValues();
+
+    Object.entries(PAYLOAD_FIELDS).forEach(([formField, payloadField]) => {
+        values[formField] = textValue(payload[payloadField]);
+    });
+
+    return values;
+}
+
+function formValuesEqual(first, second) {
+    if (second === null) {
+        return false;
+    }
+
+    return FORM_FIELDS.every((field) => (
+        comparableValue(field, first[field])
+        === comparableValue(field, second[field])
+    ));
+}
+
+function comparableValue(field, value) {
+    const normalized = textValue(value).trim();
+
+    if (!ID_FIELDS.includes(field) || normalized === '') {
+        return normalized;
+    }
+
+    if (!/^\d+$/.test(normalized)) {
+        return normalized;
+    }
+
+    return normalized.replace(/^0+(?=\d)/, '');
+}
+
+function textValue(value) {
+    return value === null || value === undefined
+        ? ''
+        : String(value);
+}
+
+function textLength(value) {
+    return Array.from(value).length;
 }
 
 function normalizeProduct(product) {
@@ -179,7 +765,7 @@ function normalizeError(error) {
             code: typeof error.code === 'string' ? error.code : 'unknown_error',
             message: typeof error.message === 'string' && error.message !== ''
                 ? error.message
-                : 'No fue posible cargar los productos.',
+                : 'No se pudo completar la operación.',
             retryable: error.retryable === true,
         };
     }
@@ -188,7 +774,7 @@ function normalizeError(error) {
         type: 'unknown',
         status: null,
         code: 'unknown_error',
-        message: 'No fue posible cargar los productos.',
+        message: 'No se pudo completar la operación.',
         retryable: false,
     };
 }
@@ -208,5 +794,16 @@ function createSnapshot(state) {
         products: state.products.map((product) => ({ ...product })),
         meta: state.meta === null ? null : { ...state.meta },
         error: state.error === null ? null : { ...state.error },
+        form: {
+            ...state.form,
+            values: { ...state.form.values },
+            initialValues: state.form.initialValues === null
+                ? null
+                : { ...state.form.initialValues },
+            fieldErrors: { ...state.form.fieldErrors },
+            error: state.form.error === null
+                ? null
+                : { ...state.form.error },
+        },
     };
 }
