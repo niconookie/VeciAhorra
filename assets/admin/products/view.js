@@ -36,7 +36,7 @@ const FORM_FIELD_DEFINITIONS = [
         type: 'select',
         catalog: 'units',
     },
-    { name: 'imageId', label: 'Imagen', type: 'number' },
+    { name: 'imageId', label: 'Imagen', type: 'media' },
 ];
 
 /**
@@ -380,6 +380,7 @@ function createProductForm(actions) {
     const fields = document.createElement('div');
     fields.className = 'veciahorra-products-admin__form-fields';
     const controls = new Map();
+    const mediaPicker = createMediaPicker(actions);
 
     const mainCard = createFormCard('Información principal');
     const technicalCard = createFormCard('Datos técnicos');
@@ -387,6 +388,11 @@ function createProductForm(actions) {
 
     FORM_FIELD_DEFINITIONS.forEach((definition) => {
         const control = createFormControl(definition, actions);
+
+        if (definition.type === 'media') {
+            attachMediaControl(control, mediaPicker, actions);
+        }
+
         controls.set(definition.name, control);
         const card = mainFields.has(definition.name)
             ? mainCard
@@ -470,9 +476,15 @@ function createProductForm(actions) {
             const error = form.fieldErrors[field] ?? '';
             control.error.textContent = error;
             control.error.hidden = error === '';
-            control.input.disabled = !editable
+            const disabled = !editable
                 || control.catalogStatus === 'loading'
                 || control.catalogStatus === 'error';
+            control.input.disabled = disabled;
+
+            if (control.media !== null) {
+                mediaPicker.render(control, value, disabled);
+            }
+
             control.input.setAttribute(
                 'aria-invalid',
                 error === '' ? 'false' : 'true'
@@ -546,7 +558,9 @@ function createFormControl(definition, actions) {
     input.name = definition.name;
     input.className = 'regular-text';
 
-    if (!['textarea', 'select'].includes(definition.type)) {
+    if (definition.type === 'media') {
+        input.type = 'hidden';
+    } else if (!['textarea', 'select'].includes(definition.type)) {
         input.type = definition.type;
     }
 
@@ -579,12 +593,14 @@ function createFormControl(definition, actions) {
     }
 
     input.setAttribute('aria-describedby', describedBy.join(' '));
-    input.addEventListener(
-        definition.type === 'select' ? 'change' : 'input',
-        () => {
-            emit(actions.onFormField, definition.name, input.value);
-        }
-    );
+    if (definition.type !== 'media') {
+        input.addEventListener(
+            definition.type === 'select' ? 'change' : 'input',
+            () => {
+                emit(actions.onFormField, definition.name, input.value);
+            }
+        );
+    }
 
     wrapper.append(label, input);
 
@@ -601,7 +617,255 @@ function createFormControl(definition, actions) {
         catalog: definition.catalog ?? null,
         catalogStatus: null,
         catalogMessage: catalogStatus,
+        media: null,
     };
+}
+
+function attachMediaControl(control, mediaPicker, actions) {
+    const element = document.createElement('div');
+    element.className = 'veciahorra-products-admin__media-control';
+
+    const preview = document.createElement('div');
+    preview.className = 'veciahorra-products-admin__media-preview';
+    const image = document.createElement('img');
+    image.className = 'veciahorra-products-admin__media-thumbnail';
+    image.alt = '';
+    image.hidden = true;
+    const placeholder = document.createElement('span');
+    placeholder.className = 'veciahorra-products-admin__media-placeholder';
+    placeholder.textContent = 'Sin imagen seleccionada.';
+    preview.append(image, placeholder);
+
+    const filename = document.createElement('p');
+    filename.className = 'veciahorra-products-admin__media-filename';
+    filename.hidden = true;
+
+    const status = document.createElement('p');
+    status.className = 'veciahorra-products-admin__media-status';
+    status.hidden = true;
+
+    const actionsContainer = document.createElement('div');
+    actionsContainer.className = 'veciahorra-products-admin__media-actions';
+    const select = createButton(
+        'Seleccionar imagen',
+        () => mediaPicker.open(control)
+    );
+    select.classList.add('button', 'button-secondary');
+    const change = createButton(
+        'Cambiar imagen',
+        () => mediaPicker.open(control)
+    );
+    change.classList.add('button', 'button-secondary');
+    const remove = createButton('Quitar imagen', () => {
+        mediaPicker.clear(control);
+        emit(actions.onFormField, 'imageId', '');
+    });
+    remove.classList.add('button', 'button-link-delete');
+    actionsContainer.append(select, change, remove);
+
+    element.append(preview, filename, status, actionsContainer);
+    control.wrapper.insertBefore(element, control.error);
+    control.media = {
+        element,
+        image,
+        placeholder,
+        filename,
+        status,
+        select,
+        change,
+        remove,
+    };
+}
+
+function createMediaPicker(actions) {
+    const attachments = new Map();
+    const requestedIds = new Set();
+    let frame = null;
+    let activeControl = null;
+
+    function open(control) {
+        activeControl = control;
+
+        if (!window.wp || typeof window.wp.media !== 'function') {
+            showMediaError(
+                control,
+                'La biblioteca multimedia no está disponible.'
+            );
+            return;
+        }
+
+        if (frame === null) {
+            frame = window.wp.media({
+                title: 'Seleccionar imagen',
+                button: { text: 'Usar esta imagen' },
+                library: { type: 'image' },
+                multiple: false,
+            });
+            frame.on('select', selectAttachment);
+        }
+
+        prepareSelection(control.input.value);
+        frame.open();
+    }
+
+    function selectAttachment() {
+        const attachment = frame.state().get('selection').first();
+        const data = normalizeAttachment(attachment);
+
+        if (activeControl === null || data === null) {
+            return;
+        }
+
+        attachments.set(String(data.id), data);
+        render(activeControl, String(data.id), false);
+        emit(actions.onFormField, 'imageId', String(data.id));
+    }
+
+    function prepareSelection(value) {
+        const selection = frame.state().get('selection');
+        selection.reset();
+
+        if (value !== '' && typeof window.wp.media.attachment === 'function') {
+            selection.add(window.wp.media.attachment(Number(value)));
+        }
+    }
+
+    function render(control, value, disabled) {
+        const id = String(value ?? '');
+        const hasImage = id !== '';
+        const cached = attachments.get(id) ?? null;
+
+        control.media.select.hidden = hasImage;
+        control.media.change.hidden = !hasImage;
+        control.media.remove.hidden = !hasImage;
+        control.media.select.disabled = disabled;
+        control.media.change.disabled = disabled;
+        control.media.remove.disabled = disabled;
+        control.media.status.hidden = true;
+        control.media.status.textContent = '';
+
+        if (!hasImage) {
+            showMediaPlaceholder(control, 'Sin imagen seleccionada.');
+            return;
+        }
+
+        if (cached !== null) {
+            showAttachment(control, cached);
+            return;
+        }
+
+        showMediaPlaceholder(control, `Imagen seleccionada (ID ${id}).`);
+        loadAttachment(control, id);
+    }
+
+    function loadAttachment(control, id) {
+        if (
+            requestedIds.has(id)
+            || !window.wp?.media
+            || typeof window.wp.media.attachment !== 'function'
+        ) {
+            return;
+        }
+
+        const attachment = window.wp.media.attachment(Number(id));
+        const available = normalizeAttachment(attachment);
+
+        if (available?.url || available?.filename) {
+            attachments.set(id, available);
+            showAttachment(control, available);
+            return;
+        }
+
+        if (typeof attachment?.fetch !== 'function') {
+            return;
+        }
+
+        requestedIds.add(id);
+        Promise.resolve(attachment.fetch())
+            .then(() => {
+                const loaded = normalizeAttachment(attachment);
+
+                if (loaded === null) {
+                    return;
+                }
+
+                attachments.set(id, loaded);
+
+                if (control.input.value === id) {
+                    showAttachment(control, loaded);
+                }
+            })
+            .catch(() => {
+                if (control.input.value === id) {
+                    showMediaError(
+                        control,
+                        'No fue posible cargar la vista previa.'
+                    );
+                }
+            });
+    }
+
+    function clear(control) {
+        control.input.value = '';
+        showMediaPlaceholder(control, 'Sin imagen seleccionada.');
+    }
+
+    return { open, render, clear };
+}
+
+function normalizeAttachment(attachment) {
+    if (!attachment) {
+        return null;
+    }
+
+    const data = typeof attachment.toJSON === 'function'
+        ? attachment.toJSON()
+        : attachment;
+    const id = Number(data.id ?? attachment.id);
+
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        return null;
+    }
+
+    return {
+        id,
+        filename: stringValue(data.filename)
+            || stringValue(data.name)
+            || stringValue(data.title),
+        url: stringValue(data.sizes?.thumbnail?.url)
+            || stringValue(data.url),
+    };
+}
+
+function showAttachment(control, attachment) {
+    const hasThumbnail = attachment.url !== '';
+    control.media.image.src = hasThumbnail ? attachment.url : '';
+    control.media.image.hidden = !hasThumbnail;
+    control.media.placeholder.hidden = hasThumbnail;
+    control.media.placeholder.textContent = hasThumbnail
+        ? ''
+        : `Imagen seleccionada (ID ${attachment.id}).`;
+    control.media.filename.textContent = attachment.filename;
+    control.media.filename.hidden = attachment.filename === '';
+}
+
+function showMediaPlaceholder(control, message) {
+    control.media.image.src = '';
+    control.media.image.hidden = true;
+    control.media.placeholder.textContent = message;
+    control.media.placeholder.hidden = false;
+    control.media.filename.textContent = '';
+    control.media.filename.hidden = true;
+}
+
+function showMediaError(control, message) {
+    control.media.status.textContent = message;
+    control.media.status.hidden = false;
+    control.media.status.setAttribute('role', 'alert');
+}
+
+function stringValue(value) {
+    return typeof value === 'string' ? value.trim() : '';
 }
 
 function renderCatalogControl(control, catalog, currentValue) {

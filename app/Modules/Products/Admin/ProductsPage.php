@@ -64,6 +64,8 @@ final class ProductsPage
             return;
         }
 
+        wp_enqueue_media();
+
         $baseUrl = VA_PLUGIN_URL . 'assets/admin/products/';
 
         wp_enqueue_style(

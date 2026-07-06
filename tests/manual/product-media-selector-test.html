@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Product Media Selector Test</title>
+</head>
+<body>
+    <div id="veciahorra-products-admin">
+        <button type="button" class="page-title-action">Nuevo</button>
+        <div id="veciahorra-products-messages"></div>
+        <div id="veciahorra-products-toolbar"></div>
+        <div id="veciahorra-products-table"></div>
+        <div id="veciahorra-products-pagination"></div>
+    </div>
+    <pre id="result">RUNNING</pre>
+    <script type="module">
+        import { createProductsStore } from '../../assets/admin/products/store.js';
+        import { createProductsView } from '../../assets/admin/products/view.js';
+
+        const output = document.getElementById('result');
+        const results = [];
+
+        function assert(condition, message) {
+            if (!condition) {
+                throw new Error(message);
+            }
+        }
+
+        async function test(name, callback) {
+            try {
+                await callback();
+                results.push(`PASS: ${name}`);
+            } catch (error) {
+                results.push(`FAIL: ${name}\n      ${error.message}`);
+            }
+        }
+
+        function attachment(data) {
+            return {
+                id: data.id,
+                toJSON: () => ({ ...data }),
+            };
+        }
+
+        await test('wp.media selecciona, cambia, quita y restaura imágenes', async () => {
+            const originalFetch = window.fetch;
+            let fetchCalls = 0;
+            window.fetch = (...args) => {
+                fetchCalls++;
+
+                return originalFetch(...args);
+            };
+
+            const attachments = new Map([
+                [77, attachment({
+                    id: 77,
+                    filename: 'existente.jpg',
+                    url: 'https://example.test/existente.jpg',
+                })],
+            ]);
+            let selectedAttachment = null;
+            let mediaCreations = 0;
+            let openCalls = 0;
+            let mediaOptions = null;
+            const handlers = {};
+            const selection = {
+                first: () => selectedAttachment,
+                reset: () => {
+                    selectedAttachment = null;
+                },
+                add: (model) => {
+                    selectedAttachment = model;
+                },
+            };
+            const frame = {
+                on(event, callback) {
+                    handlers[event] = callback;
+                },
+                open() {
+                    openCalls++;
+                },
+                state() {
+                    return {
+                        get: () => selection,
+                    };
+                },
+            };
+            const media = (options) => {
+                mediaCreations++;
+                mediaOptions = options;
+
+                return frame;
+            };
+            media.attachment = (id) => attachments.get(id)
+                || attachment({ id });
+            window.wp = { media };
+
+            try {
+                const productsApi = {
+                    getProduct: async () => ({
+                        success: true,
+                        data: {
+                            id: 10,
+                            name: 'Producto con imagen',
+                            slug: 'producto-con-imagen',
+                            sku: null,
+                            description: null,
+                            woo_product_id: null,
+                            category_id: null,
+                            brand_id: null,
+                            unit_id: null,
+                            image_id: 77,
+                            status: 'active',
+                            created_at: '2026-07-05 10:00:00',
+                            updated_at: '2026-07-05 10:00:00',
+                        },
+                    }),
+                };
+                const store = createProductsStore(productsApi, {});
+                const nodes = {
+                    root: document.getElementById('veciahorra-products-admin'),
+                    messages: document.getElementById('veciahorra-products-messages'),
+                    toolbar: document.getElementById('veciahorra-products-toolbar'),
+                    table: document.getElementById('veciahorra-products-table'),
+                    pagination: document.getElementById('veciahorra-products-pagination'),
+                };
+                const view = createProductsView(nodes, {
+                    onInputTerm: (term) => store.setInputTerm(term),
+                    onSearch: () => store.search(),
+                    onClear: () => store.search(''),
+                    onReload: () => store.reload(),
+                    onPage: (page) => store.goToPage(page),
+                    onNew: () => store.openCreateForm(),
+                    onEdit: (id) => store.openEditForm(id),
+                    onFormField: (field, value) => store.setFormField(field, value),
+                    onSave: () => store.saveProduct(),
+                    onStatus: (status) => store.changeProductStatus(status),
+                    onBack: () => store.returnToList(),
+                });
+
+                store.subscribe(view.render);
+                view.render(store.getState());
+                store.openCreateForm();
+
+                const mediaControl = document.querySelector(
+                    '.veciahorra-products-admin__media-control'
+                );
+                const button = (label) => [...mediaControl.querySelectorAll('button')]
+                    .find((item) => item.textContent === label);
+                const preview = mediaControl.querySelector(
+                    '.veciahorra-products-admin__media-thumbnail'
+                );
+                const placeholder = mediaControl.querySelector(
+                    '.veciahorra-products-admin__media-placeholder'
+                );
+                const filename = mediaControl.querySelector(
+                    '.veciahorra-products-admin__media-filename'
+                );
+
+                assert(
+                    placeholder.textContent === 'Sin imagen seleccionada.',
+                    'El formulario nuevo no muestra placeholder.'
+                );
+                button('Seleccionar imagen').click();
+                assert(mediaCreations === 1 && openCalls === 1, 'wp.media no abrió correctamente.');
+                assert(
+                    mediaOptions.multiple === false
+                        && mediaOptions.library.type === 'image',
+                    'wp.media no está restringido a una imagen.'
+                );
+
+                selectedAttachment = attachment({
+                    id: 44,
+                    filename: 'primera.jpg',
+                    sizes: {
+                        thumbnail: { url: 'https://example.test/primera-thumb.jpg' },
+                    },
+                    url: 'https://example.test/primera.jpg',
+                });
+                handlers.select();
+                assert(store.getState().form.values.imageId === '44', 'La selección no actualizó imageId.');
+                assert(preview.src.endsWith('/primera-thumb.jpg') && !preview.hidden, 'No se mostró la miniatura.');
+                assert(filename.textContent === 'primera.jpg', 'No se mostró el nombre del archivo.');
+
+                button('Cambiar imagen').click();
+                assert(mediaCreations === 1 && openCalls === 2, 'No se reutilizó la instancia de wp.media.');
+                selectedAttachment = attachment({
+                    id: 55,
+                    filename: 'segunda.png',
+                    url: 'https://example.test/segunda.png',
+                });
+                handlers.select();
+                assert(store.getState().form.values.imageId === '55', 'Cambiar imagen no actualizó imageId.');
+                assert(filename.textContent === 'segunda.png', 'Cambiar imagen no actualizó la referencia visual.');
+
+                button('Quitar imagen').click();
+                assert(store.getState().form.values.imageId === '', 'Quitar imagen no limpió imageId.');
+                assert(placeholder.textContent === 'Sin imagen seleccionada.', 'Quitar imagen no restauró el placeholder.');
+
+                await store.openEditForm(10);
+                assert(store.getState().form.values.imageId === '77', 'Edición no conservó imageId.');
+                assert(preview.src.endsWith('/existente.jpg') && !preview.hidden, 'Edición no restauró la miniatura.');
+                assert(filename.textContent === 'existente.jpg', 'Edición no restauró el nombre del archivo.');
+                assert(fetchCalls === 0, 'La View realizó llamadas REST adicionales.');
+            } finally {
+                window.fetch = originalFetch;
+                delete window.wp;
+            }
+        });
+
+        const failed = results.filter((result) => result.startsWith('FAIL'));
+        results.push('');
+        results.push(`Resultado: ${results.length - 1 - failed.length} aprobadas, ${failed.length} fallidas.`);
+        output.textContent = results.join('\n');
+        output.dataset.status = failed.length === 0 ? 'passed' : 'failed';
+        document.title = failed.length === 0 ? 'PASS' : 'FAIL';
+    </script>
+</body>
+</html>

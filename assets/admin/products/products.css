@@ -329,6 +329,58 @@
     color: #b32d2e;
 }
 
+.veciahorra-products-admin__media-control {
+    display: grid;
+    gap: 10px;
+}
+
+.veciahorra-products-admin__media-preview {
+    align-items: center;
+    background: #f6f7f7;
+    border: 1px dashed #a7aaad;
+    border-radius: 4px;
+    display: flex;
+    justify-content: center;
+    min-height: 132px;
+    overflow: hidden;
+    padding: 12px;
+}
+
+.veciahorra-products-admin__media-thumbnail {
+    display: block;
+    height: auto;
+    max-height: 180px;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+.veciahorra-products-admin__media-placeholder {
+    color: #646970;
+    text-align: center;
+}
+
+.veciahorra-products-admin__media-filename,
+.veciahorra-products-admin__media-status {
+    font-size: 12px;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.veciahorra-products-admin__media-filename {
+    color: #3c434a;
+}
+
+.veciahorra-products-admin__media-status {
+    color: #b32d2e;
+}
+
+.veciahorra-products-admin__media-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .veciahorra-products-admin__form-actions {
     align-items: center;
     border-top: 1px solid #c3c4c7;
