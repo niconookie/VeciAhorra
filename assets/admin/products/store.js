@@ -208,8 +208,11 @@ export function createProductsStore(api, catalogApi) {
         );
     }
 
-    function openCreateForm() {
-        if (state.form.isSaving) {
+    function openCreateForm({ force = false } = {}) {
+        if (
+            state.form.isSaving
+            || (hasUnsavedChanges() && !force)
+        ) {
             return false;
         }
 
@@ -230,8 +233,11 @@ export function createProductsStore(api, catalogApi) {
         return true;
     }
 
-    async function openEditForm(id) {
-        if (state.form.isSaving) {
+    async function openEditForm(id, { force = false } = {}) {
+        if (
+            state.form.isSaving
+            || (hasUnsavedChanges() && !force)
+        ) {
             return false;
         }
 
@@ -299,7 +305,6 @@ export function createProductsStore(api, catalogApi) {
                 ...state.form,
                 status: FORM_STATUS_READY,
                 values,
-                dirty: !formValuesEqual(values, state.form.initialValues),
                 fieldErrors,
                 error: null,
                 message: null,
@@ -359,7 +364,6 @@ export function createProductsStore(api, catalogApi) {
                 form: {
                     ...state.form,
                     status: FORM_STATUS_READY,
-                    dirty: false,
                     fieldErrors: {},
                     error: null,
                     message: 'No hay cambios para guardar.',
@@ -426,7 +430,7 @@ export function createProductsStore(api, catalogApi) {
     async function returnToList({ force = false } = {}) {
         if (
             state.form.isSaving
-            || (state.form.dirty && !force)
+            || (hasUnsavedChanges() && !force)
         ) {
             return false;
         }
@@ -545,7 +549,6 @@ export function createProductsStore(api, catalogApi) {
                         values,
                         initialValues: { ...values },
                         productStatus: 'draft',
-                        dirty: false,
                         error: normalizeError(error),
                         message: 'El producto fue creado, pero no fue posible recargarlo.',
                     },
@@ -588,7 +591,6 @@ export function createProductsStore(api, catalogApi) {
                         status: FORM_STATUS_ERROR,
                         values,
                         initialValues: { ...values },
-                        dirty: false,
                         error: normalizeError(error),
                         message: 'Los cambios fueron guardados, pero no fue posible recargar el producto.',
                     },
@@ -689,6 +691,15 @@ export function createProductsStore(api, catalogApi) {
             },
         });
     }
+
+    function hasUnsavedChanges() {
+        return state.currentView === VIEW_PRODUCT_FORM
+            && state.form.initialValues !== null
+            && !formValuesEqual(
+                state.form.values,
+                state.form.initialValues
+            );
+    }
 }
 
 function createInitialCatalogsState() {
@@ -712,7 +723,6 @@ function createInitialFormState() {
         mode: FORM_MODE_CREATE,
         status: FORM_STATUS_IDLE,
         isSaving: false,
-        dirty: false,
         productId: null,
         values: createEmptyFormValues(),
         initialValues: null,
@@ -963,6 +973,12 @@ function createSnapshot(state) {
         ),
         form: {
             ...state.form,
+            hasUnsavedChanges: state.currentView === VIEW_PRODUCT_FORM
+                && state.form.initialValues !== null
+                && !formValuesEqual(
+                    state.form.values,
+                    state.form.initialValues
+                ),
             values: { ...state.form.values },
             initialValues: state.form.initialValues === null
                 ? null

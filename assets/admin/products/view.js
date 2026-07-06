@@ -495,7 +495,7 @@ function createProductForm(actions) {
         save.setAttribute('aria-busy', isSaving ? 'true' : 'false');
         save.hidden = readonly || detailUnavailable;
         save.disabled = !editable
-            || (form.mode === FORM_MODE_EDIT && !form.dirty);
+            || (form.mode === FORM_MODE_EDIT && !form.hasUnsavedChanges);
 
         const canChangeStatus = (
             form.mode === FORM_MODE_EDIT

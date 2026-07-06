@@ -21,8 +21,8 @@ function initialize() {
         onClear: () => store.search(''),
         onReload: () => store.reload(),
         onPage: (page) => store.goToPage(page),
-        onNew: () => store.openCreateForm(),
-        onEdit: (id) => store.openEditForm(id),
+        onNew: () => openCreateForm(store),
+        onEdit: (id) => openEditForm(store, id),
         onFormField: (field, value) => store.setFormField(field, value),
         onSave: () => store.saveProduct(),
         onStatus: (status) => store.changeProductStatus(status),
@@ -30,6 +30,7 @@ function initialize() {
     });
 
     store.subscribe(view.render);
+    registerUnsavedChangesProtection(store);
     view.render(store.getState());
     store.reload();
     store.loadCatalogs();
@@ -43,12 +44,61 @@ async function returnToList(store) {
     const state = store.getState();
 
     if (
-        state.form.dirty
+        state.form.hasUnsavedChanges
         && !state.form.isSaving
-        && window.confirm('Hay cambios sin guardar. ¿Quieres volver al listado?')
+        && confirmDiscardChanges()
     ) {
         await store.returnToList({ force: true });
     }
+}
+
+function openCreateForm(store) {
+    if (store.openCreateForm()) {
+        return;
+    }
+
+    const state = store.getState();
+
+    if (
+        state.form.hasUnsavedChanges
+        && !state.form.isSaving
+        && confirmDiscardChanges()
+    ) {
+        store.openCreateForm({ force: true });
+    }
+}
+
+async function openEditForm(store, id) {
+    if (await store.openEditForm(id)) {
+        return;
+    }
+
+    const state = store.getState();
+
+    if (
+        state.form.hasUnsavedChanges
+        && !state.form.isSaving
+        && confirmDiscardChanges()
+    ) {
+        await store.openEditForm(id, { force: true });
+    }
+}
+
+function confirmDiscardChanges() {
+    return window.confirm(
+        'Hay cambios sin guardar. ¿Quieres descartarlos y continuar?'
+    );
+}
+
+function registerUnsavedChangesProtection(store) {
+    window.addEventListener('beforeunload', (event) => {
+        if (!store.getState().form.hasUnsavedChanges) {
+            return;
+        }
+
+        event.preventDefault();
+        event.returnValue = '';
+    });
 }
 
 function readConfig() {

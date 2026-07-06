@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Product Unsaved Changes Test</title></head>
+<body>
+<div id="veciahorra-products-admin">
+    <a class="page-title-action" href="#">Nuevo</a>
+    <script id="veciahorra-products-config" type="application/json">
+        {"restUrl":"http://localhost/wp-json/veciahorra/v1","nonce":"test"}
+    </script>
+    <div id="veciahorra-products-messages"></div>
+    <div id="veciahorra-products-toolbar"></div>
+    <div id="veciahorra-products-table"></div>
+    <div id="veciahorra-products-pagination"></div>
+</div>
+<pre id="result">RUNNING</pre>
+<script type="module">
+import { createProductsStore } from '../../assets/admin/products/store.js';
+
+const result = document.querySelector('#result');
+const assert = (condition, message) => {
+    if (!condition) throw new Error(message);
+};
+const product = (id, name) => ({
+    id,
+    name,
+    slug: `producto-${id}`,
+    sku: null,
+    description: null,
+    woo_product_id: null,
+    category_id: null,
+    brand_id: null,
+    unit_id: null,
+    image_id: null,
+    status: 'draft',
+    created_at: '2026-07-06 12:00:00',
+    updated_at: '2026-07-06 12:00:00',
+});
+
+async function run() {
+    let updateFails = false;
+    const names = new Map([[1, 'Producto 1'], [2, 'Producto 2']]);
+    const store = createProductsStore({
+        getProduct: async (id) => ({ data: product(id, names.get(id)) }),
+        createProduct: async () => ({ data: { id: 10 } }),
+        updateProduct: async (id, payload) => {
+            if (updateFails) {
+                throw {
+                    type: 'http',
+                    status: 422,
+                    code: 'validation_error',
+                    message: 'El nombre del producto no es válido.',
+                };
+            }
+            names.set(id, payload.name ?? names.get(id));
+            return { data: { id, updated: true } };
+        },
+    }, {});
+
+    store.openCreateForm();
+    assert(!store.getState().form.hasUnsavedChanges, 'Create inició sucio.');
+    store.setFormField('name', 'Borrador');
+    assert(store.getState().form.hasUnsavedChanges, 'No detectó el cambio.');
+    store.setFormField('name', '');
+    assert(!store.getState().form.hasUnsavedChanges, 'No detectó la reversión.');
+
+    await store.openEditForm(1, { force: true });
+    assert(!store.getState().form.hasUnsavedChanges, 'Detalle cargado quedó sucio.');
+    store.setFormField('name', 'Cambio pendiente');
+    assert(store.getState().form.hasUnsavedChanges, 'Edit no detectó cambios.');
+    assert(await store.returnToList() === false, 'Abandonó sin confirmación.');
+    assert(store.getState().form.values.name === 'Cambio pendiente', 'Perdió datos.');
+    assert(await store.openEditForm(2) === false, 'Cambió de producto sin confirmar.');
+    assert(store.getState().form.productId === 1, 'Reemplazó el producto actual.');
+    assert(await store.openEditForm(2, { force: true }), 'No permitió descartar.');
+    assert(store.getState().form.productId === 2, 'No navegó al producto confirmado.');
+
+    store.setFormField('name', 'Guardado correcto');
+    assert(await store.saveProduct(), 'El guardado exitoso falló.');
+    assert(!store.getState().form.hasUnsavedChanges, 'Siguió sucio tras guardar.');
+    assert(
+        JSON.stringify(store.getState().form.values)
+            === JSON.stringify(store.getState().form.initialValues),
+        'values e initialValues no quedaron sincronizados.'
+    );
+
+    store.setFormField('name', 'Cambio con error');
+    updateFails = true;
+    assert(await store.saveProduct() === false, 'El guardado inválido no falló.');
+    assert(store.getState().form.hasUnsavedChanges, 'El error limpió los cambios.');
+    assert(
+        store.getState().form.values.name === 'Cambio con error',
+        'El error reemplazó los valores escritos.'
+    );
+    assert(await store.returnToList({ force: true }), 'No descartó explícitamente.');
+    assert(!store.getState().form.hasUnsavedChanges, 'La salida quedó sucia.');
+
+    await testIntegratedNavigationProtection();
+}
+
+async function testIntegratedNavigationProtection() {
+    window.fetch = async (url) => {
+        const isCatalog = !String(url).includes('/products');
+        const payload = isCatalog
+            ? { success: true, data: [] }
+            : {
+                success: true,
+                data: [],
+                meta: {
+                    page: 1,
+                    per_page: 20,
+                    total: 0,
+                    total_pages: 0,
+                },
+            };
+
+        return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify(payload),
+        };
+    };
+
+    await import('../../assets/admin/products/app.js');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    document.querySelector('.page-title-action').click();
+
+    const name = document.querySelector('#veciahorra-product-name');
+    name.value = 'Cambio integrado';
+    name.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const unloadWithChanges = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unloadWithChanges);
+    assert(unloadWithChanges.defaultPrevented, 'beforeunload no advirtió cambios.');
+
+    let confirmations = 0;
+    window.confirm = () => {
+        confirmations++;
+        return false;
+    };
+    document.querySelector('.veciahorra-products-admin__form-back').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert(confirmations === 1, 'No pidió confirmación al volver.');
+    assert(name.isConnected, 'Canceló la confirmación pero abandonó el formulario.');
+    assert(name.value === 'Cambio integrado', 'Canceló y perdió los cambios.');
+
+    window.confirm = () => true;
+    document.querySelector('.veciahorra-products-admin__form-back').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert(
+        document.querySelector('#veciahorra-products-table form') === null,
+        'Aceptó descartar pero permaneció en el formulario.'
+    );
+
+    const unloadWithoutChanges = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unloadWithoutChanges);
+    assert(!unloadWithoutChanges.defaultPrevented, 'Advirtió sin cambios pendientes.');
+}
+
+run().then(() => {
+    result.textContent = 'PASS product-unsaved-changes-test';
+    document.title = 'PASS';
+}).catch((error) => {
+    result.textContent = `FAIL ${error.message}`;
+    document.title = 'FAIL';
+});
+</script></body></html>
