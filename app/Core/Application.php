@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Core;
 
 use VeciAhorra\Admin\Menu;
+use VeciAhorra\Modules\Inventory\Admin\InventoryPage;
 use VeciAhorra\Modules\ProductCatalogs\Routes\BrandRoutes;
 use VeciAhorra\Modules\ProductCatalogs\Routes\CategoryRoutes;
 use VeciAhorra\Modules\ProductCatalogs\Routes\UnitRoutes;
@@ -51,6 +52,11 @@ final class Application
             ProductsPage::class
         );
         $productsPage->register();
+
+        $inventoryPage = $this->container->make(
+            InventoryPage::class
+        );
+        $inventoryPage->register();
 
         /*
         |--------------------------------------------------------------------------
