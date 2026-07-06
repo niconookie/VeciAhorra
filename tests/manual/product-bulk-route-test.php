@@ -80,6 +80,29 @@ try {
     $suffix = str_replace('.', '', uniqid('bulkroute', true));
     $now = '2020-01-01 00:00:00';
     $ids = [];
+    $registeredTaxonomies = [];
+    $catalogIds = [];
+
+    foreach (
+        ['product_cat', 'product_brand', 'pa_unidad']
+        as $taxonomy
+    ) {
+        if (! taxonomy_exists($taxonomy)) {
+            register_taxonomy($taxonomy, 'post');
+            $registeredTaxonomies[] = $taxonomy;
+        }
+
+        $term = wp_insert_term(
+            sprintf('Bulk route %s %s', $taxonomy, $suffix),
+            $taxonomy
+        );
+
+        if (is_wp_error($term)) {
+            throw new RuntimeException($term->get_error_message());
+        }
+
+        $catalogIds[$taxonomy] = (int) $term['term_id'];
+    }
 
     for ($index = 1; $index <= 2; $index++) {
         $inserted = $wpdb->insert(
@@ -142,12 +165,14 @@ try {
     test('03. bulk/category delega correctamente', function () use (
         $ids,
         $table,
-        $wpdb
+        $wpdb,
+        $catalogIds
     ): void {
+        $categoryId = $catalogIds['product_cat'];
         $response = restRequest(
             'PATCH',
             '/veciahorra/v1/products/bulk/category',
-            ['ids' => $ids, 'category_id' => 10]
+            ['ids' => $ids, 'category_id' => $categoryId]
         );
 
         assertSameValue(200, $response->get_status());
@@ -156,7 +181,7 @@ try {
             (int) $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT COUNT(*) FROM {$table} WHERE id IN (%d, %d) AND category_id = %d",
-                    ...[...$ids, 10]
+                    ...[...$ids, $categoryId]
                 )
             )
         );
@@ -165,12 +190,14 @@ try {
     test('04. bulk/brand delega correctamente', function () use (
         $ids,
         $table,
-        $wpdb
+        $wpdb,
+        $catalogIds
     ): void {
+        $brandId = $catalogIds['product_brand'];
         $response = restRequest(
             'PATCH',
             '/veciahorra/v1/products/bulk/brand',
-            ['ids' => $ids, 'brand_id' => 20]
+            ['ids' => $ids, 'brand_id' => $brandId]
         );
 
         assertSameValue(200, $response->get_status());
@@ -179,7 +206,7 @@ try {
             (int) $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT COUNT(*) FROM {$table} WHERE id IN (%d, %d) AND brand_id = %d",
-                    ...[...$ids, 20]
+                    ...[...$ids, $brandId]
                 )
             )
         );
@@ -188,12 +215,14 @@ try {
     test('05. bulk/unit delega correctamente', function () use (
         $ids,
         $table,
-        $wpdb
+        $wpdb,
+        $catalogIds
     ): void {
+        $unitId = $catalogIds['pa_unidad'];
         $response = restRequest(
             'PATCH',
             '/veciahorra/v1/products/bulk/unit',
-            ['ids' => $ids, 'unit_id' => 30]
+            ['ids' => $ids, 'unit_id' => $unitId]
         );
 
         assertSameValue(200, $response->get_status());
@@ -202,11 +231,85 @@ try {
             (int) $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT COUNT(*) FROM {$table} WHERE id IN (%d, %d) AND unit_id = %d",
-                    ...[...$ids, 30]
+                    ...[...$ids, $unitId]
                 )
             )
         );
     });
+
+    foreach (
+        [
+            ['category', 'category_id', 'invalid_category_id'],
+            ['brand', 'brand_id', 'invalid_brand_id'],
+            ['unit', 'unit_id', 'invalid_unit_id'],
+        ] as [$operation, $field, $expectedCode]
+    ) {
+        test(
+            sprintf('05b. bulk/%s retorna 422 para referencia invalida', $operation),
+            function () use (
+                $ids,
+                $operation,
+                $field,
+                $expectedCode
+            ): void {
+                $response = restRequest(
+                    'PATCH',
+                    '/veciahorra/v1/products/bulk/' . $operation,
+                    ['ids' => $ids, $field => PHP_INT_MAX]
+                );
+                $body = $response->get_data();
+
+                assertSameValue(422, $response->get_status());
+                assertSameValue(
+                    $expectedCode,
+                    $body['error']['code'] ?? null
+                );
+            }
+        );
+    }
+
+    test('05c. products retorna 422 para image_id invalido', function (): void {
+        $response = restRequest(
+            'POST',
+            '/veciahorra/v1/products',
+            [
+                'name' => 'Producto REST imagen invalida',
+                'image_id' => PHP_INT_MAX,
+            ]
+        );
+        $body = $response->get_data();
+
+        assertSameValue(422, $response->get_status());
+        assertSameValue(
+            'invalid_image_id',
+            $body['error']['code'] ?? null
+        );
+    });
+
+    if (in_array('pa_unidad', $registeredTaxonomies, true)) {
+        test('05d. taxonomia no registrada retorna 503', function () use (
+            $ids
+        ): void {
+            unregister_taxonomy('pa_unidad');
+
+            try {
+                $response = restRequest(
+                    'PATCH',
+                    '/veciahorra/v1/products/bulk/unit',
+                    ['ids' => $ids, 'unit_id' => 1]
+                );
+            } finally {
+                register_taxonomy('pa_unidad', 'post');
+            }
+
+            $body = $response->get_data();
+            assertSameValue(503, $response->get_status());
+            assertSameValue(
+                'catalog_unavailable',
+                $body['error']['code'] ?? null
+            );
+        });
+    }
 
     test('06. Rutas bulk requieren permiso administrativo', function () use (
         $ids,
@@ -337,6 +440,10 @@ try {
     $exitCode = $failed === 0 ? 0 : 1;
 } finally {
     $wpdb->query('ROLLBACK');
+
+    foreach ($registeredTaxonomies ?? [] as $taxonomy) {
+        unregister_taxonomy($taxonomy);
+    }
 }
 
 exit($exitCode);

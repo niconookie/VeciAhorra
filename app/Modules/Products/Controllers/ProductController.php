@@ -8,6 +8,8 @@ use InvalidArgumentException;
 use Throwable;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
+use VeciAhorra\Exceptions\CatalogUnavailableException;
+use VeciAhorra\Exceptions\CatalogValidationException;
 use VeciAhorra\Modules\Products\Requests\ProductBulkRequest;
 use VeciAhorra\Modules\Products\Requests\ProductListRequest;
 use VeciAhorra\Modules\Products\Requests\ProductRequest;
@@ -249,6 +251,26 @@ final class ProductController
     private function translateException(
         Throwable $exception
     ): array {
+        if ($exception instanceof CatalogValidationException) {
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => $exception->errorCode(),
+                    'message' => $exception->getMessage(),
+                ],
+            ];
+        }
+
+        if ($exception instanceof CatalogUnavailableException) {
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => 'catalog_unavailable',
+                    'message' => $exception->getMessage(),
+                ],
+            ];
+        }
+
         if ($exception instanceof RecordNotFoundException) {
             return [
                 'success' => false,

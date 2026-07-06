@@ -61,6 +61,26 @@ try {
     $suffix = str_replace('.', '', uniqid('bulkservice', true));
     $initialUpdatedAt = '2020-01-01 00:00:00';
     $ids = [];
+    $registeredTaxonomies = [];
+    $catalogIds = [];
+
+    foreach (
+        ['product_cat', 'product_brand', 'pa_unidad']
+        as $taxonomy
+    ) {
+        if (! taxonomy_exists($taxonomy)) {
+            register_taxonomy($taxonomy, 'post');
+            $registeredTaxonomies[] = $taxonomy;
+        }
+
+        $term = wp_insert_term(
+            sprintf('Bulk service %s %s', $taxonomy, $suffix),
+            $taxonomy
+        );
+
+        assertTrue(! is_wp_error($term), 'No fue posible crear el termino.');
+        $catalogIds[$taxonomy] = (int) $term['term_id'];
+    }
 
     for ($index = 1; $index <= 2; $index++) {
         $inserted = $wpdb->insert(
@@ -102,15 +122,17 @@ try {
         $service,
         $ids,
         $table,
-        $wpdb
+        $wpdb,
+        $catalogIds
     ): void {
-        assertSameValue(2, $service->bulkUpdateCategory($ids, 10));
+        $categoryId = $catalogIds['product_cat'];
+        assertSameValue(2, $service->bulkUpdateCategory($ids, $categoryId));
         assertSameValue(
             2,
             (int) $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT COUNT(*) FROM {$table} WHERE id IN (%d, %d) AND category_id = %d",
-                    ...[...$ids, 10]
+                    ...[...$ids, $categoryId]
                 )
             )
         );
@@ -120,15 +142,17 @@ try {
         $service,
         $ids,
         $table,
-        $wpdb
+        $wpdb,
+        $catalogIds
     ): void {
-        assertSameValue(2, $service->bulkUpdateBrand($ids, 20));
+        $brandId = $catalogIds['product_brand'];
+        assertSameValue(2, $service->bulkUpdateBrand($ids, $brandId));
         assertSameValue(
             2,
             (int) $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT COUNT(*) FROM {$table} WHERE id IN (%d, %d) AND brand_id = %d",
-                    ...[...$ids, 20]
+                    ...[...$ids, $brandId]
                 )
             )
         );
@@ -138,15 +162,17 @@ try {
         $service,
         $ids,
         $table,
-        $wpdb
+        $wpdb,
+        $catalogIds
     ): void {
-        assertSameValue(2, $service->bulkUpdateUnit($ids, 30));
+        $unitId = $catalogIds['pa_unidad'];
+        assertSameValue(2, $service->bulkUpdateUnit($ids, $unitId));
         assertSameValue(
             2,
             (int) $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT COUNT(*) FROM {$table} WHERE id IN (%d, %d) AND unit_id = %d",
-                    ...[...$ids, 30]
+                    ...[...$ids, $unitId]
                 )
             )
         );
@@ -257,6 +283,10 @@ try {
     $exitCode = $failed === 0 ? 0 : 1;
 } finally {
     $wpdb->query('ROLLBACK');
+
+    foreach ($registeredTaxonomies ?? [] as $taxonomy) {
+        unregister_taxonomy($taxonomy);
+    }
 }
 
 exit($exitCode);

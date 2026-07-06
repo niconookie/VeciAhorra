@@ -499,6 +499,11 @@ final class ProductRoutes
     {
         return match ($code) {
             'validation_error' => 422,
+            'invalid_category_id',
+            'invalid_brand_id',
+            'invalid_unit_id',
+            'invalid_image_id' => 422,
+            'catalog_unavailable' => 503,
             'product_not_found' => 404,
             'persistence_error',
             'internal_error' => 500,

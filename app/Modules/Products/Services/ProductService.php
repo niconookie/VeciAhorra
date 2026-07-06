@@ -21,9 +21,14 @@ final class ProductService
 
     private ProductRepository $repository;
 
-    public function __construct()
-    {
+    private CatalogValidator $catalogValidator;
+
+    public function __construct(
+        ?CatalogValidator $catalogValidator = null
+    ) {
         $this->repository = new ProductRepository();
+        $this->catalogValidator = $catalogValidator
+            ?? new CatalogValidator();
     }
 
     /**
@@ -38,6 +43,8 @@ final class ProductService
                 'El nombre del producto es obligatorio.'
             );
         }
+
+        $this->catalogValidator->validate($payload);
 
         $this->assertUniqueSku($payload['sku']);
         $this->assertUniqueWooProductId(
@@ -62,6 +69,8 @@ final class ProductService
     {
         $product = $this->requireProduct($id);
         $payload = $this->buildUpdatePayload($data);
+
+        $this->catalogValidator->validate($payload);
 
         if (array_key_exists('sku', $payload)) {
             $this->assertUniqueSku(
@@ -205,6 +214,9 @@ final class ProductService
             $categoryId,
             'categoria'
         );
+        $this->catalogValidator->validate([
+            'category_id' => $categoryId,
+        ]);
         $updatedAt = current_time('mysql');
 
         return $this->repository->bulkUpdateCategory(
@@ -226,6 +238,9 @@ final class ProductService
             $brandId,
             'marca'
         );
+        $this->catalogValidator->validate([
+            'brand_id' => $brandId,
+        ]);
         $updatedAt = current_time('mysql');
 
         return $this->repository->bulkUpdateBrand(
@@ -247,6 +262,9 @@ final class ProductService
             $unitId,
             'unidad'
         );
+        $this->catalogValidator->validate([
+            'unit_id' => $unitId,
+        ]);
         $updatedAt = current_time('mysql');
 
         return $this->repository->bulkUpdateUnit(

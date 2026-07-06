@@ -63,5 +63,29 @@ abstract class TaxonomyCatalogRepository
         return $items;
     }
 
+    /**
+     * Indica si existe un termino en la taxonomia del catalogo.
+     */
+    final public function exists(int $id): bool
+    {
+        $taxonomy = $this->taxonomy();
+
+        if (! taxonomy_exists($taxonomy)) {
+            throw new CatalogUnavailableException(
+                'La taxonomía del catálogo no está registrada.'
+            );
+        }
+
+        $term = get_term($id, $taxonomy);
+
+        if (is_wp_error($term)) {
+            throw new CatalogUnavailableException(
+                'No fue posible consultar la taxonomía del catálogo.'
+            );
+        }
+
+        return $term instanceof WP_Term;
+    }
+
     abstract protected function taxonomy(): string;
 }

@@ -55,6 +55,29 @@ try {
     $suffix = str_replace('.', '', uniqid('bulkcontroller', true));
     $now = '2020-01-01 00:00:00';
     $ids = [];
+    $registeredTaxonomies = [];
+    $catalogIds = [];
+
+    foreach (
+        ['product_cat', 'product_brand', 'pa_unidad']
+        as $taxonomy
+    ) {
+        if (! taxonomy_exists($taxonomy)) {
+            register_taxonomy($taxonomy, 'post');
+            $registeredTaxonomies[] = $taxonomy;
+        }
+
+        $term = wp_insert_term(
+            sprintf('Bulk controller %s %s', $taxonomy, $suffix),
+            $taxonomy
+        );
+
+        if (is_wp_error($term)) {
+            throw new RuntimeException($term->get_error_message());
+        }
+
+        $catalogIds[$taxonomy] = (int) $term['term_id'];
+    }
 
     for ($index = 1; $index <= 2; $index++) {
         $inserted = $wpdb->insert(
@@ -107,11 +130,13 @@ try {
         $controller,
         $ids,
         $table,
-        $wpdb
+        $wpdb,
+        $catalogIds
     ): void {
+        $categoryId = $catalogIds['product_cat'];
         $result = $controller->bulkUpdateCategory([
             'ids' => $ids,
-            'category_id' => 10,
+            'category_id' => $categoryId,
         ]);
 
         assertSameValue(2, $result['data']['requested'] ?? null);
@@ -121,7 +146,7 @@ try {
             (int) $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT COUNT(*) FROM {$table} WHERE id IN (%d, %d) AND category_id = %d",
-                    ...[...$ids, 10]
+                    ...[...$ids, $categoryId]
                 )
             )
         );
@@ -131,11 +156,13 @@ try {
         $controller,
         $ids,
         $table,
-        $wpdb
+        $wpdb,
+        $catalogIds
     ): void {
+        $brandId = $catalogIds['product_brand'];
         $result = $controller->bulkUpdateBrand([
             'ids' => $ids,
-            'brand_id' => 20,
+            'brand_id' => $brandId,
         ]);
 
         assertSameValue(2, $result['data']['affected'] ?? null);
@@ -144,7 +171,7 @@ try {
             (int) $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT COUNT(*) FROM {$table} WHERE id IN (%d, %d) AND brand_id = %d",
-                    ...[...$ids, 20]
+                    ...[...$ids, $brandId]
                 )
             )
         );
@@ -154,11 +181,13 @@ try {
         $controller,
         $ids,
         $table,
-        $wpdb
+        $wpdb,
+        $catalogIds
     ): void {
+        $unitId = $catalogIds['pa_unidad'];
         $result = $controller->bulkUpdateUnit([
             'ids' => $ids,
-            'unit_id' => 30,
+            'unit_id' => $unitId,
         ]);
 
         assertSameValue(2, $result['data']['affected'] ?? null);
@@ -167,7 +196,7 @@ try {
             (int) $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT COUNT(*) FROM {$table} WHERE id IN (%d, %d) AND unit_id = %d",
-                    ...[...$ids, 30]
+                    ...[...$ids, $unitId]
                 )
             )
         );
@@ -304,6 +333,10 @@ try {
     $exitCode = $failed === 0 ? 0 : 1;
 } finally {
     $wpdb->query('ROLLBACK');
+
+    foreach ($registeredTaxonomies ?? [] as $taxonomy) {
+        unregister_taxonomy($taxonomy);
+    }
 }
 
 exit($exitCode);
