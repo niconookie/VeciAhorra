@@ -15,17 +15,19 @@ export class InventoryApiError extends Error {
 export function createInventoryApi({ restUrl, nonce }) {
     const baseUrl = restUrl.replace(/\/+$/, '');
 
-    async function request(path) {
-        const headers = new Headers({
+    async function request(path, options = {}) {
+        const headers = new Headers(options.headers || {
             Accept: 'application/json',
             'X-WP-Nonce': nonce,
         });
+        headers.set('Accept', 'application/json');
+        headers.set('X-WP-Nonce', nonce);
         let response;
 
         try {
             response = await fetch(
                 `${baseUrl}/${String(path).replace(/^\/+/, '')}`,
-                { method: 'GET', headers, credentials: 'same-origin' }
+                { ...options, headers, credentials: 'same-origin' }
             );
         } catch (error) {
             throw new InventoryApiError({
@@ -66,23 +68,30 @@ export function createInventoryApi({ restUrl, nonce }) {
             });
         }
 
-        if (!isInventoryResponse(payload)) {
-            throw new InventoryApiError({
-                type: 'invalid_response',
-                status: response.status,
-                code: 'invalid_response',
-                message: 'La respuesta del servidor no tiene el formato esperado.',
-            });
-        }
-
-        return payload;
+        return { payload, status: response.status };
     }
 
     function getInventory(filters = {}) {
-        return request(buildInventoryUrl(filters));
+        return request(buildInventoryUrl(filters), { method: 'GET' })
+            .then((response) => assertResponse(response, isInventoryResponse));
     }
 
-    return { getInventory };
+    function getInventoryItem(id) {
+        return request(buildItemUrl(id), { method: 'GET' })
+            .then((response) => assertResponse(response, isDetailResponse));
+    }
+
+    function createInventory(payload) {
+        return request('/inventory', jsonOptions('POST', payload))
+            .then((response) => assertResponse(response, isCreateResponse));
+    }
+
+    function updateInventory(id, payload) {
+        return request(buildItemUrl(id), jsonOptions('PATCH', payload))
+            .then((response) => assertResponse(response, isUpdateResponse));
+    }
+
+    return { getInventory, getInventoryItem, createInventory, updateInventory };
 }
 
 export function buildInventoryUrl({
@@ -123,6 +132,58 @@ function isInventoryResponse(payload) {
         && ['page', 'per_page', 'total', 'total_pages'].every(
             (field) => Number.isInteger(payload.meta[field])
         );
+}
+
+function isDetailResponse(payload) {
+    return isObject(payload) && payload.success === true && isInventoryRow(payload.data);
+}
+
+function isCreateResponse(payload) {
+    return isObject(payload)
+        && payload.success === true
+        && isObject(payload.data)
+        && isPositiveInteger(payload.data.id);
+}
+
+function isUpdateResponse(payload) {
+    return isObject(payload)
+        && payload.success === true
+        && isObject(payload.data)
+        && isPositiveInteger(payload.data.id)
+        && typeof payload.data.updated === 'boolean';
+}
+
+function assertResponse(response, validator) {
+    if (!validator(response.payload)) {
+        throw new InventoryApiError({
+            type: 'invalid_response',
+            status: response.status,
+            code: 'invalid_response',
+            message: 'La respuesta del servidor no tiene el formato esperado.',
+        });
+    }
+
+    return response.payload;
+}
+
+function buildItemUrl(id) {
+    if (!isPositiveInteger(id)) {
+        throw new InventoryApiError({
+            type: 'invalid_request',
+            code: 'invalid_inventory_id',
+            message: 'El identificador de inventario no es valido.',
+        });
+    }
+
+    return `/inventory/${String(id)}`;
+}
+
+function jsonOptions(method, payload) {
+    return {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    };
 }
 
 function isInventoryRow(row) {

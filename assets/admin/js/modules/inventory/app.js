@@ -19,6 +19,11 @@ function initialize() {
         onClear: () => store.clearFilters(),
         onReload: () => store.reload(),
         onPage: (page) => store.goToPage(page),
+        onNew: () => store.openCreateForm(),
+        onEdit: (id) => store.openEditForm(id),
+        onFormField: (field, value) => store.setFormField(field, value),
+        onSave: () => store.save(),
+        onCancel: () => store.returnToList(),
     });
 
     store.subscribe(view.render);

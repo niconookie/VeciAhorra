@@ -12,6 +12,9 @@ if (! defined('ABSPATH')) {
         <h1 class="wp-heading-inline">
             <?= esc_html__('Inventario', 'veciahorra'); ?>
         </h1>
+        <button type="button" class="page-title-action">
+            <?= esc_html__('Nuevo inventario', 'veciahorra'); ?>
+        </button>
     </header>
 
     <hr class="wp-header-end">
