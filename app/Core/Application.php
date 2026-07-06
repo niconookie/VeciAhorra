@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace VeciAhorra\Core;
 
 use VeciAhorra\Admin\Menu;
+use VeciAhorra\Modules\ProductCatalogs\Routes\BrandRoutes;
+use VeciAhorra\Modules\ProductCatalogs\Routes\CategoryRoutes;
+use VeciAhorra\Modules\ProductCatalogs\Routes\UnitRoutes;
 use VeciAhorra\Modules\Products\Admin\ProductsPage;
 use VeciAhorra\Modules\Products\Routes\ProductRoutes;
 
@@ -62,6 +65,23 @@ final class Application
             'rest_api_init',
             [$productRoutes, 'register']
         );
+
+        foreach (
+            [
+                CategoryRoutes::class,
+                BrandRoutes::class,
+                UnitRoutes::class,
+            ] as $catalogRoutesClass
+        ) {
+            $catalogRoutes = $this->container->make(
+                $catalogRoutesClass
+            );
+
+            add_action(
+                'rest_api_init',
+                [$catalogRoutes, 'register']
+            );
+        }
     }
 
     /**
