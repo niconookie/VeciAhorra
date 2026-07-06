@@ -18,10 +18,10 @@ const FORM_FIELD_DEFINITIONS = [
     { name: 'sku', label: 'SKU', type: 'text', maxLength: 100 },
     { name: 'description', label: 'Descripción', type: 'textarea' },
     { name: 'wooProductId', label: 'WooCommerce ID', type: 'number' },
-    { name: 'categoryId', label: 'Category ID', type: 'number' },
-    { name: 'brandId', label: 'Brand ID', type: 'number' },
-    { name: 'unitId', label: 'Unit ID', type: 'number' },
-    { name: 'imageId', label: 'Image ID', type: 'number' },
+    { name: 'categoryId', label: 'Categoría', type: 'number' },
+    { name: 'brandId', label: 'Marca', type: 'number' },
+    { name: 'unitId', label: 'Unidad', type: 'number' },
+    { name: 'imageId', label: 'Imagen', type: 'number' },
 ];
 
 /**
@@ -331,11 +331,32 @@ function createProductForm(actions) {
     element.className = 'veciahorra-products-admin__product-form';
     element.noValidate = true;
 
+    const header = document.createElement('header');
+    header.className = 'veciahorra-products-admin__form-header';
+
+    const headerBack = createButton(
+        '← Volver al listado',
+        () => emit(actions.onBack)
+    );
+    headerBack.classList.add(
+        'button',
+        'button-link',
+        'veciahorra-products-admin__form-back'
+    );
+
+    const headingGroup = document.createElement('div');
+    headingGroup.className = 'veciahorra-products-admin__form-heading';
+
     const heading = document.createElement('h2');
     heading.className = 'veciahorra-products-admin__form-title';
 
-    const status = document.createElement('p');
+    const productName = document.createElement('p');
+    productName.className = 'veciahorra-products-admin__form-product-name';
+
+    const status = document.createElement('span');
     status.className = 'veciahorra-products-admin__product-status';
+    headingGroup.append(heading, productName, status);
+    header.append(headerBack, headingGroup);
 
     const loading = document.createElement('div');
     loading.className = 'veciahorra-products-admin__state';
@@ -345,15 +366,28 @@ function createProductForm(actions) {
     fields.className = 'veciahorra-products-admin__form-fields';
     const controls = new Map();
 
+    const mainCard = createFormCard('Información principal');
+    const technicalCard = createFormCard('Datos técnicos');
+    const mainFields = new Set(['name', 'sku', 'description']);
+
     FORM_FIELD_DEFINITIONS.forEach((definition) => {
         const control = createFormControl(definition, actions);
         controls.set(definition.name, control);
-        fields.append(control.wrapper);
+        const card = mainFields.has(definition.name)
+            ? mainCard
+            : technicalCard;
+        card.body.append(control.wrapper);
     });
+    fields.append(mainCard.element, technicalCard.element);
 
     const buttons = document.createElement('div');
     buttons.className = 'veciahorra-products-admin__form-actions';
-    const save = createButton('Guardar');
+    const primaryActions = document.createElement('div');
+    primaryActions.className = 'veciahorra-products-admin__form-actions-primary';
+    const secondaryActions = document.createElement('div');
+    secondaryActions.className = 'veciahorra-products-admin__form-actions-secondary';
+
+    const save = createButton('Guardar cambios');
     save.type = 'submit';
     save.classList.add('button', 'button-primary');
     const activate = createButton(
@@ -369,8 +403,10 @@ function createProductForm(actions) {
     const back = createButton('Volver', () => emit(actions.onBack));
     back.classList.add('button');
 
-    buttons.append(save, activate, deactivate, back);
-    element.append(heading, status, loading, fields, buttons);
+    primaryActions.append(save);
+    secondaryActions.append(back, activate, deactivate);
+    buttons.append(primaryActions, secondaryActions);
+    element.append(header, loading, fields, buttons);
     element.addEventListener('submit', (event) => {
         event.preventDefault();
         emit(actions.onSave);
@@ -393,7 +429,10 @@ function createProductForm(actions) {
             && !detailUnavailable;
 
         heading.textContent = formTitle(form.mode);
-        status.textContent = `Estado: ${statusLabel(form.productStatus)}`;
+        productName.textContent = form.values.name ?? '';
+        productName.hidden = productName.textContent === '';
+        status.textContent = statusLabel(form.productStatus);
+        status.dataset.status = form.productStatus;
         status.hidden = !hasReliableStatus;
         loading.hidden = !isLoading;
         fields.hidden = isLoading || detailUnavailable;
@@ -415,7 +454,7 @@ function createProductForm(actions) {
             );
         });
 
-        save.textContent = isSaving ? 'Guardando…' : 'Guardar';
+        save.textContent = isSaving ? 'Guardando…' : 'Guardar cambios';
         save.hidden = readonly || detailUnavailable;
         save.disabled = !editable
             || (form.mode === FORM_MODE_EDIT && !form.dirty);
@@ -436,9 +475,26 @@ function createProductForm(actions) {
         deactivate.disabled = !canChangeStatus
             || form.productStatus === 'inactive';
         back.disabled = isSaving;
+        headerBack.disabled = isSaving;
     }
 
     return { element, render };
+}
+
+function createFormCard(title) {
+    const element = document.createElement('section');
+    element.className = 'veciahorra-products-admin__form-card';
+
+    const heading = document.createElement('h3');
+    heading.className = 'veciahorra-products-admin__form-card-title';
+    heading.textContent = title;
+
+    const body = document.createElement('div');
+    body.className = 'veciahorra-products-admin__form-card-fields';
+
+    element.append(heading, body);
+
+    return { element, body };
 }
 
 function createFormControl(definition, actions) {
