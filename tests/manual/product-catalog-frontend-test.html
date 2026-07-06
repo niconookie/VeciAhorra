@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Product Catalog Frontend Test</title>
+</head>
+<body>
+    <pre id="result">RUNNING</pre>
+    <script type="module">
+        import {
+            CatalogApiError,
+            createCatalogApi,
+        } from '../../assets/admin/products/catalogApi.js';
+        import {
+            createProductsStore,
+            STATUS_ERROR,
+            STATUS_IDLE,
+            STATUS_LOADING,
+            STATUS_SUCCESS,
+        } from '../../assets/admin/products/store.js';
+
+        const output = document.getElementById('result');
+        const results = [];
+
+        function assert(condition, message) {
+            if (!condition) {
+                throw new Error(message);
+            }
+        }
+
+        async function test(name, callback) {
+            try {
+                await callback();
+                results.push(`PASS: ${name}`);
+            } catch (error) {
+                results.push(`FAIL: ${name}\n      ${error.message}`);
+            }
+        }
+
+        await test('CatalogApi consume y normaliza los tres endpoints', async () => {
+            const originalFetch = window.fetch;
+            const calls = [];
+
+            window.fetch = async (url, options) => {
+                calls.push({ url, options });
+
+                return new Response(JSON.stringify({
+                    success: true,
+                    data: [{ id: '7', name: '  Catálogo  ' }],
+                }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            };
+
+            try {
+                const api = createCatalogApi({
+                    restUrl: 'https://example.test/veciahorra/v1/',
+                    nonce: 'test-nonce',
+                });
+                const responses = await Promise.all([
+                    api.loadCategories(),
+                    api.loadBrands(),
+                    api.loadUnits(),
+                ]);
+
+                assert(
+                    calls.map((call) => call.url).join('|')
+                        === [
+                            'https://example.test/veciahorra/v1/categories',
+                            'https://example.test/veciahorra/v1/brands',
+                            'https://example.test/veciahorra/v1/units',
+                        ].join('|'),
+                    'Las URLs REST no coinciden.'
+                );
+                assert(
+                    responses.every((response) => (
+                        response.data[0].id === 7
+                        && response.data[0].name === 'Catálogo'
+                    )),
+                    'La respuesta no fue normalizada.'
+                );
+                assert(
+                    calls.every((call) => (
+                        call.options.method === 'GET'
+                        && call.options.credentials === 'same-origin'
+                        && call.options.headers.get('X-WP-Nonce') === 'test-nonce'
+                    )),
+                    'La configuración de transporte no coincide.'
+                );
+            } finally {
+                window.fetch = originalFetch;
+            }
+        });
+
+        await test('CatalogApi centraliza errores REST', async () => {
+            const originalFetch = window.fetch;
+            window.fetch = async () => new Response(JSON.stringify({
+                success: false,
+                error: {
+                    code: 'catalog_unavailable',
+                    message: 'No fue posible cargar el catálogo.',
+                },
+            }), {
+                status: 503,
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            try {
+                const api = createCatalogApi({
+                    restUrl: '/veciahorra/v1',
+                    nonce: 'test-nonce',
+                });
+                let receivedError = null;
+
+                try {
+                    await api.loadUnits();
+                } catch (error) {
+                    receivedError = error;
+                }
+
+                assert(
+                    receivedError instanceof CatalogApiError,
+                    'El error no fue normalizado.'
+                );
+                assert(
+                    receivedError.code === 'catalog_unavailable'
+                        && receivedError.status === 503
+                        && receivedError.retryable === true,
+                    'El error normalizado perdió información.'
+                );
+            } finally {
+                window.fetch = originalFetch;
+            }
+        });
+
+        await test('Store mantiene estados y permite éxito parcial', async () => {
+            const calls = { categories: 0, brands: 0, units: 0 };
+            let resolveCategories;
+            const categoriesPending = new Promise((resolve) => {
+                resolveCategories = resolve;
+            });
+            const catalogApi = {
+                loadCategories() {
+                    calls.categories++;
+
+                    if (calls.categories === 1) {
+                        return categoriesPending;
+                    }
+
+                    return Promise.resolve({
+                        success: true,
+                        data: [{ id: 1, name: 'Categoría' }],
+                    });
+                },
+                loadBrands() {
+                    calls.brands++;
+
+                    if (calls.brands === 1) {
+                        return Promise.reject(new CatalogApiError({
+                            type: 'api',
+                            status: 503,
+                            code: 'catalog_unavailable',
+                            message: 'Marca no disponible.',
+                            retryable: true,
+                        }));
+                    }
+
+                    return Promise.resolve({
+                        success: true,
+                        data: [{ id: 2, name: 'Marca' }],
+                    });
+                },
+                loadUnits() {
+                    calls.units++;
+
+                    return Promise.resolve({
+                        success: true,
+                        data: [{ id: 3, name: 'Unidad' }],
+                    });
+                },
+            };
+            const productsApi = {};
+            const store = createProductsStore(productsApi, catalogApi);
+            const initial = store.getState();
+
+            assert(
+                Object.values(initial.catalogs).every(
+                    (catalog) => catalog.status === STATUS_IDLE
+                ),
+                'El estado inicial no es idle.'
+            );
+
+            const firstLoad = store.loadCatalogs();
+            const reusedLoad = store.loadCatalogs();
+
+            assert(firstLoad === reusedLoad, 'No se reutilizó la carga activa.');
+            assert(
+                Object.values(store.getState().catalogs).every(
+                    (catalog) => catalog.status === STATUS_LOADING
+                ),
+                'Los catálogos no entraron en loading.'
+            );
+
+            resolveCategories({
+                success: true,
+                data: [{ id: 1, name: 'Categoría' }],
+            });
+            const settled = await firstLoad;
+            const partial = store.getState();
+
+            assert(
+                settled.every((result) => ['fulfilled', 'rejected'].includes(result.status)),
+                'La carga no utilizó semántica allSettled.'
+            );
+            assert(partial.catalogs.categories.status === STATUS_SUCCESS, 'Categorías no terminó en success.');
+            assert(partial.catalogs.brands.status === STATUS_ERROR, 'Marcas no terminó en error.');
+            assert(partial.catalogs.units.status === STATUS_SUCCESS, 'Unidades no terminó en success.');
+            assert(
+                partial.catalogs.brands.error.code === 'catalog_unavailable',
+                'El Store no normalizó el error del catálogo.'
+            );
+
+            await store.loadCatalogs();
+            assert(
+                Object.values(calls).every((count) => count === 1),
+                'La caché permitió solicitudes repetidas.'
+            );
+
+            await store.loadCatalogs({ force: true });
+            const reloaded = store.getState();
+
+            assert(
+                Object.values(calls).every((count) => count === 2),
+                'force=true no recargó todos los catálogos.'
+            );
+            assert(
+                Object.values(reloaded.catalogs).every(
+                    (catalog) => catalog.status === STATUS_SUCCESS
+                ),
+                'La recarga forzada no actualizó los estados.'
+            );
+
+            reloaded.catalogs.categories.data[0].name = 'Mutado';
+            assert(
+                store.getState().catalogs.categories.data[0].name === 'Categoría',
+                'El snapshot expone referencias mutables.'
+            );
+        });
+
+        await test('App y sus dependencias se importan sin errores', async () => {
+            await import('../../assets/admin/products/app.js');
+        });
+
+        const failed = results.filter((result) => result.startsWith('FAIL'));
+        results.push('');
+        results.push(`Resultado: ${results.length - 1 - failed.length} aprobadas, ${failed.length} fallidas.`);
+        output.textContent = results.join('\n');
+        output.dataset.status = failed.length === 0 ? 'passed' : 'failed';
+        document.title = failed.length === 0 ? 'PASS' : 'FAIL';
+    </script>
+</body>
+</html>

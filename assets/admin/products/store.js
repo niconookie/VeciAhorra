@@ -51,7 +51,7 @@ const PAYLOAD_FIELDS = {
 /**
  * Crea el estado mínimo de la lista de productos.
  */
-export function createProductsStore(api) {
+export function createProductsStore(api, catalogApi) {
     let state = {
         currentView: VIEW_LIST,
         status: STATUS_IDLE,
@@ -64,11 +64,13 @@ export function createProductsStore(api) {
         products: [],
         meta: null,
         error: null,
+        catalogs: createInitialCatalogsState(),
         form: createInitialFormState(),
     };
     let latestRequest = 0;
     let latestFormRequest = 0;
     let listNeedsReload = false;
+    let catalogLoadPromise = null;
     const listeners = new Set();
 
     function getState() {
@@ -93,6 +95,74 @@ export function createProductsStore(api) {
     function setInputTerm(term) {
         setState({
             inputTerm: typeof term === 'string' ? term : '',
+        });
+    }
+
+    function loadCatalogs({ force = false } = {}) {
+        if (catalogLoadPromise !== null) {
+            return catalogLoadPromise;
+        }
+
+        const loaders = {
+            categories: 'loadCategories',
+            brands: 'loadBrands',
+            units: 'loadUnits',
+        };
+        const catalogsToLoad = Object.keys(loaders).filter((catalog) => (
+            force || state.catalogs[catalog].status === STATUS_IDLE
+        ));
+
+        if (catalogsToLoad.length === 0) {
+            return Promise.resolve(getState().catalogs);
+        }
+
+        const catalogs = { ...state.catalogs };
+
+        catalogsToLoad.forEach((catalog) => {
+            catalogs[catalog] = {
+                ...catalogs[catalog],
+                status: STATUS_LOADING,
+                error: null,
+            };
+        });
+        setState({ catalogs });
+
+        const loads = catalogsToLoad.map((catalog) => (
+            Promise.resolve()
+                .then(() => catalogApi[loaders[catalog]]())
+                .then((response) => {
+                    setCatalogState(catalog, {
+                        data: response.data.map((item) => ({ ...item })),
+                        status: STATUS_SUCCESS,
+                        error: null,
+                    });
+
+                    return response;
+                })
+                .catch((error) => {
+                    setCatalogState(catalog, {
+                        data: [],
+                        status: STATUS_ERROR,
+                        error: normalizeError(error),
+                    });
+
+                    throw error;
+                })
+        ));
+
+        catalogLoadPromise = Promise.allSettled(loads).finally(() => {
+            catalogLoadPromise = null;
+        });
+
+        return catalogLoadPromise;
+    }
+
+    function setCatalogState(catalog, nextCatalog) {
+        setState({
+            catalogs: {
+                ...state.catalogs,
+                [catalog]: nextCatalog,
+            },
         });
     }
 
@@ -431,6 +501,7 @@ export function createProductsStore(api) {
         getState,
         subscribe,
         setInputTerm,
+        loadCatalogs,
         search,
         reload,
         goToPage,
@@ -587,6 +658,22 @@ export function createProductsStore(api) {
             },
         });
     }
+}
+
+function createInitialCatalogsState() {
+    return {
+        categories: createInitialCatalogState(),
+        brands: createInitialCatalogState(),
+        units: createInitialCatalogState(),
+    };
+}
+
+function createInitialCatalogState() {
+    return {
+        data: [],
+        status: STATUS_IDLE,
+        error: null,
+    };
 }
 
 function createInitialFormState() {
@@ -794,6 +881,18 @@ function createSnapshot(state) {
         products: state.products.map((product) => ({ ...product })),
         meta: state.meta === null ? null : { ...state.meta },
         error: state.error === null ? null : { ...state.error },
+        catalogs: Object.fromEntries(
+            Object.entries(state.catalogs).map(([catalog, catalogState]) => [
+                catalog,
+                {
+                    ...catalogState,
+                    data: catalogState.data.map((item) => ({ ...item })),
+                    error: catalogState.error === null
+                        ? null
+                        : { ...catalogState.error },
+                },
+            ])
+        ),
         form: {
             ...state.form,
             values: { ...state.form.values },

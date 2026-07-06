@@ -1,4 +1,5 @@
 import { createProductsApi } from './api.js';
+import { createCatalogApi } from './catalogApi.js';
 import {
     createProductsStore,
     FORM_STATUS_SAVING,
@@ -15,7 +16,8 @@ function initialize() {
     const config = readConfig();
     const nodes = findRequiredNodes();
     const api = createProductsApi(config);
-    const store = createProductsStore(api);
+    const catalogApi = createCatalogApi(config);
+    const store = createProductsStore(api, catalogApi);
     const view = createProductsView(nodes, {
         onInputTerm: (term) => store.setInputTerm(term),
         onSearch: () => store.search(),
@@ -33,6 +35,7 @@ function initialize() {
     store.subscribe(view.render);
     view.render(store.getState());
     store.reload();
+    store.loadCatalogs();
 }
 
 async function returnToList(store) {
