@@ -1,5 +1,8 @@
 import { createProductsApi } from './api.js';
-import { createProductsStore } from './store.js';
+import {
+    createProductsStore,
+    FORM_STATUS_SAVING,
+} from './store.js';
 import { createProductsView } from './view.js';
 
 try {
@@ -19,11 +22,33 @@ function initialize() {
         onClear: () => store.search(''),
         onReload: () => store.reload(),
         onPage: (page) => store.goToPage(page),
+        onNew: () => store.openCreateForm(),
+        onEdit: (id) => store.openEditForm(id),
+        onFormField: (field, value) => store.setFormField(field, value),
+        onSave: () => store.saveProduct(),
+        onStatus: (status) => store.changeProductStatus(status),
+        onBack: () => returnToList(store),
     });
 
     store.subscribe(view.render);
     view.render(store.getState());
     store.reload();
+}
+
+async function returnToList(store) {
+    if (await store.returnToList()) {
+        return;
+    }
+
+    const state = store.getState();
+
+    if (
+        state.form.dirty
+        && state.form.status !== FORM_STATUS_SAVING
+        && window.confirm('Hay cambios sin guardar. ¿Quieres volver al listado?')
+    ) {
+        await store.returnToList({ force: true });
+    }
 }
 
 function readConfig() {
