@@ -54,6 +54,11 @@ register_activation_hook(
     [Installer::class, 'install']
 );
 
+add_action(
+    'plugins_loaded',
+    [Installer::class, 'install']
+);
+
 /*
 |--------------------------------------------------------------------------
 | Inicio del Framework

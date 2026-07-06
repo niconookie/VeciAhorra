@@ -56,6 +56,8 @@ $sql = $builder->build($charset);
 dbDelta($sql);
     }
 
+    MigrationManager::migrate();
+
     MigrationManager::updateVersion();
 }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Database;
 
 use VeciAhorra\Core\Config;
+use VeciAhorra\Database\Migrations\CreateInventoryTable;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -15,6 +16,16 @@ final class MigrationManager
      * Nombre de la opción en WordPress.
      */
     private const OPTION_NAME = 'veciahorra_db_version';
+
+    /**
+     * Ejecuta las migraciones registradas en orden.
+     */
+    public static function migrate(): void
+    {
+        foreach (self::migrations() as $migration) {
+            $migration->up();
+        }
+    }
 
     /**
      * Obtiene la versión instalada.
@@ -48,5 +59,15 @@ final class MigrationManager
             Config::SCHEMA_VERSION,
             '<'
         );
+    }
+
+    /**
+     * @return list<CreateInventoryTable>
+     */
+    private static function migrations(): array
+    {
+        return [
+            new CreateInventoryTable(),
+        ];
     }
 }
