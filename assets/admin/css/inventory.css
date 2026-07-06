@@ -2,6 +2,10 @@
     max-width: 100%;
 }
 
+.veciahorra-inventory-admin [hidden] {
+    display: none !important;
+}
+
 .veciahorra-inventory-admin__main {
     display: grid;
     gap: 16px;
@@ -108,6 +112,7 @@
 
 .veciahorra-inventory-admin__form {
     background: #f6f7f7;
+    box-sizing: border-box;
     display: grid;
     gap: 20px;
     padding: 24px;
@@ -126,6 +131,7 @@
 .veciahorra-inventory-admin__form-fields {
     background: #fff;
     border: 1px solid #c3c4c7;
+    box-sizing: border-box;
     display: grid;
     gap: 18px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -135,6 +141,7 @@
 .veciahorra-inventory-admin__form-field {
     display: grid;
     gap: 6px;
+    min-width: 0;
 }
 
 .veciahorra-inventory-admin__form-field label {
@@ -143,6 +150,7 @@
 
 .veciahorra-inventory-admin__form-field input,
 .veciahorra-inventory-admin__form-field select {
+    box-sizing: border-box;
     max-width: 100%;
     width: 100%;
 }
@@ -192,5 +200,15 @@
     .veciahorra-inventory-admin__form-fields {
         grid-template-columns: 1fr;
         padding: 16px;
+    }
+
+    .veciahorra-inventory-admin__form-header,
+    .veciahorra-inventory-admin__form-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .veciahorra-inventory-admin__form-actions .button {
+        width: 100%;
     }
 }

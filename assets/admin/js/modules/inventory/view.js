@@ -59,6 +59,7 @@ export function createInventoryView(nodes, actions) {
     }
 
     const inventoryForm = createInventoryForm(actions);
+    let focusedFormKey = null;
 
     function render(state) {
         if (state.currentView === VIEW_FORM) {
@@ -68,14 +69,33 @@ export function createInventoryView(nodes, actions) {
                 'is-loading',
                 state.form.status === STATUS_LOADING
             );
-            nodes.table.setAttribute('aria-busy', state.form.isSaving ? 'true' : 'false');
+            nodes.table.setAttribute(
+                'aria-busy',
+                state.form.status === STATUS_LOADING || state.form.isSaving
+                    ? 'true'
+                    : 'false'
+            );
             nodes.table.replaceChildren(inventoryForm.element);
             renderFormMessage(nodes.messages, state.form);
             inventoryForm.render(state.form);
             setButtonDisabled(newButton, true);
+
+            const focusKey = state.form.mode === FORM_CREATE
+                ? 'create'
+                : `edit-${state.form.inventoryId}`;
+
+            if (
+                focusedFormKey !== focusKey
+                && state.form.status !== STATUS_LOADING
+                && !(state.form.mode === FORM_EDIT && state.form.initialValues === null)
+            ) {
+                focusedFormKey = focusKey;
+                queueMicrotask(() => inventoryForm.focusPrimary(state.form.mode));
+            }
             return;
         }
 
+        focusedFormKey = null;
         const loading = state.status === STATUS_LOADING;
         const hasFilters = Object.entries(state.inputs).some(([name, value]) => (
             !['page', 'perPage'].includes(name) && String(value).trim() !== ''
@@ -184,6 +204,8 @@ function createInventoryForm(actions) {
 
     const fields = document.createElement('div');
     fields.className = 'veciahorra-inventory-admin__form-fields';
+    const formState = document.createElement('div');
+    formState.className = 'veciahorra-inventory-admin__state';
     const controls = {
         productId: createFormInput('productId', 'Product ID', 'number', '1'),
         minimarketId: createFormInput('minimarketId', 'Minimarket ID', 'number', '1'),
@@ -206,7 +228,7 @@ function createInventoryForm(actions) {
     save.classList.add('button-primary');
     const cancel = createButton('Cancelar', actions.onCancel);
     buttons.append(save, cancel);
-    element.append(header, fields, buttons);
+    element.append(header, formState, fields, buttons);
     element.addEventListener('submit', (event) => {
         event.preventDefault();
         actions.onSave();
@@ -215,13 +237,22 @@ function createInventoryForm(actions) {
     function render(form) {
         const loading = form.status === STATUS_LOADING && !form.isSaving;
         const disabled = loading || form.isSaving;
+        const detailUnavailable = form.mode === FORM_EDIT
+            && form.initialValues === null
+            && form.status === STATUS_ERROR;
         title.textContent = form.mode === FORM_CREATE
             ? 'Nuevo inventario'
             : `Editar inventario #${form.inventoryId}`;
-        back.disabled = disabled;
+        back.disabled = form.isSaving;
         cancel.disabled = disabled;
         save.disabled = disabled;
         save.textContent = form.isSaving ? 'Guardando...' : 'Guardar';
+        formState.hidden = !loading && !detailUnavailable;
+        formState.textContent = detailUnavailable
+            ? 'No fue posible cargar el inventario.'
+            : 'Cargando inventario...';
+        fields.hidden = loading || detailUnavailable;
+        buttons.hidden = loading || detailUnavailable;
 
         Object.entries(controls).forEach(([name, control]) => {
             const value = String(form.values[name]);
@@ -242,7 +273,16 @@ function createInventoryForm(actions) {
         });
     }
 
-    return { element, render };
+    function focusPrimary(mode) {
+        const control = mode === FORM_CREATE
+            ? controls.productId
+            : controls.price;
+        if (control.input.isConnected) {
+            control.input.focus();
+        }
+    }
+
+    return { element, render, focusPrimary };
 }
 
 function createFormInput(name, label, type, step) {

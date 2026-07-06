@@ -98,6 +98,13 @@ assertInventoryForm(
     'El guardado no protege correctamente su ciclo de vida.'
 );
 assertInventoryForm(
+    str_contains($view, "formState.textContent = detailUnavailable")
+        && str_contains($view, "'Cargando inventario...'")
+        && str_contains($view, 'state.form.status === STATUS_LOADING || state.form.isSaving')
+        && str_contains($view, 'focusPrimary'),
+    'Falta feedback accesible para carga inicial o focus del formulario.'
+);
+assertInventoryForm(
     str_contains($store, "errors.productId = 'Ingrese un Product ID positivo.'")
         && str_contains($store, "errors.minimarketId = 'Ingrese un Minimarket ID positivo.'"),
     'Faltan errores frontend para IDs invalidos.'
