@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Product Catalog Selects Test</title>
+</head>
+<body>
+    <div id="veciahorra-products-admin">
+        <button type="button" class="page-title-action">Nuevo</button>
+        <div id="veciahorra-products-messages"></div>
+        <div id="veciahorra-products-toolbar"></div>
+        <div id="veciahorra-products-table"></div>
+        <div id="veciahorra-products-pagination"></div>
+    </div>
+    <pre id="result">RUNNING</pre>
+    <script type="module">
+        import { CatalogApiError } from '../../assets/admin/products/catalogApi.js';
+        import { createProductsStore } from '../../assets/admin/products/store.js';
+        import { createProductsView } from '../../assets/admin/products/view.js';
+
+        const output = document.getElementById('result');
+        const results = [];
+
+        function assert(condition, message) {
+            if (!condition) {
+                throw new Error(message);
+            }
+        }
+
+        function deferred() {
+            let resolve;
+            let reject;
+            const promise = new Promise((resolvePromise, rejectPromise) => {
+                resolve = resolvePromise;
+                reject = rejectPromise;
+            });
+
+            return { promise, resolve, reject };
+        }
+
+        async function test(name, callback) {
+            try {
+                await callback();
+                results.push(`PASS: ${name}`);
+            } catch (error) {
+                results.push(`FAIL: ${name}\n      ${error.message}`);
+            }
+        }
+
+        await test('Selects consumen snapshots y cubren sus estados', async () => {
+            const originalFetch = window.fetch;
+            let fetchCalls = 0;
+            window.fetch = (...args) => {
+                fetchCalls++;
+
+                return originalFetch(...args);
+            };
+
+            try {
+                const categories = deferred();
+                const brands = deferred();
+                const units = deferred();
+                const productsApi = {
+                    getProduct: async () => ({
+                        success: true,
+                        data: {
+                            id: 10,
+                            name: 'Producto de prueba',
+                            slug: 'producto-de-prueba',
+                            sku: 'PRUEBA-10',
+                            description: null,
+                            woo_product_id: null,
+                            category_id: 999,
+                            brand_id: 5,
+                            unit_id: 9,
+                            image_id: null,
+                            status: 'active',
+                            created_at: '2026-07-05 10:00:00',
+                            updated_at: '2026-07-05 10:00:00',
+                        },
+                    }),
+                };
+                const catalogApi = {
+                    loadCategories: () => categories.promise,
+                    loadBrands: () => brands.promise,
+                    loadUnits: () => units.promise,
+                };
+                const store = createProductsStore(productsApi, catalogApi);
+                const root = document.getElementById('veciahorra-products-admin');
+                const nodes = {
+                    root,
+                    messages: document.getElementById('veciahorra-products-messages'),
+                    toolbar: document.getElementById('veciahorra-products-toolbar'),
+                    table: document.getElementById('veciahorra-products-table'),
+                    pagination: document.getElementById('veciahorra-products-pagination'),
+                };
+                const view = createProductsView(nodes, {
+                    onInputTerm: (term) => store.setInputTerm(term),
+                    onSearch: () => store.search(),
+                    onClear: () => store.search(''),
+                    onReload: () => store.reload(),
+                    onPage: (page) => store.goToPage(page),
+                    onNew: () => store.openCreateForm(),
+                    onEdit: (id) => store.openEditForm(id),
+                    onFormField: (field, value) => store.setFormField(field, value),
+                    onSave: () => store.saveProduct(),
+                    onStatus: (status) => store.changeProductStatus(status),
+                    onBack: () => store.returnToList(),
+                });
+
+                store.subscribe(view.render);
+                view.render(store.getState());
+
+                const catalogLoad = store.loadCatalogs();
+                await store.openEditForm(10);
+
+                const categorySelect = document.getElementById('veciahorra-product-categoryId');
+                const brandSelect = document.getElementById('veciahorra-product-brandId');
+                const unitSelect = document.getElementById('veciahorra-product-unitId');
+                const imageInput = document.getElementById('veciahorra-product-imageId');
+
+                assert(categorySelect instanceof HTMLSelectElement, 'Categoría no es select.');
+                assert(brandSelect instanceof HTMLSelectElement, 'Marca no es select.');
+                assert(unitSelect instanceof HTMLSelectElement, 'Unidad no es select.');
+                assert(imageInput instanceof HTMLInputElement, 'Imagen fue modificada antes de wp.media.');
+                assert(
+                    categorySelect.disabled && brandSelect.disabled && unitSelect.disabled,
+                    'Los selects deben estar deshabilitados durante loading.'
+                );
+
+                categories.resolve({
+                    success: true,
+                    data: [{ id: 1, name: 'Bebidas' }],
+                });
+                brands.reject(new CatalogApiError({
+                    type: 'http',
+                    status: 503,
+                    code: 'catalog_unavailable',
+                    message: 'No fue posible cargar las marcas.',
+                    retryable: true,
+                }));
+                units.resolve({
+                    success: true,
+                    data: [{ id: 9, name: 'Unidad' }],
+                });
+                await catalogLoad;
+
+                assert(
+                    categorySelect.options[0].value === ''
+                        && categorySelect.options[0].textContent === 'Seleccione...',
+                    'Categoría no contiene la opción vacía.'
+                );
+                assert(
+                    [...categorySelect.options].some(
+                        (option) => option.value === '1' && option.textContent === 'Bebidas'
+                    ),
+                    'Categoría no renderizó el catálogo.'
+                );
+                assert(
+                    categorySelect.value === '999'
+                        && categorySelect.selectedOptions[0].textContent === '999 (No disponible)',
+                    'El ID inexistente no fue preservado.'
+                );
+                assert(unitSelect.value === '9', 'Unidad no preservó la selección existente.');
+                assert(!categorySelect.disabled && !unitSelect.disabled, 'Los catálogos exitosos siguen deshabilitados.');
+                assert(brandSelect.disabled, 'El catálogo con error debe quedar deshabilitado.');
+
+                const brandStatus = brandSelect.parentElement.querySelector(
+                    '.veciahorra-products-admin__catalog-status--error'
+                );
+                assert(
+                    brandStatus?.textContent === 'No fue posible cargar las marcas.'
+                        && brandStatus.getAttribute('role') === 'alert',
+                    'El error de Marcas no se mostró correctamente.'
+                );
+                assert(
+                    brandSelect.value === '5'
+                        && brandSelect.selectedOptions[0].textContent === '5 (No disponible)',
+                    'El valor de Marca se perdió durante el error.'
+                );
+                assert(fetchCalls === 0, 'La View realizó una llamada REST directa.');
+            } finally {
+                window.fetch = originalFetch;
+            }
+        });
+
+        const failed = results.filter((result) => result.startsWith('FAIL'));
+        results.push('');
+        results.push(`Resultado: ${results.length - 1 - failed.length} aprobadas, ${failed.length} fallidas.`);
+        output.textContent = results.join('\n');
+        output.dataset.status = failed.length === 0 ? 'passed' : 'failed';
+        document.title = failed.length === 0 ? 'PASS' : 'FAIL';
+    </script>
+</body>
+</html>

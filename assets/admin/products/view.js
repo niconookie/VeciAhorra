@@ -18,9 +18,24 @@ const FORM_FIELD_DEFINITIONS = [
     { name: 'sku', label: 'SKU', type: 'text', maxLength: 100 },
     { name: 'description', label: 'Descripción', type: 'textarea' },
     { name: 'wooProductId', label: 'WooCommerce ID', type: 'number' },
-    { name: 'categoryId', label: 'Categoría', type: 'number' },
-    { name: 'brandId', label: 'Marca', type: 'number' },
-    { name: 'unitId', label: 'Unidad', type: 'number' },
+    {
+        name: 'categoryId',
+        label: 'Categoría',
+        type: 'select',
+        catalog: 'categories',
+    },
+    {
+        name: 'brandId',
+        label: 'Marca',
+        type: 'select',
+        catalog: 'brands',
+    },
+    {
+        name: 'unitId',
+        label: 'Unidad',
+        type: 'select',
+        catalog: 'units',
+    },
     { name: 'imageId', label: 'Imagen', type: 'number' },
 ];
 
@@ -151,7 +166,7 @@ function renderProductFormView(nodes, productForm, state, newProductButton) {
     }
 
     renderFormMessage(nodes.messages, state.form);
-    productForm.render(state.form);
+    productForm.render(state.form, state.catalogs);
 }
 
 function renderLoading(container) {
@@ -412,7 +427,7 @@ function createProductForm(actions) {
         emit(actions.onSave);
     });
 
-    function render(form) {
+    function render(form, catalogs) {
         const isLoading = form.status === FORM_STATUS_LOADING;
         const isSaving = form.status === FORM_STATUS_SAVING;
         const readonly = form.mode === FORM_MODE_READONLY;
@@ -440,6 +455,14 @@ function createProductForm(actions) {
         controls.forEach((control, field) => {
             const value = form.values[field] ?? '';
 
+            if (control.catalog !== null) {
+                renderCatalogControl(
+                    control,
+                    catalogs?.[control.catalog],
+                    value
+                );
+            }
+
             if (control.input.value !== value) {
                 control.input.value = value;
             }
@@ -447,7 +470,9 @@ function createProductForm(actions) {
             const error = form.fieldErrors[field] ?? '';
             control.error.textContent = error;
             control.error.hidden = error === '';
-            control.input.disabled = !editable;
+            control.input.disabled = !editable
+                || control.catalogStatus === 'loading'
+                || control.catalogStatus === 'error';
             control.input.setAttribute(
                 'aria-invalid',
                 error === '' ? 'false' : 'true'
@@ -508,14 +533,20 @@ function createFormControl(definition, actions) {
         ? `${definition.label} *`
         : definition.label;
 
-    const input = definition.type === 'textarea'
-        ? document.createElement('textarea')
-        : document.createElement('input');
+    let input;
+
+    if (definition.type === 'textarea') {
+        input = document.createElement('textarea');
+    } else if (definition.type === 'select') {
+        input = document.createElement('select');
+    } else {
+        input = document.createElement('input');
+    }
     input.id = id;
     input.name = definition.name;
     input.className = 'regular-text';
 
-    if (definition.type !== 'textarea') {
+    if (!['textarea', 'select'].includes(definition.type)) {
         input.type = definition.type;
     }
 
@@ -535,14 +566,94 @@ function createFormControl(definition, actions) {
     error.id = `${id}-error`;
     error.className = 'veciahorra-products-admin__field-error';
     error.hidden = true;
-    input.setAttribute('aria-describedby', error.id);
-    input.addEventListener('input', () => {
-        emit(actions.onFormField, definition.name, input.value);
+
+    const describedBy = [error.id];
+    let catalogStatus = null;
+
+    if (definition.catalog) {
+        catalogStatus = document.createElement('p');
+        catalogStatus.id = `${id}-catalog-status`;
+        catalogStatus.className = 'veciahorra-products-admin__catalog-status';
+        catalogStatus.hidden = true;
+        describedBy.push(catalogStatus.id);
+    }
+
+    input.setAttribute('aria-describedby', describedBy.join(' '));
+    input.addEventListener(
+        definition.type === 'select' ? 'change' : 'input',
+        () => {
+            emit(actions.onFormField, definition.name, input.value);
+        }
+    );
+
+    wrapper.append(label, input);
+
+    if (catalogStatus !== null) {
+        wrapper.append(catalogStatus);
+    }
+
+    wrapper.append(error);
+
+    return {
+        wrapper,
+        input,
+        error,
+        catalog: definition.catalog ?? null,
+        catalogStatus: null,
+        catalogMessage: catalogStatus,
+    };
+}
+
+function renderCatalogControl(control, catalog, currentValue) {
+    const status = catalog?.status ?? 'idle';
+    const data = Array.isArray(catalog?.data) ? catalog.data : [];
+    const options = [createOption('', 'Seleccione...')];
+    const normalizedValue = String(currentValue ?? '');
+    const hasCurrentValue = normalizedValue !== '';
+    const currentExists = data.some(
+        (item) => String(item.id) === normalizedValue
+    );
+
+    data.forEach((item) => {
+        options.push(createOption(String(item.id), item.name));
     });
 
-    wrapper.append(label, input, error);
+    if (hasCurrentValue && !currentExists) {
+        options.push(createOption(
+            normalizedValue,
+            `${normalizedValue} (No disponible)`
+        ));
+    }
 
-    return { wrapper, input, error };
+    control.input.replaceChildren(...options);
+    control.catalogStatus = status;
+    control.catalogMessage.classList.toggle(
+        'veciahorra-products-admin__catalog-status--error',
+        status === 'error'
+    );
+
+    if (status === 'loading') {
+        control.catalogMessage.textContent = 'Cargando opciones…';
+        control.catalogMessage.hidden = false;
+        control.catalogMessage.setAttribute('role', 'status');
+    } else if (status === 'error') {
+        control.catalogMessage.textContent = catalog?.error?.message
+            || 'No fue posible cargar las opciones.';
+        control.catalogMessage.hidden = false;
+        control.catalogMessage.setAttribute('role', 'alert');
+    } else {
+        control.catalogMessage.textContent = '';
+        control.catalogMessage.hidden = true;
+        control.catalogMessage.removeAttribute('role');
+    }
+}
+
+function createOption(value, label) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+
+    return option;
 }
 
 function renderFormMessage(container, form) {

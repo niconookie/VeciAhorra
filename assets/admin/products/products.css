@@ -319,6 +319,16 @@
     margin: 0;
 }
 
+.veciahorra-products-admin__catalog-status {
+    color: #50575e;
+    font-size: 12px;
+    margin: 0;
+}
+
+.veciahorra-products-admin__catalog-status--error {
+    color: #b32d2e;
+}
+
 .veciahorra-products-admin__form-actions {
     align-items: center;
     border-top: 1px solid #c3c4c7;
