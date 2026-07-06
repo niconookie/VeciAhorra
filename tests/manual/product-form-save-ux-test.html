@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Product Form Save UX Test</title></head>
+<body><pre id="result">RUNNING</pre>
+<script type="module">
+import { createProductsStore } from '../../assets/admin/products/store.js';
+
+const result = document.querySelector('#result');
+const assert = (condition, message) => {
+    if (!condition) throw new Error(message);
+};
+const deferred = () => {
+    let resolve;
+    let reject;
+    const promise = new Promise((yes, no) => {
+        resolve = yes;
+        reject = no;
+    });
+    return { promise, resolve, reject };
+};
+const product = (id, values = {}) => ({
+    id,
+    name: values.name ?? 'Producto guardado',
+    slug: 'producto-guardado',
+    sku: values.sku ?? null,
+    description: null,
+    woo_product_id: null,
+    category_id: values.category_id ?? null,
+    brand_id: null,
+    unit_id: null,
+    image_id: null,
+    status: 'draft',
+    created_at: '2026-07-06 12:00:00',
+    updated_at: '2026-07-06 12:00:00',
+});
+const createStore = (overrides = {}) => createProductsStore({
+    createProduct: async () => ({ data: { id: 1 } }),
+    getProduct: async (id) => ({ data: product(id) }),
+    updateProduct: async (id) => ({ data: { id, updated: true } }),
+    updateProductStatus: async (id, status) => ({ data: { id, status } }),
+    ...overrides,
+}, {});
+
+async function run() {
+    const pending = deferred();
+    let calls = 0;
+    let store = createStore({
+        createProduct: () => {
+            calls++;
+            return pending.promise;
+        },
+        getProduct: async () => ({
+            data: product(41, { name: 'Producto escrito', category_id: 7 }),
+        }),
+    });
+    store.openCreateForm();
+    store.setFormField('name', 'Producto escrito');
+    store.setFormField('categoryId', '7');
+    const first = store.saveProduct();
+    const second = store.saveProduct();
+    assert(calls === 1, 'El doble submit generó más de una petición.');
+    assert(store.getState().form.isSaving, 'isSaving no se activó.');
+    assert(await second === false, 'El segundo submit no fue ignorado.');
+    pending.resolve({ data: { id: 41 } });
+    assert(await first, 'El guardado válido falló.');
+    let form = store.getState().form;
+    assert(!form.isSaving, 'isSaving no volvió a false tras éxito.');
+    assert(
+        JSON.stringify(form.values) === JSON.stringify(form.initialValues),
+        'Producto actual y original no quedaron sincronizados.'
+    );
+
+    store = createStore({
+        createProduct: async () => { throw {
+            type: 'http', status: 422, code: 'invalid_category_id',
+            message: 'La categoría indicada no existe.',
+        }; },
+    });
+    store.openCreateForm();
+    store.setFormField('name', 'Producto inválido');
+    store.setFormField('categoryId', '999999');
+    assert(await store.saveProduct() === false, 'La validación debió fallar.');
+    form = store.getState().form;
+    assert(!form.isSaving, 'isSaving no volvió a false tras validación.');
+    assert(form.values.name === 'Producto inválido', 'Se perdió el nombre.');
+    assert(form.values.categoryId === '999999', 'Se perdió la categoría.');
+    assert(form.fieldErrors.categoryId, 'No se mostró el error por campo.');
+    const retry = store.saveProduct();
+    assert(store.getState().form.isSaving, 'El reintento no activó isSaving.');
+    assert(
+        Object.keys(store.getState().form.fieldErrors).length === 0,
+        'No se limpiaron los errores anteriores antes del reintento.'
+    );
+    await retry;
+
+    store = createStore({
+        createProduct: async () => { throw {
+            type: 'network', status: 500, code: 'internal_error',
+            message: 'Detalle técnico.',
+        }; },
+    });
+    store.openCreateForm();
+    store.setFormField('name', 'Producto recuperable');
+    assert(await store.saveProduct() === false, 'El error inesperado debió fallar.');
+    form = store.getState().form;
+    assert(!form.isSaving, 'isSaving no volvió a false tras excepción.');
+    assert(form.values.name === 'Producto recuperable', 'Se perdieron los datos.');
+    assert(
+        form.error.message === 'No fue posible guardar el producto. Inténtelo nuevamente.',
+        'El mensaje inesperado no es claro.'
+    );
+}
+
+run().then(() => {
+    result.textContent = 'PASS product-form-save-ux-test';
+    document.title = 'PASS';
+}).catch((error) => {
+    result.textContent = `FAIL ${error.message}`;
+    document.title = 'FAIL';
+});
+</script></body></html>

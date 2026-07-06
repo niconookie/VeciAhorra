@@ -1,9 +1,6 @@
 import { createProductsApi } from './api.js';
 import { createCatalogApi } from './catalogApi.js';
-import {
-    createProductsStore,
-    FORM_STATUS_SAVING,
-} from './store.js';
+import { createProductsStore } from './store.js';
 import { createProductsView } from './view.js';
 
 try {
@@ -47,7 +44,7 @@ async function returnToList(store) {
 
     if (
         state.form.dirty
-        && state.form.status !== FORM_STATUS_SAVING
+        && !state.form.isSaving
         && window.confirm('Hay cambios sin guardar. ¿Quieres volver al listado?')
     ) {
         await store.returnToList({ force: true });

@@ -4,7 +4,6 @@ import {
     FORM_MODE_READONLY,
     FORM_STATUS_ERROR,
     FORM_STATUS_LOADING,
-    FORM_STATUS_SAVING,
     STATUS_EMPTY,
     STATUS_ERROR,
     STATUS_IDLE,
@@ -148,8 +147,8 @@ export function createProductsView(nodes, actions) {
 }
 
 function renderProductFormView(nodes, productForm, state, newProductButton) {
-    const busy = [FORM_STATUS_LOADING, FORM_STATUS_SAVING]
-        .includes(state.form.status);
+    const busy = state.form.status === FORM_STATUS_LOADING
+        || state.form.isSaving;
 
     nodes.toolbar.hidden = true;
     nodes.pagination.replaceChildren();
@@ -435,7 +434,7 @@ function createProductForm(actions) {
 
     function render(form, catalogs) {
         const isLoading = form.status === FORM_STATUS_LOADING;
-        const isSaving = form.status === FORM_STATUS_SAVING;
+        const isSaving = form.isSaving;
         const readonly = form.mode === FORM_MODE_READONLY;
         const detailUnavailable = (
             form.mode === FORM_MODE_EDIT
@@ -491,7 +490,9 @@ function createProductForm(actions) {
             );
         });
 
-        save.textContent = isSaving ? 'Guardando…' : 'Guardar cambios';
+        save.textContent = isSaving ? 'Guardando...' : 'Guardar cambios';
+        save.classList.toggle('is-saving', isSaving);
+        save.setAttribute('aria-busy', isSaving ? 'true' : 'false');
         save.hidden = readonly || detailUnavailable;
         save.disabled = !editable
             || (form.mode === FORM_MODE_EDIT && !form.dirty);

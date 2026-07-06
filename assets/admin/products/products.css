@@ -404,6 +404,19 @@
     min-width: 136px;
 }
 
+.veciahorra-products-admin__form-actions-primary .button-primary.is-saving::before {
+    animation: veciahorra-products-spin 0.8s linear infinite;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    content: '';
+    display: inline-block;
+    height: 12px;
+    margin-right: 7px;
+    vertical-align: -2px;
+    width: 12px;
+}
+
 .veciahorra-products-admin__product-form .button:disabled,
 .veciahorra-products-admin__product-form .button.disabled {
     cursor: not-allowed;

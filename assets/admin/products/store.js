@@ -209,7 +209,7 @@ export function createProductsStore(api, catalogApi) {
     }
 
     function openCreateForm() {
-        if (state.form.status === FORM_STATUS_SAVING) {
+        if (state.form.isSaving) {
             return false;
         }
 
@@ -231,7 +231,7 @@ export function createProductsStore(api, catalogApi) {
     }
 
     async function openEditForm(id) {
-        if (state.form.status === FORM_STATUS_SAVING) {
+        if (state.form.isSaving) {
             return false;
         }
 
@@ -278,7 +278,7 @@ export function createProductsStore(api, catalogApi) {
         if (
             !FORM_FIELDS.includes(field)
             || state.currentView !== VIEW_PRODUCT_FORM
-            || state.form.status === FORM_STATUS_SAVING
+            || state.form.isSaving
             || state.form.status === FORM_STATUS_LOADING
             || state.form.mode === FORM_MODE_READONLY
         ) {
@@ -312,7 +312,7 @@ export function createProductsStore(api, catalogApi) {
     async function saveProduct() {
         if (
             state.currentView !== VIEW_PRODUCT_FORM
-            || state.form.status === FORM_STATUS_SAVING
+            || state.form.isSaving
             || state.form.status === FORM_STATUS_LOADING
             || state.form.mode === FORM_MODE_READONLY
             || ![FORM_MODE_CREATE, FORM_MODE_EDIT].includes(state.form.mode)
@@ -375,7 +375,7 @@ export function createProductsStore(api, catalogApi) {
     async function changeProductStatus(status) {
         if (
             state.currentView !== VIEW_PRODUCT_FORM
-            || state.form.status === FORM_STATUS_SAVING
+            || state.form.isSaving
             || state.form.status === FORM_STATUS_LOADING
             || state.form.mode !== FORM_MODE_EDIT
             || !['active', 'inactive'].includes(status)
@@ -418,12 +418,14 @@ export function createProductsStore(api, catalogApi) {
             setFormOperationError(error);
 
             return false;
+        } finally {
+            finishFormSaving();
         }
     }
 
     async function returnToList({ force = false } = {}) {
         if (
-            state.form.status === FORM_STATUS_SAVING
+            state.form.isSaving
             || (state.form.dirty && !force)
         ) {
             return false;
@@ -555,6 +557,8 @@ export function createProductsStore(api, catalogApi) {
             setFormOperationError(error);
 
             return false;
+        } finally {
+            finishFormSaving();
         }
     }
 
@@ -596,6 +600,8 @@ export function createProductsStore(api, catalogApi) {
             setFormOperationError(error);
 
             return false;
+        } finally {
+            finishFormSaving();
         }
     }
 
@@ -624,6 +630,7 @@ export function createProductsStore(api, catalogApi) {
             form: {
                 ...state.form,
                 status: FORM_STATUS_SAVING,
+                isSaving: true,
                 fieldErrors: {},
                 error: null,
                 message: null,
@@ -631,12 +638,36 @@ export function createProductsStore(api, catalogApi) {
         });
     }
 
+    function finishFormSaving() {
+        if (!state.form.isSaving) {
+            return;
+        }
+
+        setState({
+            form: {
+                ...state.form,
+                isSaving: false,
+            },
+        });
+    }
+
     function setFormOperationError(error) {
+        const normalizedError = normalizeError(error);
+        const fieldErrors = fieldErrorsFromSaveError(normalizedError);
+        const isValidationError = Object.keys(fieldErrors).length > 0
+            || normalizedError.status === 422;
+
         setState({
             form: {
                 ...state.form,
                 status: FORM_STATUS_ERROR,
-                error: normalizeError(error),
+                fieldErrors,
+                error: isValidationError
+                    ? normalizedError
+                    : {
+                        ...normalizedError,
+                        message: 'No fue posible guardar el producto. Inténtelo nuevamente.',
+                    },
                 message: null,
             },
         });
@@ -680,6 +711,7 @@ function createInitialFormState() {
     return {
         mode: FORM_MODE_CREATE,
         status: FORM_STATUS_IDLE,
+        isSaving: false,
         dirty: false,
         productId: null,
         values: createEmptyFormValues(),
@@ -864,6 +896,42 @@ function normalizeError(error) {
         message: 'No se pudo completar la operación.',
         retryable: false,
     };
+}
+
+function fieldErrorsFromSaveError(error) {
+    const fieldsByCode = {
+        invalid_category_id: 'categoryId',
+        invalid_brand_id: 'brandId',
+        invalid_unit_id: 'unitId',
+        invalid_image_id: 'imageId',
+    };
+    const field = fieldsByCode[error.code]
+        ?? validationFieldFromMessage(error.message);
+
+    return field === null
+        ? {}
+        : { [field]: error.message };
+}
+
+function validationFieldFromMessage(message) {
+    if (typeof message !== 'string') {
+        return null;
+    }
+
+    const normalized = message.toLocaleLowerCase('es');
+    const fieldsByText = [
+        ['nombre', 'name'],
+        ['sku', 'sku'],
+        ['descripción', 'description'],
+        ['woocommerce', 'wooProductId'],
+        ['categoría', 'categoryId'],
+        ['marca', 'brandId'],
+        ['unidad', 'unitId'],
+        ['imagen', 'imageId'],
+    ];
+    const match = fieldsByText.find(([text]) => normalized.includes(text));
+
+    return match?.[1] ?? null;
 }
 
 function displayValue(value) {
