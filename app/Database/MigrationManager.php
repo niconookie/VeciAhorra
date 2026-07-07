@@ -7,6 +7,7 @@ namespace VeciAhorra\Database;
 use VeciAhorra\Core\Config;
 use VeciAhorra\Database\Migrations\CreateInventoryTable;
 use VeciAhorra\Database\Migrations\CreateOrdersTables;
+use VeciAhorra\Database\Migrations\CreateReservationsTable;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -63,13 +64,14 @@ final class MigrationManager
     }
 
     /**
-     * @return list<CreateInventoryTable|CreateOrdersTables>
+     * @return list<CreateInventoryTable|CreateOrdersTables|CreateReservationsTable>
      */
     private static function migrations(): array
     {
         return [
             new CreateInventoryTable(),
             new CreateOrdersTables(),
+            new CreateReservationsTable(),
         ];
     }
 }
