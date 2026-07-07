@@ -26,6 +26,19 @@ final class OrderService
     }
 
     /**
+     * @return list<array<string, mixed>>
+     */
+    public function list(array $filters = []): array
+    {
+        return $this->repository->list($filters);
+    }
+
+    public function find(int $id): ?array
+    {
+        return $this->repository->find($id);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function create(array $payload): array
