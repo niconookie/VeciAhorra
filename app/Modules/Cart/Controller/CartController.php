@@ -20,7 +20,7 @@ final class CartController
         try {
             return [
                 'success' => true,
-                'data' => $this->items($owner),
+                'data' => $this->service->getCart($owner),
             ];
         } catch (Throwable $exception) {
             return $this->error($exception);
@@ -30,13 +30,11 @@ final class CartController
     public function store(array $payload): array
     {
         try {
-            $this->assertOwner($payload);
-            $now = current_time('mysql');
-            $id = $this->service->create([
-                ...$payload,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
+            $id = $this->service->addItem(
+                $payload,
+                (int) ($payload['inventory_id'] ?? 0),
+                (int) ($payload['quantity'] ?? 0)
+            );
 
             return ['success' => true, 'data' => ['id' => $id]];
         } catch (Throwable $exception) {
@@ -44,62 +42,38 @@ final class CartController
         }
     }
 
-    public function updateQuantity(int $id, int $quantity): array
-    {
+    public function updateQuantity(
+        array $owner,
+        int $id,
+        int $quantity
+    ): array {
         return $this->execute(
-            fn (): bool => $this->service->updateQuantity($id, $quantity)
+            fn (): bool => $this->service->updateQuantity(
+                $owner,
+                $id,
+                $quantity
+            )
         );
     }
 
-    public function delete(int $id): array
+    public function delete(array $owner, int $id): array
     {
-        return $this->execute(fn (): bool => $this->service->delete($id));
+        return $this->execute(
+            fn (): bool => $this->service->removeItem($owner, $id)
+        );
     }
 
     public function clear(array $owner): array
     {
         try {
-            $this->assertOwner($owner);
-
             return [
                 'success' => true,
                 'data' => [
-                    'deleted' => $this->service->clear(
-                        $owner['session_id'] ?? null,
-                        $owner['user_id'] ?? null
-                    ),
+                    'deleted' => $this->service->clearCart($owner),
                 ],
             ];
         } catch (Throwable $exception) {
             return $this->error($exception);
-        }
-    }
-
-    private function items(array $owner): array
-    {
-        $this->assertOwner($owner);
-
-        if (isset($owner['user_id'])) {
-            return $this->service->findByUser((int) $owner['user_id']);
-        }
-
-        return $this->service->findBySession(
-            (string) $owner['session_id']
-        );
-    }
-
-    private function assertOwner(array $data): void
-    {
-        $sessionId = $data['session_id'] ?? null;
-        $userId = $data['user_id'] ?? null;
-
-        if (
-            (! is_string($sessionId) || trim($sessionId) === '')
-            && (! is_int($userId) || $userId <= 0)
-        ) {
-            throw new InvalidArgumentException(
-                'El carrito requiere session_id o user_id.'
-            );
         }
     }
 

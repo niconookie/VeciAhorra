@@ -91,7 +91,7 @@ try {
     $sessionId = 'guest-' . bin2hex(random_bytes(8));
     $otherSessionId = 'guest-' . bin2hex(random_bytes(8));
     $userId = random_int(47000000, 47999999);
-    $sessionItemId = $service->create([
+    $sessionItemId = $repository->create([
         'session_id' => $sessionId,
         'user_id' => null,
         'inventory_id' => 101,
@@ -102,7 +102,7 @@ try {
         'created_at' => $now,
         'updated_at' => $now,
     ]);
-    $otherSessionItemId = $service->create([
+    $otherSessionItemId = $repository->create([
         'session_id' => $otherSessionId,
         'user_id' => null,
         'inventory_id' => 102,
@@ -113,7 +113,7 @@ try {
         'created_at' => $now,
         'updated_at' => $now,
     ]);
-    $userItemId = $service->create([
+    $userItemId = $repository->create([
         'session_id' => null,
         'user_id' => $userId,
         'inventory_id' => 103,
@@ -127,36 +127,45 @@ try {
 
     assertCartFoundation($sessionItemId > 0, 'Create no retorno ID.');
     assertCartFoundation($userItemId > 0, 'No se creo item de usuario.');
-    $sessionCart = $service->findBySession($sessionId);
+    $sessionCart = $repository->findBySession($sessionId);
     assertCartFoundationSame(1, count($sessionCart));
     assertCartFoundationSame($sessionItemId, (int) $sessionCart[0]['id']);
     assertCartFoundationSame(2, (int) $sessionCart[0]['quantity']);
 
-    $userCart = $service->findByUser($userId);
+    $userCart = $repository->findByUser($userId);
     assertCartFoundationSame(1, count($userCart));
     assertCartFoundationSame($userItemId, (int) $userCart[0]['id']);
 
     assertCartFoundationSame(
         true,
-        $service->updateQuantity($sessionItemId, 5)
+        $repository->updateQuantity($sessionItemId, 5, $sessionId, null)
     );
     assertCartFoundationSame(
         5,
-        (int) $service->findBySession($sessionId)[0]['quantity']
+        (int) $repository->findBySession($sessionId)[0]['quantity']
     );
 
-    assertCartFoundationSame(true, $service->delete($sessionItemId));
-    assertCartFoundationSame([], $service->findBySession($sessionId));
-    assertCartFoundationSame(false, $service->delete($sessionItemId));
+    assertCartFoundationSame(
+        true,
+        $repository->delete($sessionItemId, $sessionId, null)
+    );
+    assertCartFoundationSame([], $repository->findBySession($sessionId));
+    assertCartFoundationSame(
+        false,
+        $repository->delete($sessionItemId, $sessionId, null)
+    );
 
-    assertCartFoundationSame(1, $service->clear(null, $userId));
-    assertCartFoundationSame([], $service->findByUser($userId));
-    assertCartFoundationSame(0, $service->clear(null, $userId));
+    assertCartFoundationSame(1, $repository->clear(null, $userId));
+    assertCartFoundationSame([], $repository->findByUser($userId));
+    assertCartFoundationSame(0, $repository->clear(null, $userId));
     assertCartFoundationSame(
         1,
-        $service->clear($otherSessionId, null)
+        $repository->clear($otherSessionId, null)
     );
-    assertCartFoundationSame(false, $service->delete($otherSessionItemId));
+    assertCartFoundationSame(
+        false,
+        $repository->delete($otherSessionItemId, $otherSessionId, null)
+    );
 
     $validated = (new CartItemCreateRequest([
         'inventory_id' => '55',

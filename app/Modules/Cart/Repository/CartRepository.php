@@ -45,15 +45,86 @@ final class CartRepository extends Repository
         return $this->findBy('user_id', $userId);
     }
 
-    public function updateQuantity(int $id, int $quantity): bool
+    public function findItemByInventoryForSession(
+        string $sessionId,
+        int $inventoryId
+    ): ?array {
+        return $this->findItemByOwner(
+            'session_id',
+            $sessionId,
+            $inventoryId
+        );
+    }
+
+    public function findItemByInventoryForUser(
+        int $userId,
+        int $inventoryId
+    ): ?array {
+        return $this->findItemByOwner(
+            'user_id',
+            $userId,
+            $inventoryId
+        );
+    }
+
+    public function findInventorySnapshot(int $inventoryId): ?array
     {
+        $row = $this->db()->get_row(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT id, product_id, minimarket_id, price
+                     FROM %s
+                     WHERE id = %%d
+                     LIMIT 1',
+                    $this->table('inventory')
+                ),
+                $inventoryId
+            ),
+            ARRAY_A
+        );
+
+        return $row === null ? null : $row;
+    }
+
+    public function incrementQuantity(int $id, int $quantity): bool
+    {
+        $result = $this->db()->query(
+            $this->db()->prepare(
+                sprintf(
+                    'UPDATE %s
+                     SET quantity = quantity + %%d,
+                         updated_at = %%s
+                     WHERE id = %%d',
+                    $this->table(self::TABLE)
+                ),
+                $quantity,
+                current_time('mysql'),
+                $id
+            )
+        );
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible incrementar el item del carrito.'
+            );
+        }
+
+        return $result === 1;
+    }
+
+    public function updateQuantity(
+        int $id,
+        int $quantity,
+        ?string $sessionId,
+        ?int $userId
+    ): bool {
         $result = $this->db()->update(
             $this->table(self::TABLE),
             [
                 'quantity' => $quantity,
                 'updated_at' => current_time('mysql'),
             ],
-            ['id' => $id]
+            $this->ownerWhere($id, $sessionId, $userId)
         );
 
         if ($result === false) {
@@ -65,11 +136,14 @@ final class CartRepository extends Repository
         return $result > 0;
     }
 
-    public function delete(int $id): bool
-    {
+    public function delete(
+        int $id,
+        ?string $sessionId,
+        ?int $userId
+    ): bool {
         $result = $this->db()->delete(
             $this->table(self::TABLE),
-            ['id' => $id]
+            $this->ownerWhere($id, $sessionId, $userId)
         );
 
         if ($result === false) {
@@ -115,5 +189,39 @@ final class CartRepository extends Repository
             $this->db()->prepare($sql, $value),
             ARRAY_A
         );
+    }
+
+    private function findItemByOwner(
+        string $field,
+        string|int $owner,
+        int $inventoryId
+    ): ?array {
+        $ownerPlaceholder = is_int($owner) ? '%d' : '%s';
+        $sql = sprintf(
+            'SELECT *
+             FROM %s
+             WHERE %s = %s
+               AND inventory_id = %%d
+             LIMIT 1',
+            $this->table(self::TABLE),
+            $field,
+            $ownerPlaceholder
+        );
+        $row = $this->db()->get_row(
+            $this->db()->prepare($sql, $owner, $inventoryId),
+            ARRAY_A
+        );
+
+        return $row === null ? null : $row;
+    }
+
+    private function ownerWhere(
+        int $id,
+        ?string $sessionId,
+        ?int $userId
+    ): array {
+        return $userId !== null
+            ? ['id' => $id, 'user_id' => $userId]
+            : ['id' => $id, 'session_id' => $sessionId];
     }
 }

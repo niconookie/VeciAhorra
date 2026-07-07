@@ -94,6 +94,7 @@ final class CartRoutes
         }
 
         return $this->response($this->controller->updateQuantity(
+            $this->owner($request),
             $this->id($request),
             $payload['quantity']
         ));
@@ -102,7 +103,10 @@ final class CartRoutes
     public function delete(WP_REST_Request $request): WP_REST_Response
     {
         return $this->response(
-            $this->controller->delete($this->id($request))
+            $this->controller->delete(
+                $this->owner($request),
+                $this->id($request)
+            )
         );
     }
 
