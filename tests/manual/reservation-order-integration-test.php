@@ -37,6 +37,7 @@ $inventoryRepository = new InventoryRepository();
 $reservationRepository = new ReservationRepository();
 $inventoryTable = $wpdb->prefix . Config::TABLE_PREFIX . 'inventory';
 $ordersTable = $wpdb->prefix . Config::TABLE_PREFIX . 'orders';
+$reservationsTable = $wpdb->prefix . Config::TABLE_PREFIX . 'reservations';
 $transaction = $wpdb->query('START TRANSACTION');
 assertReservationOrder($transaction !== false, 'No se inicio la transaccion.');
 
@@ -211,6 +212,25 @@ try {
             "SELECT COUNT(*) FROM {$ordersTable} WHERE customer_id = %d",
             $customerId + 3
         ))
+    );
+    assertReservationOrderSame(
+        0,
+        (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*)
+             FROM {$reservationsTable} r
+             LEFT JOIN {$ordersTable} o ON o.id = r.order_id
+             WHERE o.id IS NULL
+               AND r.inventory_id IN (%d, %d)",
+            $failureInventoryId,
+            $orderFailureInventoryId
+        ))
+    );
+    assertReservationOrder(
+        $stock($firstInventoryId) >= 0
+        && $stock($secondInventoryId) >= 0
+        && $stock($failureInventoryId) >= 0
+        && $stock($orderFailureInventoryId) >= 0,
+        'El flujo produjo stock negativo.'
     );
 
     echo "PASS reservation-order-integration-test\n";
