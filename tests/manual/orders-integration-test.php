@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use VeciAhorra\Core\Container;
 use VeciAhorra\Modules\Orders\Routes\OrderRoutes;
+use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -104,19 +105,31 @@ assertOrdersIntegration($transaction !== false, 'No se inicio la transaccion.');
 try {
     $customerId = random_int(17000000, 17999999);
     $minimarketId = random_int(18000000, 18999999);
+    $inventoryRepository = new InventoryRepository();
+    $now = current_time('mysql');
+    $firstInventoryId = $inventoryRepository->create([
+        'product_id' => 701, 'minimarket_id' => $minimarketId,
+        'price' => 900.25, 'stock' => 10, 'status' => 'active',
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $secondInventoryId = $inventoryRepository->create([
+        'product_id' => 702, 'minimarket_id' => $minimarketId,
+        'price' => 100.0, 'stock' => 10, 'status' => 'active',
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
     $createdResponse = ordersIntegrationRequest('POST', $collection, [
         'customer_id' => $customerId,
         'minimarket_id' => $minimarketId,
         'items' => [
             [
                 'product_id' => 701,
-                'inventory_id' => 801,
+                'inventory_id' => $firstInventoryId,
                 'quantity' => 2,
                 'unit_price' => 900.25,
             ],
             [
                 'product_id' => 702,
-                'inventory_id' => 802,
+                'inventory_id' => $secondInventoryId,
                 'quantity' => 1,
                 'unit_price' => 100.0,
             ],
@@ -191,9 +204,9 @@ try {
         $wpdb->suppress_errors(false);
     }
 
-    assertOrdersIntegrationSame(500, $persistence->get_status());
+    assertOrdersIntegrationSame(422, $persistence->get_status());
     assertOrdersIntegrationSame(
-        'persistence_error',
+        'validation_error',
         $persistence->get_data()['error']['code'] ?? null
     );
 

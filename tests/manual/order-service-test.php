@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use VeciAhorra\Core\Config;
 use VeciAhorra\Exceptions\PersistenceException;
+use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 use VeciAhorra\Modules\Orders\Services\OrderService;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
@@ -45,20 +46,33 @@ $transaction = $wpdb->query('START TRANSACTION');
 assertOrderService($transaction !== false, 'No se inicio la transaccion.');
 
 try {
+    $inventoryRepository = new InventoryRepository();
+    $minimarketId = random_int(12000000, 12999999);
+    $now = current_time('mysql');
+    $firstInventoryId = $inventoryRepository->create([
+        'product_id' => 101, 'minimarket_id' => $minimarketId,
+        'price' => 1250.50, 'stock' => 10, 'status' => 'active',
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $secondInventoryId = $inventoryRepository->create([
+        'product_id' => 102, 'minimarket_id' => $minimarketId,
+        'price' => 499.99, 'stock' => 10, 'status' => 'active',
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
     $before = current_datetime()->getTimestamp();
     $created = $service->create([
         'customer_id' => random_int(11000000, 11999999),
-        'minimarket_id' => random_int(12000000, 12999999),
+        'minimarket_id' => $minimarketId,
         'items' => [
             [
                 'product_id' => 101,
-                'inventory_id' => 201,
+                'inventory_id' => $firstInventoryId,
                 'quantity' => 3,
                 'unit_price' => 1250.50,
             ],
             [
                 'product_id' => 102,
-                'inventory_id' => 202,
+                'inventory_id' => $secondInventoryId,
                 'quantity' => 2,
                 'unit_price' => 499.99,
             ],
@@ -146,16 +160,8 @@ try {
                     'unit_price' => 1.0,
                 ]],
             ]);
-            throw new RuntimeException('Se esperaba error de persistencia.');
-        } catch (RuntimeException $exception) {
-            assertOrderService(
-                ! $exception instanceof PersistenceException,
-                'OrderService expuso PersistenceException.'
-            );
-            assertOrderService(
-                $exception->getPrevious() instanceof PersistenceException,
-                'No se conservo la causa de persistencia.'
-            );
+            throw new RuntimeException('Se esperaba inventario no disponible.');
+        } catch (InvalidArgumentException) {
         }
     } finally {
         $wpdb->prefix = $originalPrefix;

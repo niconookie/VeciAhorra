@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use VeciAhorra\Modules\Orders\Controllers\OrderController;
 use VeciAhorra\Modules\Orders\Services\OrderService;
+use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -35,19 +36,31 @@ assertOrderController($transaction !== false, 'No se inicio la transaccion.');
 try {
     $customerId = random_int(13000000, 13999999);
     $minimarketId = random_int(14000000, 14999999);
+    $inventoryRepository = new InventoryRepository();
+    $now = current_time('mysql');
+    $firstInventoryId = $inventoryRepository->create([
+        'product_id' => 301, 'minimarket_id' => $minimarketId,
+        'price' => 500.0, 'stock' => 10, 'status' => 'active',
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $secondInventoryId = $inventoryRepository->create([
+        'product_id' => 302, 'minimarket_id' => $minimarketId,
+        'price' => 250.0, 'stock' => 10, 'status' => 'active',
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
     $stored = $controller->store([
         'customer_id' => $customerId,
         'minimarket_id' => $minimarketId,
         'items' => [
             [
                 'product_id' => 301,
-                'inventory_id' => 401,
+                'inventory_id' => $firstInventoryId,
                 'quantity' => 2,
                 'unit_price' => 750.25,
             ],
             [
                 'product_id' => 302,
-                'inventory_id' => 402,
+                'inventory_id' => $secondInventoryId,
                 'quantity' => 1,
                 'unit_price' => 100.0,
             ],
@@ -118,7 +131,7 @@ try {
 
     assertOrderControllerSame(false, $persistence['success'] ?? null);
     assertOrderControllerSame(
-        'persistence_error',
+        'validation_error',
         $persistence['error']['code'] ?? null
     );
 

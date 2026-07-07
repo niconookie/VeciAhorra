@@ -8,6 +8,7 @@ use VeciAhorra\Database\MigrationManager;
 use VeciAhorra\Database\Migrations\CreateReservationsTable;
 use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Reservations\Service\ReservationService;
+use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -52,9 +53,15 @@ assertReservation($transaction !== false, 'No se inicio la transaccion.');
 
 try {
     $orderId = random_int(20000000, 20999999);
+    $now = current_time('mysql');
+    $inventoryId = (new InventoryRepository())->create([
+        'product_id' => 201, 'minimarket_id' => 301,
+        'price' => 1000.0, 'stock' => 10, 'status' => 'active',
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
     $created = $service->create([
         'order_id' => $orderId,
-        'inventory_id' => 101,
+        'inventory_id' => $inventoryId,
         'product_id' => 201,
         'minimarket_id' => 301,
         'quantity' => 2,

@@ -7,7 +7,7 @@ namespace VeciAhorra\Modules\Reservations\Repository;
 use VeciAhorra\Database\Repository;
 use VeciAhorra\Exceptions\PersistenceException;
 
-final class ReservationRepository extends Repository
+class ReservationRepository extends Repository
 {
     private const TABLE = 'reservations';
 
@@ -54,6 +54,20 @@ final class ReservationRepository extends Repository
             ),
             ARRAY_A
         );
+    }
+
+    public function deleteByOrderId(int $orderId): void
+    {
+        $result = $this->db()->delete(
+            $this->table(self::TABLE),
+            ['order_id' => $orderId]
+        );
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible eliminar las reservas incompletas.'
+            );
+        }
     }
 
     /** @return list<array<string, mixed>> */

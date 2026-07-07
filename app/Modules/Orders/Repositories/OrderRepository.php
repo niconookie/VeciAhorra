@@ -10,7 +10,7 @@ use VeciAhorra\Exceptions\PersistenceException;
 /**
  * Persistencia de pedidos y sus items.
  */
-final class OrderRepository extends Repository
+class OrderRepository extends Repository
 {
     private const ORDERS_TABLE = 'orders';
 
@@ -94,6 +94,24 @@ final class OrderRepository extends Repository
         );
 
         return $row === null ? null : $row;
+    }
+
+    public function delete(int $id): void
+    {
+        $itemsResult = $this->db()->delete(
+            $this->table(self::ITEMS_TABLE),
+            ['order_id' => $id]
+        );
+        $orderResult = $this->db()->delete(
+            $this->table(self::ORDERS_TABLE),
+            ['id' => $id]
+        );
+
+        if ($itemsResult === false || $orderResult === false) {
+            throw new PersistenceException(
+                'No fue posible eliminar el pedido incompleto.'
+            );
+        }
     }
 
     /**

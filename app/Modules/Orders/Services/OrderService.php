@@ -6,23 +6,28 @@ namespace VeciAhorra\Modules\Orders\Services;
 
 use InvalidArgumentException;
 use RuntimeException;
+use Throwable;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
+use VeciAhorra\Modules\Reservations\Service\ReservationService;
 
 /**
  * Casos de uso iniciales para crear pedidos reservados.
  */
 final class OrderService
 {
-    private const RESERVATION_MINUTES = 15;
-
     private OrderRepository $repository;
 
+    private ReservationService $reservationService;
+
     public function __construct(
-        ?OrderRepository $repository = null
+        ?OrderRepository $repository = null,
+        ?ReservationService $reservationService = null
     ) {
         $this->repository = $repository
             ?? new OrderRepository();
+        $this->reservationService = $reservationService
+            ?? new ReservationService();
     }
 
     /**
@@ -54,7 +59,7 @@ final class OrderService
         $createdAt = current_datetime();
         $createdAtSql = $createdAt->format('Y-m-d H:i:s');
         $reservationExpiresAt = $createdAt
-            ->modify(sprintf('+%d minutes', self::RESERVATION_MINUTES))
+            ->modify('+' . ReservationService::DURATION_MINUTES . ' minutes')
             ->format('Y-m-d H:i:s');
         $preparedItems = [];
         $total = 0.0;
@@ -69,6 +74,8 @@ final class OrderService
 
             $quantity = $item['quantity'] ?? null;
             $unitPrice = $item['unit_price'] ?? null;
+            $productId = $item['product_id'] ?? null;
+            $inventoryId = $item['inventory_id'] ?? null;
 
             if (! is_int($quantity) || $quantity <= 0) {
                 throw new InvalidArgumentException(sprintf(
@@ -88,11 +95,25 @@ final class OrderService
                 ));
             }
 
+            if (! is_int($productId) || $productId <= 0) {
+                throw new InvalidArgumentException(sprintf(
+                    'El producto del item %d debe ser un entero positivo.',
+                    $index
+                ));
+            }
+
+            if (! is_int($inventoryId) || $inventoryId <= 0) {
+                throw new InvalidArgumentException(sprintf(
+                    'El inventario del item %d debe ser un entero positivo.',
+                    $index
+                ));
+            }
+
             $subtotal = round($quantity * (float) $unitPrice, 2);
             $total = round($total + $subtotal, 2);
             $preparedItems[] = [
-                'product_id' => (int) ($item['product_id'] ?? 0),
-                'inventory_id' => (int) ($item['inventory_id'] ?? 0),
+                'product_id' => $productId,
+                'inventory_id' => $inventoryId,
                 'quantity' => $quantity,
                 'unit_price' => round((float) $unitPrice, 2),
                 'subtotal' => $subtotal,
@@ -111,10 +132,15 @@ final class OrderService
             'updated_at' => $createdAtSql,
         ];
 
+        $lockedItems = $this->reservationService->lockItems($preparedItems);
+        $orderId = null;
+
         try {
             $orderId = $this->repository->create($order);
             $this->repository->createItems($orderId, $preparedItems);
         } catch (PersistenceException $exception) {
+            $this->cleanupFailedOrder($orderId, $lockedItems);
+
             throw new RuntimeException(
                 'No fue posible crear el pedido.',
                 0,
@@ -122,9 +148,27 @@ final class OrderService
             );
         }
 
+        try {
+            $reservations = $this->reservationService->createForOrder(
+                $orderId,
+                (int) $order['minimarket_id'],
+                $lockedItems
+            );
+        } catch (Throwable $exception) {
+            $this->repository->delete($orderId);
+
+            throw $exception;
+        }
+
         $created = $this->repository->find($orderId);
 
         if ($created === null) {
+            $this->reservationService->cancelOrder(
+                $orderId,
+                $lockedItems
+            );
+            $this->repository->delete($orderId);
+
             throw new RuntimeException(
                 'No fue posible recuperar el pedido creado.'
             );
@@ -133,6 +177,19 @@ final class OrderService
         return [
             ...$created,
             'items' => $preparedItems,
+            'reservations' => $reservations,
         ];
+    }
+
+    /** @param list<array<string, mixed>> $lockedItems */
+    private function cleanupFailedOrder(
+        ?int $orderId,
+        array $lockedItems
+    ): void {
+        $this->reservationService->releaseItems($lockedItems);
+
+        if ($orderId !== null) {
+            $this->repository->delete($orderId);
+        }
     }
 }

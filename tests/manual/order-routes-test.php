@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
+
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
 function assertOrderRoute(bool $condition, string $message): void
@@ -101,12 +103,18 @@ assertOrderRoute($transaction !== false, 'No se inicio la transaccion.');
 try {
     $customerId = random_int(15000000, 15999999);
     $minimarketId = random_int(16000000, 16999999);
+    $now = current_time('mysql');
+    $inventoryId = (new InventoryRepository())->create([
+        'product_id' => 501, 'minimarket_id' => $minimarketId,
+        'price' => 800.25, 'stock' => 10, 'status' => 'active',
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
     $created = orderRestRequest('POST', $collection, [
         'customer_id' => $customerId,
         'minimarket_id' => $minimarketId,
         'items' => [[
             'product_id' => 501,
-            'inventory_id' => 601,
+            'inventory_id' => $inventoryId,
             'quantity' => 2,
             'unit_price' => 800.25,
         ]],
