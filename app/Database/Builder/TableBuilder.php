@@ -62,6 +62,13 @@ final class TableBuilder
         return $this;
     }
 
+    public function integerUnsigned(string $name): self
+    {
+        $this->blueprint->integerUnsigned($name);
+
+        return $this;
+    }
+
     public function bigIntegerUnsigned(string $name): self
     {
         $this->blueprint->bigIntegerUnsigned($name);

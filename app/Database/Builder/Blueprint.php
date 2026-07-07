@@ -99,6 +99,19 @@ public function integer(string $name): self
 }
 
 /**
+ * Columna INTEGER UNSIGNED.
+ */
+public function integerUnsigned(string $name): self
+{
+    return $this->add(
+        new Column(
+            $name,
+            'INT UNSIGNED'
+        )
+    );
+}
+
+/**
  * Columna BIGINT UNSIGNED.
  */
 public function bigIntegerUnsigned(string $name): self
