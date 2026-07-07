@@ -38,6 +38,17 @@ function assertCartServiceInvalid(callable $callback): void
     throw new RuntimeException('Se esperaba InvalidArgumentException.');
 }
 
+function assertCartServiceNotFound(callable $callback): void
+{
+    try {
+        $callback();
+    } catch (VeciAhorra\Exceptions\RecordNotFoundException) {
+        return;
+    }
+
+    throw new RuntimeException('Se esperaba RecordNotFoundException.');
+}
+
 global $wpdb;
 
 $cartRepository = new CartRepository();
@@ -78,11 +89,13 @@ try {
         'user_id' => random_int(51000000, 51999999),
     ];
 
-    $sessionItemId = $service->addItem(
+    $sessionResult = $service->addItem(
         $sessionOwner,
         $firstInventoryId,
         2
     );
+    $sessionItemId = $sessionResult['id'];
+    assertCartServiceSame(true, $sessionResult['created']);
     $sessionCart = $service->getCart($sessionOwner);
     assertCartServiceSame(1, count($sessionCart));
     assertCartServiceSame($sessionItemId, (int) $sessionCart[0]['id']);
@@ -101,25 +114,28 @@ try {
         'price' => 1990.0,
         'updated_at' => current_time('mysql'),
     ]);
-    $sameItemId = $service->addItem(
+    $sameResult = $service->addItem(
         $sessionOwner,
         $firstInventoryId,
         3
     );
     $sessionCart = $service->getCart($sessionOwner);
-    assertCartServiceSame($sessionItemId, $sameItemId);
+    assertCartServiceSame($sessionItemId, $sameResult['id']);
+    assertCartServiceSame(false, $sameResult['created']);
     assertCartServiceSame(1, count($sessionCart));
     assertCartServiceSame(5, (int) $sessionCart[0]['quantity']);
     assertCartServiceSame('1290.50', $sessionCart[0]['unit_price_snapshot']);
 
-    $userItemId = $service->addItem($userOwner, $secondInventoryId, 4);
+    $userResult = $service->addItem($userOwner, $secondInventoryId, 4);
+    $userItemId = $userResult['id'];
+    assertCartServiceSame(true, $userResult['created']);
     $userCart = $service->getCart($userOwner);
     assertCartServiceSame(1, count($userCart));
     assertCartServiceSame($userItemId, (int) $userCart[0]['id']);
     assertCartServiceSame(4, (int) $userCart[0]['quantity']);
     assertCartServiceSame(
         $userItemId,
-        $service->addItem($userOwner, $secondInventoryId, 1)
+        $service->addItem($userOwner, $secondInventoryId, 1)['id']
     );
     $userCart = $service->getCart($userOwner);
     assertCartServiceSame(1, count($userCart));
@@ -133,8 +149,7 @@ try {
         7,
         (int) $service->getCart($sessionOwner)[0]['quantity']
     );
-    assertCartServiceSame(
-        false,
+    assertCartServiceNotFound(fn () =>
         $service->updateQuantity($userOwner, $sessionItemId, 8)
     );
 
@@ -143,7 +158,9 @@ try {
         $service->removeItem($sessionOwner, $sessionItemId)
     );
     assertCartServiceSame([], $service->getCart($sessionOwner));
-    assertCartServiceSame(false, $service->removeItem($userOwner, $sessionItemId));
+    assertCartServiceNotFound(fn () =>
+        $service->removeItem($userOwner, $sessionItemId)
+    );
 
     assertCartServiceSame(1, $service->clearCart($userOwner));
     assertCartServiceSame([], $service->getCart($userOwner));

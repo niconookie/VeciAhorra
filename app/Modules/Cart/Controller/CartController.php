@@ -7,6 +7,7 @@ namespace VeciAhorra\Modules\Cart\Controller;
 use InvalidArgumentException;
 use Throwable;
 use VeciAhorra\Exceptions\PersistenceException;
+use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Cart\Service\CartService;
 
 final class CartController
@@ -30,13 +31,13 @@ final class CartController
     public function store(array $payload): array
     {
         try {
-            $id = $this->service->addItem(
+            $result = $this->service->addItem(
                 $payload,
                 (int) ($payload['inventory_id'] ?? 0),
                 (int) ($payload['quantity'] ?? 0)
             );
 
-            return ['success' => true, 'data' => ['id' => $id]];
+            return ['success' => true, 'data' => $result];
         } catch (Throwable $exception) {
             return $this->error($exception);
         }
@@ -88,6 +89,16 @@ final class CartController
 
     private function error(Throwable $exception): array
     {
+        if ($exception instanceof RecordNotFoundException) {
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => 'cart_item_not_found',
+                    'message' => $exception->getMessage(),
+                ],
+            ];
+        }
+
         if ($exception instanceof InvalidArgumentException) {
             return [
                 'success' => false,

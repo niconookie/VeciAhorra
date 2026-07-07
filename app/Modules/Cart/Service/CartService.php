@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Cart\Service;
 
 use InvalidArgumentException;
+use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Cart\Repository\CartRepository;
 
 final class CartService
@@ -13,7 +14,12 @@ final class CartService
     {
     }
 
-    public function addItem(array $owner, int $inventoryId, int $quantity): int
+    /** @return array{id: int, created: bool} */
+    public function addItem(
+        array $owner,
+        int $inventoryId,
+        int $quantity
+    ): array
     {
         $this->assertPositive($inventoryId, 'inventory_id');
         $this->assertPositive($quantity, 'quantity');
@@ -34,7 +40,10 @@ final class CartService
                 $quantity
             );
 
-            return (int) $existing['id'];
+            return [
+                'id' => (int) $existing['id'],
+                'created' => false,
+            ];
         }
 
         $inventory = $this->repository->findInventorySnapshot($inventoryId);
@@ -47,7 +56,7 @@ final class CartService
 
         $now = current_time('mysql');
 
-        return $this->repository->create([
+        $id = $this->repository->create([
             'session_id' => $sessionId,
             'user_id' => $userId,
             'inventory_id' => $inventoryId,
@@ -58,6 +67,8 @@ final class CartService
             'created_at' => $now,
             'updated_at' => $now,
         ]);
+
+        return ['id' => $id, 'created' => true];
     }
 
     /** @return list<array<string, mixed>> */
@@ -79,12 +90,20 @@ final class CartService
         $this->assertPositive($quantity, 'quantity');
         [$sessionId, $userId] = $this->owner($owner);
 
-        return $this->repository->updateQuantity(
+        $updated = $this->repository->updateQuantity(
             $id,
             $quantity,
             $sessionId,
             $userId
         );
+
+        if (! $updated) {
+            throw new RecordNotFoundException(
+                'El item del carrito no existe.'
+            );
+        }
+
+        return true;
     }
 
     public function removeItem(array $owner, int $id): bool
@@ -92,7 +111,15 @@ final class CartService
         $this->assertPositive($id, 'id');
         [$sessionId, $userId] = $this->owner($owner);
 
-        return $this->repository->delete($id, $sessionId, $userId);
+        $deleted = $this->repository->delete($id, $sessionId, $userId);
+
+        if (! $deleted) {
+            throw new RecordNotFoundException(
+                'El item del carrito no existe.'
+            );
+        }
+
+        return true;
     }
 
     public function clearCart(array $owner): int
