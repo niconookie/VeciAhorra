@@ -11,6 +11,7 @@ use VeciAhorra\Modules\ProductCatalogs\Routes\CategoryRoutes;
 use VeciAhorra\Modules\ProductCatalogs\Routes\UnitRoutes;
 use VeciAhorra\Modules\Inventory\Routes\InventoryRoutes;
 use VeciAhorra\Modules\Cart\Routes\CartRoutes;
+use VeciAhorra\Modules\Checkout\Routes\CheckoutRoutes;
 use VeciAhorra\Modules\Orders\Routes\OrderRoutes;
 use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Products\Admin\ProductsPage;
@@ -78,6 +79,15 @@ final class Application
         add_action(
             'rest_api_init',
             [$cartRoutes, 'register']
+        );
+
+        $checkoutRoutes = $this->container->make(
+            CheckoutRoutes::class
+        );
+
+        add_action(
+            'rest_api_init',
+            [$checkoutRoutes, 'register']
         );
 
         add_action(
