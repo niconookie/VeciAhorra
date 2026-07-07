@@ -96,6 +96,7 @@ return array(
     'VeciAhorra\\Modules\\Reservations\\Repository\\ReservationRepository' => $baseDir . '/app/Modules/Reservations/Repository/ReservationRepository.php',
     'VeciAhorra\\Modules\\Reservations\\Requests\\ReservationRequest' => $baseDir . '/app/Modules/Reservations/Requests/ReservationRequest.php',
     'VeciAhorra\\Modules\\Reservations\\Routes\\ReservationRoutes' => $baseDir . '/app/Modules/Reservations/Routes/ReservationRoutes.php',
+    'VeciAhorra\\Modules\\Reservations\\Service\\ReservationExpirationService' => $baseDir . '/app/Modules/Reservations/Service/ReservationExpirationService.php',
     'VeciAhorra\\Modules\\Reservations\\Service\\ReservationService' => $baseDir . '/app/Modules/Reservations/Service/ReservationService.php',
     'VeciAhorra\\Modules\\Stores\\Controllers\\StoresController' => $baseDir . '/app/Modules/Stores/Controllers/StoresController.php',
     'VeciAhorra\\Modules\\Stores\\Models\\Store' => $baseDir . '/app/Modules/Stores/Models/Store.php',

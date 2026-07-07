@@ -111,6 +111,7 @@ class ComposerStaticInit7d1abe35a25051a7eba5315ecb122328
         'VeciAhorra\\Modules\\Reservations\\Repository\\ReservationRepository' => __DIR__ . '/../..' . '/app/Modules/Reservations/Repository/ReservationRepository.php',
         'VeciAhorra\\Modules\\Reservations\\Requests\\ReservationRequest' => __DIR__ . '/../..' . '/app/Modules/Reservations/Requests/ReservationRequest.php',
         'VeciAhorra\\Modules\\Reservations\\Routes\\ReservationRoutes' => __DIR__ . '/../..' . '/app/Modules/Reservations/Routes/ReservationRoutes.php',
+        'VeciAhorra\\Modules\\Reservations\\Service\\ReservationExpirationService' => __DIR__ . '/../..' . '/app/Modules/Reservations/Service/ReservationExpirationService.php',
         'VeciAhorra\\Modules\\Reservations\\Service\\ReservationService' => __DIR__ . '/../..' . '/app/Modules/Reservations/Service/ReservationService.php',
         'VeciAhorra\\Modules\\Stores\\Controllers\\StoresController' => __DIR__ . '/../..' . '/app/Modules/Stores/Controllers/StoresController.php',
         'VeciAhorra\\Modules\\Stores\\Models\\Store' => __DIR__ . '/../..' . '/app/Modules/Stores/Models/Store.php',

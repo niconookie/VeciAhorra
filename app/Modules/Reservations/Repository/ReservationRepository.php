@@ -55,4 +55,83 @@ final class ReservationRepository extends Repository
             ARRAY_A
         );
     }
+
+    /** @return list<array<string, mixed>> */
+    public function findExpiredActive(string $now): array
+    {
+        return $this->db()->get_results(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT *
+                     FROM %s
+                     WHERE status = %%s
+                       AND expires_at <= %%s
+                     ORDER BY id ASC',
+                    $this->table(self::TABLE)
+                ),
+                'active',
+                $now
+            ),
+            ARRAY_A
+        );
+    }
+
+    public function markExpired(int $id, string $releasedAt): bool
+    {
+        $result = $this->db()->query(
+            $this->db()->prepare(
+                sprintf(
+                    'UPDATE %s
+                     SET status = %%s,
+                         released_at = %%s,
+                         updated_at = %%s
+                     WHERE id = %%d
+                       AND status = %%s',
+                    $this->table(self::TABLE)
+                ),
+                'expired',
+                $releasedAt,
+                $releasedAt,
+                $id,
+                'active'
+            )
+        );
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible expirar la reserva.'
+            );
+        }
+
+        return $result === 1;
+    }
+
+    public function restoreActive(int $id, string $updatedAt): bool
+    {
+        $result = $this->db()->query(
+            $this->db()->prepare(
+                sprintf(
+                    'UPDATE %s
+                     SET status = %%s,
+                         released_at = NULL,
+                         updated_at = %%s
+                     WHERE id = %%d
+                       AND status = %%s',
+                    $this->table(self::TABLE)
+                ),
+                'active',
+                $updatedAt,
+                $id,
+                'expired'
+            )
+        );
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible restaurar la reserva.'
+            );
+        }
+
+        return $result === 1;
+    }
 }
