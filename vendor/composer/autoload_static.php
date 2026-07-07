@@ -78,6 +78,7 @@ class ComposerStaticInit7d1abe35a25051a7eba5315ecb122328
         'VeciAhorra\\Modules\\Checkout\\Requests\\CheckoutRequest' => __DIR__ . '/../..' . '/app/Modules/Checkout/Requests/CheckoutRequest.php',
         'VeciAhorra\\Modules\\Checkout\\Routes\\CheckoutRoutes' => __DIR__ . '/../..' . '/app/Modules/Checkout/Routes/CheckoutRoutes.php',
         'VeciAhorra\\Modules\\Checkout\\Service\\CheckoutService' => __DIR__ . '/../..' . '/app/Modules/Checkout/Service/CheckoutService.php',
+        'VeciAhorra\\Modules\\Checkout\\Service\\CheckoutValidationService' => __DIR__ . '/../..' . '/app/Modules/Checkout/Service/CheckoutValidationService.php',
         'VeciAhorra\\Modules\\Inventory\\Admin\\InventoryPage' => __DIR__ . '/../..' . '/app/Modules/Inventory/Admin/InventoryPage.php',
         'VeciAhorra\\Modules\\Inventory\\Controllers\\InventoryController' => __DIR__ . '/../..' . '/app/Modules/Inventory/Controllers/InventoryController.php',
         'VeciAhorra\\Modules\\Inventory\\Repositories\\InventoryLockRepository' => __DIR__ . '/../..' . '/app/Modules/Inventory/Repositories/InventoryLockRepository.php',

@@ -63,6 +63,7 @@ return array(
     'VeciAhorra\\Modules\\Checkout\\Requests\\CheckoutRequest' => $baseDir . '/app/Modules/Checkout/Requests/CheckoutRequest.php',
     'VeciAhorra\\Modules\\Checkout\\Routes\\CheckoutRoutes' => $baseDir . '/app/Modules/Checkout/Routes/CheckoutRoutes.php',
     'VeciAhorra\\Modules\\Checkout\\Service\\CheckoutService' => $baseDir . '/app/Modules/Checkout/Service/CheckoutService.php',
+    'VeciAhorra\\Modules\\Checkout\\Service\\CheckoutValidationService' => $baseDir . '/app/Modules/Checkout/Service/CheckoutValidationService.php',
     'VeciAhorra\\Modules\\Inventory\\Admin\\InventoryPage' => $baseDir . '/app/Modules/Inventory/Admin/InventoryPage.php',
     'VeciAhorra\\Modules\\Inventory\\Controllers\\InventoryController' => $baseDir . '/app/Modules/Inventory/Controllers/InventoryController.php',
     'VeciAhorra\\Modules\\Inventory\\Repositories\\InventoryLockRepository' => $baseDir . '/app/Modules/Inventory/Repositories/InventoryLockRepository.php',

@@ -9,13 +9,14 @@ namespace VeciAhorra\Modules\Checkout\Service;
  */
 final class CheckoutService
 {
+    public function __construct(
+        private CheckoutValidationService $validationService
+    ) {
+    }
+
     public function validate(array $payload): array
     {
-        return [
-            'valid' => true,
-            'status' => 'checkout_valid',
-            'message' => 'El checkout es valido a nivel basico.',
-        ];
+        return $this->validationService->validate($payload);
     }
 
     public function initialize(array $payload): array

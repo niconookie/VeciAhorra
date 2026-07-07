@@ -30,9 +30,11 @@ function assertCheckoutFoundationSame(mixed $expected, mixed $actual): void
 
 function checkoutFoundationRequest(
     string $route,
-    array $body
+    array $body,
+    string $sessionId = 'checkout-foundation-session'
 ): WP_REST_Response {
     $request = new WP_REST_Request('POST', $route);
+    $request->set_query_params(['session_id' => $sessionId]);
     $request->set_header('content-type', 'application/json');
     $request->set_body(wp_json_encode((object) $body));
 
@@ -96,12 +98,12 @@ $validated = checkoutFoundationRequest($validateRoute, []);
 assertCheckoutFoundationSame(200, $validated->get_status());
 assertCheckoutFoundationSame(true, $validated->get_data()['success'] ?? null);
 assertCheckoutFoundationSame(
-    true,
+    false,
     $validated->get_data()['data']['valid'] ?? null
 );
 assertCheckoutFoundationSame(
-    'checkout_valid',
-    $validated->get_data()['data']['status'] ?? null
+    'empty_cart',
+    $validated->get_data()['data']['errors'][0]['code'] ?? null
 );
 
 $initialized = checkoutFoundationRequest($checkoutRoute, []);

@@ -45,21 +45,36 @@ final class CheckoutRoutes
 
     public function validate(WP_REST_Request $request): WP_REST_Response
     {
+        $owner = $this->ownerOrError($request);
+
+        if ($owner instanceof WP_REST_Response) {
+            return $owner;
+        }
+
         $payload = $this->validatedPayload($request);
 
         return $payload instanceof WP_REST_Response
             ? $payload
-            : $this->response($this->controller->validate($payload));
+            : $this->response($this->controller->validate([
+                ...$payload,
+                ...$owner,
+            ]));
     }
 
     public function initialize(WP_REST_Request $request): WP_REST_Response
     {
+        $owner = $this->ownerOrError($request);
+
+        if ($owner instanceof WP_REST_Response) {
+            return $owner;
+        }
+
         $payload = $this->validatedPayload($request);
 
         return $payload instanceof WP_REST_Response
             ? $payload
             : $this->response(
-                $this->controller->initialize($payload),
+                $this->controller->initialize([...$payload, ...$owner]),
                 201
             );
     }
@@ -67,6 +82,40 @@ final class CheckoutRoutes
     public function canAccessCheckout(WP_REST_Request $request): bool
     {
         return true;
+    }
+
+    /** @return array{session_id: ?string, user_id: ?int}|WP_REST_Response */
+    private function ownerOrError(
+        WP_REST_Request $request
+    ): array|WP_REST_Response {
+        $userId = get_current_user_id();
+
+        if ($userId > 0) {
+            return ['session_id' => null, 'user_id' => $userId];
+        }
+
+        $sessionId = $request->get_query_params()['session_id'] ?? null;
+
+        if (! is_string($sessionId) || trim($sessionId) === '') {
+            $sessionId = $request->get_header(
+                'X-Veciahorra-Cart-Session'
+            );
+        }
+
+        if (! is_string($sessionId) || trim($sessionId) === '') {
+            return new WP_REST_Response([
+                'success' => false,
+                'error' => [
+                    'code' => 'checkout_identity_required',
+                    'message' => 'El checkout requiere una identidad.',
+                ],
+            ], 400);
+        }
+
+        return [
+            'session_id' => sanitize_text_field(trim($sessionId)),
+            'user_id' => null,
+        ];
     }
 
     /** @return array<string, never>|WP_REST_Response */
