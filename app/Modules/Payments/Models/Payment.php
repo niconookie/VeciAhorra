@@ -15,7 +15,8 @@ final class Payment
         public readonly string $status,
         public readonly ?string $provider,
         public readonly ?string $providerReference,
-        public readonly ?string $expiresAt
+        public readonly ?string $expiresAt,
+        public readonly string $createdAt
     ) {
     }
 
@@ -32,7 +33,8 @@ final class Payment
             isset($data['provider_reference'])
                 ? (string) $data['provider_reference']
                 : null,
-            isset($data['expires_at']) ? (string) $data['expires_at'] : null
+            isset($data['expires_at']) ? (string) $data['expires_at'] : null,
+            (string) $data['created_at']
         );
     }
 }

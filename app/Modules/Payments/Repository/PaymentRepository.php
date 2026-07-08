@@ -106,6 +106,41 @@ class PaymentRepository extends Repository
         return $this->findByProviderReferenceInternal($reference, true);
     }
 
+    /** @param list<int> $orderIds */
+    public function findByOrderIds(array $orderIds): ?array
+    {
+        if ($orderIds === []) {
+            return null;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($orderIds), '%d'));
+        $paymentIds = array_map(
+            'intval',
+            $this->db()->get_col($this->db()->prepare(
+                sprintf(
+                    'SELECT DISTINCT payment_id
+                     FROM %s
+                     WHERE order_id IN (%s)',
+                    $this->table(self::ORDERS_TABLE),
+                    $placeholders
+                ),
+                ...$orderIds
+            ))
+        );
+
+        if ($paymentIds === []) {
+            return null;
+        }
+
+        if (count($paymentIds) !== 1) {
+            throw new PersistenceException(
+                'Los pedidos pertenecen a pagos diferentes.'
+            );
+        }
+
+        return $this->find($paymentIds[0]);
+    }
+
     public function updateStatus(
         int $id,
         string $expectedStatus,
@@ -189,10 +224,27 @@ class PaymentRepository extends Repository
             'pending'
         ));
 
-        if ($result !== 1) {
+        if ($result === false) {
             throw new PersistenceException(
                 'No fue posible guardar la sesion de pago.'
             );
+        }
+
+        if ($result === 0) {
+            $stored = $this->find($id);
+
+            if (
+                $stored === null
+                || ($stored['status'] ?? null) !== 'pending'
+                || ($stored['provider'] ?? null) !== $provider
+                || ($stored['provider_reference'] ?? null)
+                    !== $providerReference
+                || ($stored['expires_at'] ?? null) !== $expiresAt
+            ) {
+                throw new PersistenceException(
+                    'No fue posible guardar la sesion de pago.'
+                );
+            }
         }
     }
 

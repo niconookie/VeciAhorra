@@ -203,9 +203,13 @@ class ReservationService
         }
 
         foreach ($reservations as $reservation) {
-            if (($reservation['status'] ?? null) !== 'active') {
+            if (
+                ($reservation['status'] ?? null) !== 'active'
+                || (string) $reservation['expires_at']
+                    <= current_time('mysql')
+            ) {
                 throw new InvalidArgumentException(
-                    'Todas las reservas deben estar activas.'
+                    'Todas las reservas deben estar activas y vigentes.'
                 );
             }
 

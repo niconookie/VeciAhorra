@@ -10,6 +10,8 @@ use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
 use VeciAhorra\Modules\Payments\Service\PaymentConfirmationService;
 use VeciAhorra\Modules\Payments\Service\PaymentService;
 use VeciAhorra\Modules\Payments\Service\PaymentSessionService;
+use VeciAhorra\Exceptions\PersistenceException;
+use VeciAhorra\Modules\Reservations\Service\ReservationService;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -95,7 +97,8 @@ try {
     $now = current_time('mysql');
     $makeOrder = static function (
         int $stock,
-        int $quantity
+        int $quantity,
+        int $customerId
     ) use (
         $inventoryRepository,
         $orderService,
@@ -115,7 +118,7 @@ try {
         $inventoryIds[] = $inventoryId;
         $inventory = $inventoryRepository->find($inventoryId);
         $order = $orderService->create([
-            'customer_id' => random_int(990000000, 999999999),
+            'customer_id' => $customerId,
             'minimarket_id' => (int) $inventory['minimarket_id'],
             'items' => [[
                 'product_id' => (int) $inventory['product_id'],
@@ -133,10 +136,11 @@ try {
         ];
     };
 
-    $first = $makeOrder(10, 2);
-    $second = $makeOrder(7, 3);
+    $successfulCustomerId = random_int(900000000, 909999999);
+    $first = $makeOrder(10, 2, $successfulCustomerId);
+    $second = $makeOrder(7, 3, $successfulCustomerId);
     $successfulPayment = $paymentService->create([
-        'customer_id' => random_int(900000000, 909999999),
+        'customer_id' => $successfulCustomerId,
         'amount' => '6250.00',
         'currency' => 'CLP',
         'provider' => null,
@@ -218,9 +222,10 @@ try {
         );
     }
 
-    $failedOrder = $makeOrder(9, 2);
+    $failedCustomerId = random_int(910000000, 919999999);
+    $failedOrder = $makeOrder(9, 2, $failedCustomerId);
     $failedPayment = $paymentService->create([
-        'customer_id' => random_int(910000000, 919999999),
+        'customer_id' => $failedCustomerId,
         'amount' => '2500.00',
         'currency' => 'CLP',
         'provider' => null,
@@ -263,6 +268,58 @@ try {
         (int) $wpdb->get_var($wpdb->prepare(
             "SELECT stock FROM {$inventoryTable} WHERE id = %d",
             $failedOrder['inventory_id']
+        ))
+    );
+
+    $failedAgain = paymentConfirmationRequest([
+        'provider' => 'dummy',
+        'provider_reference' => $failedReference,
+    ]);
+    assertPaymentConfirmationSame(200, $failedAgain->get_status());
+    assertPaymentConfirmationSame(
+        'failed',
+        $failedAgain->get_data()['data']['status'] ?? null
+    );
+    assertPaymentConfirmationSame(
+        0,
+        $failedAgain->get_data()['data']['orders_updated'] ?? null
+    );
+
+    $persistenceCustomerId = random_int(920000000, 929999999);
+    $persistenceOrder = $makeOrder(6, 1, $persistenceCustomerId);
+    $failingRepository = new class extends PaymentRepository {
+        public function attachOrders(
+            int $paymentId,
+            array $orderIds,
+            string $createdAt
+        ): void {
+            throw new PersistenceException(
+                'Fallo de asociacion de pago simulado.'
+            );
+        }
+    };
+    $failingService = new PaymentService(
+        $failingRepository,
+        new OrderService(),
+        new ReservationService()
+    );
+
+    try {
+        $failingService->create([
+            'customer_id' => $persistenceCustomerId,
+            'amount' => '1250.00',
+            'currency' => 'CLP',
+            'provider' => null,
+            'order_ids' => [(int) $persistenceOrder['order']['id']],
+        ]);
+        throw new RuntimeException('Se esperaba fallo creando Payment.');
+    } catch (PersistenceException) {
+    }
+    assertPaymentConfirmationSame(
+        0,
+        (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$paymentsTable} WHERE customer_id = %d",
+            $persistenceCustomerId
         ))
     );
 

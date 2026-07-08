@@ -10,6 +10,8 @@ use VeciAhorra\Modules\Payments\Models\Payment;
 use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
 use VeciAhorra\Modules\Payments\Service\PaymentService;
 use VeciAhorra\Modules\Payments\Service\PaymentSessionService;
+use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
+use VeciAhorra\Modules\Orders\Services\OrderService;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -86,6 +88,39 @@ $transaction = $wpdb->query('START TRANSACTION');
 assertPaymentSession($transaction !== false, 'No se inicio transaccion.');
 
 try {
+    $inventoryRepository = new InventoryRepository();
+    $orderService = new OrderService();
+    $now = current_time('mysql');
+    $makeOrder = static function (
+        int $customerId,
+        int $token,
+        float $price
+    ) use ($inventoryRepository, $orderService, $now): int {
+        $inventoryId = $inventoryRepository->create([
+            'product_id' => $token,
+            'minimarket_id' => $token + 100,
+            'price' => $price,
+            'stock' => 2,
+            'status' => 'active',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return (int) $orderService->create([
+            'customer_id' => $customerId,
+            'minimarket_id' => $token + 100,
+            'items' => [[
+                'product_id' => $token,
+                'inventory_id' => $inventoryId,
+                'quantity' => 1,
+                'unit_price' => $price,
+            ]],
+        ])['id'];
+    };
+    $customerId = random_int(930000000, 939999999);
+    $orderId = $makeOrder($customerId, 830000001, 4500.0);
+    $otherCustomerId = random_int(950000000, 959999999);
+    $otherOrderId = $makeOrder($otherCustomerId, 830000002, 1000.0);
     $ordersBefore = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$ordersTable}");
     $reservationsBefore = (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$reservationsTable}"
@@ -94,11 +129,11 @@ try {
         "SELECT COALESCE(SUM(stock), 0) FROM {$inventoryTable}"
     );
     $payment = $paymentService->create([
-        'customer_id' => random_int(930000000, 939999999),
+        'customer_id' => $customerId,
         'amount' => '4500.00',
         'currency' => 'CLP',
         'provider' => null,
-        'order_ids' => [random_int(940000000, 949999999)],
+        'order_ids' => [$orderId],
     ]);
     $paymentId = (int) $payment['id'];
 
@@ -141,9 +176,9 @@ try {
     );
 
     $second = $sessionService->create($paymentId);
-    assertPaymentSession(
-        $second['provider_reference'] !== $first['provider_reference'],
-        'Dos sesiones deben tener referencias unicas.'
+    assertPaymentSessionSame(
+        $first['provider_reference'],
+        $second['provider_reference']
     );
     assertPaymentSessionSame(
         $second['provider_reference'],
@@ -168,11 +203,11 @@ try {
     );
 
     $nonPending = $paymentService->create([
-        'customer_id' => random_int(950000000, 959999999),
+        'customer_id' => $otherCustomerId,
         'amount' => '1000.00',
         'currency' => 'CLP',
         'provider' => null,
-        'order_ids' => [random_int(960000000, 969999999)],
+        'order_ids' => [$otherOrderId],
     ]);
     $wpdb->update(
         $paymentsTable,

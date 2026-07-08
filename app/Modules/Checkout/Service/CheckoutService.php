@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Checkout\Service;
 
 use Throwable;
+use VeciAhorra\Modules\Cart\Service\CartService;
 use VeciAhorra\Modules\Orders\Services\OrderService;
 use VeciAhorra\Modules\Reservations\Service\ReservationService;
 
@@ -13,11 +14,17 @@ use VeciAhorra\Modules\Reservations\Service\ReservationService;
  */
 final class CheckoutService
 {
+    private CartService $cartService;
+
     public function __construct(
         private CheckoutValidationService $validationService,
         private ReservationService $reservationService,
-        private OrderService $orderService
+        private OrderService $orderService,
+        ?CartService $cartService = null
     ) {
+        $this->cartService = $cartService ?? new CartService(
+            new \VeciAhorra\Modules\Cart\Repository\CartRepository()
+        );
     }
 
     public function validate(array $payload): array
@@ -90,6 +97,8 @@ final class CheckoutService
                 }
                 unset($reservation);
             }
+
+            $this->cartService->clearCart($payload);
         } catch (Throwable $exception) {
             try {
                 $this->orderService->cancelOrders(array_map(

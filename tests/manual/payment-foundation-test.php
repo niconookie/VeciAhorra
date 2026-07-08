@@ -8,6 +8,8 @@ use VeciAhorra\Database\MigrationManager;
 use VeciAhorra\Database\Migrations\CreatePaymentsTables;
 use VeciAhorra\Modules\Payments\Requests\PaymentRequest;
 use VeciAhorra\Modules\Payments\Routes\PaymentRoutes;
+use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
+use VeciAhorra\Modules\Orders\Services\OrderService;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -246,6 +248,34 @@ $transaction = $wpdb->query('START TRANSACTION');
 assertPaymentFoundation($transaction !== false, 'No se inicio transaccion.');
 
 try {
+    $inventoryRepository = new InventoryRepository();
+    $orderService = new OrderService();
+    $now = current_time('mysql');
+    $orderIds = [];
+
+    foreach ([5000.0, 10000.0] as $index => $price) {
+        $inventoryId = $inventoryRepository->create([
+            'product_id' => 810000000 + $index,
+            'minimarket_id' => 820000000 + $index,
+            'price' => $price,
+            'stock' => 2,
+            'status' => 'active',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        $order = $orderService->create([
+            'customer_id' => 77,
+            'minimarket_id' => 820000000 + $index,
+            'items' => [[
+                'product_id' => 810000000 + $index,
+                'inventory_id' => $inventoryId,
+                'quantity' => 1,
+                'unit_price' => $price,
+            ]],
+        ]);
+        $orderIds[] = (int) $order['id'];
+    }
+
     $ordersBefore = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$ordersTable}");
     $reservationsBefore = (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$reservationsTable}"
@@ -253,10 +283,6 @@ try {
     $stockBefore = (string) $wpdb->get_var(
         "SELECT COALESCE(SUM(stock), 0) FROM {$inventoryTable}"
     );
-    $orderIds = [
-        random_int(910000000, 919999999),
-        random_int(920000000, 929999999),
-    ];
     $created = paymentRequest('POST', $collection, [
         'customer_id' => 77,
         'amount' => 15000,

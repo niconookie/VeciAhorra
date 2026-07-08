@@ -12,7 +12,7 @@ final class DummyPaymentGateway implements PaymentGatewayInterface
     public function createPaymentSession(Payment $payment): array
     {
         $reference = 'DUMMY-' . strtoupper(substr(
-            str_replace('-', '', wp_generate_uuid4()),
+            hash('sha256', $payment->paymentReference),
             0,
             8
         ));
@@ -21,7 +21,10 @@ final class DummyPaymentGateway implements PaymentGatewayInterface
             'provider' => $this->getProviderName(),
             'provider_reference' => $reference,
             'payment_url' => 'https://dummy.veciahorra/pay/' . $reference,
-            'expires_at' => current_datetime()
+            'expires_at' => (new \DateTimeImmutable(
+                $payment->createdAt,
+                wp_timezone()
+            ))
                 ->modify('+15 minutes')
                 ->format('Y-m-d\TH:i:s'),
         ];
