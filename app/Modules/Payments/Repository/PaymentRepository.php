@@ -141,6 +141,22 @@ class PaymentRepository extends Repository
         return $this->find($paymentIds[0]);
     }
 
+    public function findByOrderId(int $orderId): ?array
+    {
+        $paymentId = $this->db()->get_var($this->db()->prepare(
+            sprintf(
+                'SELECT payment_id
+                 FROM %s
+                 WHERE order_id = %%d
+                 LIMIT 1',
+                $this->table(self::ORDERS_TABLE)
+            ),
+            $orderId
+        ));
+
+        return $paymentId === null ? null : $this->find((int) $paymentId);
+    }
+
     public function updateStatus(
         int $id,
         string $expectedStatus,

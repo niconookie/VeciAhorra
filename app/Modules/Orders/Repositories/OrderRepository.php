@@ -96,6 +96,69 @@ class OrderRepository extends Repository
         return $row === null ? null : $row;
     }
 
+    public function findForCustomer(int $id, int $customerId): ?array
+    {
+        $row = $this->db()->get_row(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT *
+                     FROM %s
+                     WHERE id = %%d
+                       AND customer_id = %%d
+                     LIMIT 1',
+                    $this->table(self::ORDERS_TABLE)
+                ),
+                $id,
+                $customerId
+            ),
+            ARRAY_A
+        );
+
+        return $row === null ? null : $row;
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function findItems(int $orderId): array
+    {
+        return $this->db()->get_results(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT oi.*,
+                            p.name AS product_name,
+                            p.slug AS product_slug,
+                            p.sku AS product_sku
+                     FROM %s oi
+                     LEFT JOIN %s p ON p.id = oi.product_id
+                     WHERE oi.order_id = %%d
+                     ORDER BY oi.id ASC',
+                    $this->table(self::ITEMS_TABLE),
+                    $this->table('products')
+                ),
+                $orderId
+            ),
+            ARRAY_A
+        );
+    }
+
+    public function findSeller(int $minimarketId): ?array
+    {
+        $row = $this->db()->get_row(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT id, business_name
+                     FROM %s
+                     WHERE id = %%d
+                     LIMIT 1',
+                    $this->table('stores')
+                ),
+                $minimarketId
+            ),
+            ARRAY_A
+        );
+
+        return $row === null ? null : $row;
+    }
+
     public function delete(int $id): void
     {
         $itemsResult = $this->db()->delete(
