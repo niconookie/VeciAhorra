@@ -1,0 +1,72 @@
+name: Solicitud de funcionalidad
+description: Propón una mejora alineada con el producto y sus módulos.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por contribuir. Busca issues similares antes de enviar la propuesta y evita incluir datos personales o secretos.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema u oportunidad
+      description: Describe la necesidad y quién se beneficia; no anticipes todavía la solución.
+      placeholder: Como cliente u operador, necesito...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Solución propuesta
+      description: Explica el comportamiento esperado y el alcance mínimo útil.
+    validations:
+      required: true
+  - type: dropdown
+    id: module
+    attributes:
+      label: Módulo principal
+      options:
+        - Core / Database / Admin
+        - Stores
+        - Products / ProductCatalogs
+        - Inventory
+        - Cart / Checkout
+        - Reservations / Orders
+        - Payments
+        - CustomerPanel
+        - Delivery
+        - Documentación / Tooling
+        - No determinado
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Criterios de aceptación
+      description: Enumera resultados observables que permitan verificar la funcionalidad.
+      placeholder: |
+        - [ ] Dado..., cuando..., entonces...
+        - [ ] Los reintentos no duplican...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+      description: Indica soluciones temporales o enfoques descartados y por qué.
+  - type: textarea
+    id: risks
+    attributes:
+      label: Riesgos, dependencias y contexto adicional
+      description: Incluye compatibilidad, migraciones, seguridad, privacidad, capturas o referencias.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Confirmaciones
+      options:
+        - label: Busqué issues existentes y no encontré una propuesta equivalente.
+          required: true
+        - label: Esta solicitud no contiene credenciales, secretos ni datos personales.
+          required: true

@@ -1,0 +1,76 @@
+name: Preparación de release
+description: Coordina criterios, evidencias y responsabilidades de una publicación.
+title: "[Release]: v"
+labels:
+  - release
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Versión objetivo
+      placeholder: 1.0.0-beta.1
+    validations:
+      required: true
+  - type: dropdown
+    id: channel
+    attributes:
+      label: Canal
+      options:
+        - Alpha
+        - Beta
+        - Release candidate
+        - Stable
+        - Patch de stable
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Commit o rama candidata
+      placeholder: hash, rama o etiqueta inmutable
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Alcance y cambios relevantes
+      description: Resume funcionalidades, correcciones, migraciones y cambios incompatibles incluidos.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Plan y evidencia de validación
+      description: Incluye pruebas, matriz de compatibilidad, seguridad y enlaces a ejecuciones.
+      placeholder: |
+        - [ ] Paquete reproducible
+        - [ ] Pruebas y regresión del canal
+        - [ ] Instalación y actualización
+        - [ ] Auditoría de dependencias y seguridad
+    validations:
+      required: true
+  - type: textarea
+    id: operations
+    attributes:
+      label: Despliegue, monitoreo y rollback
+      description: Define responsables, puntos de control, señales de salud y condición de reversión.
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Riesgos y defectos conocidos
+      description: Enlaza riesgos aceptados, mitigaciones y responsables.
+  - type: checkboxes
+    id: readiness
+    attributes:
+      label: Checklist de preparación
+      options:
+        - label: Los criterios del canal definidos en `docs/release-strategy.md` están cumplidos o tienen excepción aprobada.
+          required: true
+        - label: El CHANGELOG y las notas de release están actualizados.
+          required: true
+        - label: Las migraciones y el rollback fueron evaluados.
+          required: true
+        - label: Existe una decisión go/no-go registrada antes de publicar.
+          required: true

@@ -1,0 +1,83 @@
+name: Reporte de error
+description: Informa un comportamiento reproducible que no funciona como se espera.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        No publiques vulnerabilidades aquí. Repórtalas de forma privada según `.github/SECURITY.md`.
+  - type: textarea
+    id: description
+    attributes:
+      label: Descripción
+      description: Explica qué ocurrió, qué esperabas y el impacto observado.
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severidad percibida
+      options:
+        - Crítica — pérdida de datos, seguridad o compras bloqueadas
+        - Alta — función principal inutilizable sin alternativa
+        - Media — degradación con alternativa disponible
+        - Baja — problema menor o visual
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducir
+      placeholder: |
+        1. Con el usuario o rol...
+        2. Ir a...
+        3. Ejecutar...
+        4. Observar...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Resultado esperado
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Resultado actual
+      description: Incluye mensajes exactos y logs sanitizados cuando sea posible.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versión o commit de VeciAhorra
+      placeholder: 0.3.0 o hash del commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Entorno
+      description: Indica versiones de WordPress, WooCommerce, PHP, base de datos, navegador y sistema operativo aplicables.
+      placeholder: WordPress 6.x; WooCommerce x.x; PHP 8.2; MariaDB x.x
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidencia y contexto adicional
+      description: Adjunta capturas sin datos sensibles, frecuencia, regresión conocida y mitigación temporal.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Confirmaciones
+      options:
+        - label: Puedo reproducir el problema con los pasos indicados.
+          required: true
+        - label: Busqué reportes equivalentes antes de crear este issue.
+          required: true
+        - label: Eliminé credenciales, secretos y datos personales de la evidencia.
+          required: true

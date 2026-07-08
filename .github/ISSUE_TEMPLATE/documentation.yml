@@ -1,0 +1,55 @@
+name: Mejora de documentación
+description: Reporta contenido ausente, incorrecto, confuso o desactualizado.
+title: "[Docs]: "
+labels:
+  - documentation
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Tipo de mejora
+      options:
+        - Contenido incorrecto
+        - Contenido desactualizado
+        - Instrucción confusa
+        - Información faltante
+        - Enlace roto
+        - Ejemplo o formato
+    validations:
+      required: true
+  - type: input
+    id: location
+    attributes:
+      label: Ubicación
+      description: Indica el archivo, sección o enlace afectado.
+      placeholder: docs/archivo.md — sección «Nombre»
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: Problema
+      description: Explica por qué el contenido actual impide o dificulta completar una tarea.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Cambio propuesto
+      description: Sugiere el contenido o estructura que resolvería el problema.
+    validations:
+      required: true
+  - type: textarea
+    id: audience
+    attributes:
+      label: Audiencia y contexto
+      description: Indica si afecta a usuarios, contribuyentes, operación o seguridad y agrega referencias útiles.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Confirmaciones
+      options:
+        - label: Verifiqué que la mejora no está cubierta por otra fuente canónica del repositorio.
+          required: true
+        - label: Revisé que no exista un issue equivalente.
+          required: true
