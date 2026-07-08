@@ -9,6 +9,7 @@ use VeciAhorra\Database\Migrations\CreateInventoryTable;
 use VeciAhorra\Database\Migrations\CreateOrdersTables;
 use VeciAhorra\Database\Migrations\CreateReservationsTable;
 use VeciAhorra\Database\Migrations\CreateCartItemsTable;
+use VeciAhorra\Database\Migrations\CreatePaymentsTables;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -65,7 +66,10 @@ final class MigrationManager
     }
 
     /**
-     * @return list<CreateInventoryTable|CreateOrdersTables|CreateReservationsTable|CreateCartItemsTable>
+     * @return list<
+     *     CreateInventoryTable|CreateOrdersTables|CreateReservationsTable|
+     *     CreateCartItemsTable|CreatePaymentsTables
+     * >
      */
     private static function migrations(): array
     {
@@ -74,6 +78,7 @@ final class MigrationManager
             new CreateOrdersTables(),
             new CreateReservationsTable(),
             new CreateCartItemsTable(),
+            new CreatePaymentsTables(),
         ];
     }
 }
