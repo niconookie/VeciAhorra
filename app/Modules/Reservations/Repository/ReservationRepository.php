@@ -94,6 +94,42 @@ class ReservationRepository extends Repository
         }
     }
 
+    /** @param list<int> $ids */
+    public function assignOrder(
+        array $ids,
+        int $orderId,
+        string $updatedAt
+    ): void {
+        if ($ids === []) {
+            return;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '%d'));
+        $sql = sprintf(
+            'UPDATE %s
+             SET order_id = %%d,
+                 updated_at = %%s
+             WHERE id IN (%s)
+               AND order_id IS NULL',
+            $this->table(self::TABLE),
+            $placeholders
+        );
+        $result = $this->db()->query(
+            $this->db()->prepare(
+                $sql,
+                $orderId,
+                $updatedAt,
+                ...$ids
+            )
+        );
+
+        if ($result === false || $result !== count($ids)) {
+            throw new PersistenceException(
+                'No fue posible asociar las reservas al pedido.'
+            );
+        }
+    }
+
     /** @return list<array<string, mixed>> */
     public function findExpiredActive(string $now): array
     {

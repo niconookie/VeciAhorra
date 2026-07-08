@@ -10,6 +10,8 @@ use VeciAhorra\Modules\Cart\Service\CartService;
 use VeciAhorra\Modules\Checkout\Service\CheckoutService;
 use VeciAhorra\Modules\Checkout\Service\CheckoutValidationService;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
+use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
+use VeciAhorra\Modules\Orders\Services\OrderService;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
 use VeciAhorra\Modules\Reservations\Repository\ReservationRepository;
@@ -48,6 +50,7 @@ $validationService = (new Container())->make(
 );
 $inventoryTable = $wpdb->prefix . Config::TABLE_PREFIX . 'inventory';
 $ordersTable = $wpdb->prefix . Config::TABLE_PREFIX . 'orders';
+$orderItemsTable = $wpdb->prefix . Config::TABLE_PREFIX . 'order_items';
 $reservationsTable = $wpdb->prefix . Config::TABLE_PREFIX . 'reservations';
 $transaction = $wpdb->query('START TRANSACTION');
 assertCheckoutReservation($transaction !== false, 'No se inicio transaccion.');
@@ -173,16 +176,22 @@ try {
     $secondProductId = $makeProduct();
     $firstInventoryId = $makeInventory($firstProductId, 1000.0, 5);
     $secondInventoryId = $makeInventory($secondProductId, 750.0, 4);
-    $successSession = 'success-checkout-' . bin2hex(random_bytes(8));
-    $successOwner = ['session_id' => $successSession, 'user_id' => null];
+    $administratorIds = get_users([
+        'role' => 'administrator',
+        'number' => 1,
+        'fields' => 'ids',
+    ]);
+    assertCheckoutReservation($administratorIds !== [], 'Falta administrador.');
+    $customerId = (int) $administratorIds[0];
+    $successOwner = ['session_id' => null, 'user_id' => $customerId];
     $cartService->addItem($successOwner, $firstInventoryId, 2);
     $cartService->addItem($successOwner, $secondInventoryId, 1);
     $ordersBefore = (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$ordersTable}"
     );
 
+    wp_set_current_user($customerId);
     $request = new WP_REST_Request('POST', '/veciahorra/v1/checkout');
-    $request->set_query_params(['session_id' => $successSession]);
     $request->set_header('content-type', 'application/json');
     $request->set_body('{}');
     $response = rest_do_request($request);
@@ -191,18 +200,49 @@ try {
     assertCheckoutReservationSame(201, $response->get_status());
     assertCheckoutReservationSame(true, $success['valid']);
     assertCheckoutReservationSame(true, $success['reservation_created']);
+    assertCheckoutReservationSame(true, $success['order_created']);
+    assertCheckoutReservationSame(2, count($success['orders']));
     assertCheckoutReservationSame(2, count($success['reservations']));
     assertCheckoutReservationSame('2750.00', $success['summary']['total']);
     assertCheckoutReservationSame(3, $stock($firstInventoryId));
     assertCheckoutReservationSame(3, $stock($secondInventoryId));
     assertCheckoutReservationSame(
-        $ordersBefore,
+        $ordersBefore + 2,
         (int) $wpdb->get_var("SELECT COUNT(*) FROM {$ordersTable}")
     );
 
+    foreach ($success['orders'] as $order) {
+        assertCheckoutReservationSame('reserved', $order['status']);
+        assertCheckoutReservationSame(1, count($order['items']));
+        $item = $order['items'][0];
+        $persistedItem = $wpdb->get_row($wpdb->prepare(
+            "SELECT unit_price, subtotal
+             FROM {$orderItemsTable}
+             WHERE order_id = %d AND inventory_id = %d",
+            (int) $order['id'],
+            (int) $item['inventory_id']
+        ), ARRAY_A);
+        assertCheckoutReservation(is_array($persistedItem), 'Falta order_item.');
+        assertCheckoutReservationSame(
+            number_format((float) $item['unit_price'], 2, '.', ''),
+            number_format((float) $persistedItem['unit_price'], 2, '.', '')
+        );
+        assertCheckoutReservationSame(
+            number_format((float) $item['subtotal'], 2, '.', ''),
+            number_format((float) $persistedItem['subtotal'], 2, '.', '')
+        );
+        assertCheckoutReservationSame(
+            number_format((float) $item['subtotal'], 2, '.', ''),
+            number_format((float) $order['total'], 2, '.', '')
+        );
+    }
+
     foreach ($success['reservations'] as $reservation) {
         assertCheckoutReservationSame('active', $reservation['status']);
-        assertCheckoutReservationSame(null, $reservation['order_id']);
+        assertCheckoutReservation(
+            (int) $reservation['order_id'] > 0,
+            'La reserva no fue asociada al pedido.'
+        );
         assertCheckoutReservationSame(
             15 * MINUTE_IN_SECONDS,
             strtotime($reservation['expires_at'])
@@ -227,8 +267,8 @@ try {
         7
     );
     $rollbackOwner = [
-        'session_id' => 'rollback-checkout-' . bin2hex(random_bytes(8)),
-        'user_id' => null,
+        'session_id' => null,
+        'user_id' => $customerId,
     ];
     $cartService->addItem($rollbackOwner, $rollbackFirstInventory, 2);
     $cartService->addItem($rollbackOwner, $rollbackSecondInventory, 3);
@@ -250,7 +290,8 @@ try {
     };
     $failingCheckout = new CheckoutService(
         $validationService,
-        new ReservationService($failingRepository)
+        new ReservationService($failingRepository),
+        (new Container())->make(OrderService::class)
     );
 
     try {
@@ -273,8 +314,116 @@ try {
         ])
     );
     assertCheckoutReservationSame(
-        $ordersBefore,
+        $ordersBefore + 2,
         (int) $wpdb->get_var("SELECT COUNT(*) FROM {$ordersTable}")
+    );
+
+    $makeOrderFailureScenario = static function (
+        int $customerId,
+        OrderRepository $orderRepository,
+        int $numberOfItems
+    ) use (
+        $cartService,
+        $validationService,
+        $makeProduct,
+        $makeInventory,
+        $stock,
+        $reservationCount,
+        $wpdb,
+        $ordersTable,
+        $orderItemsTable
+    ): void {
+        $owner = ['session_id' => null, 'user_id' => $customerId];
+        $inventoryIds = [];
+        $stocks = [];
+        $orphanItemsBefore = (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$orderItemsTable} oi
+             LEFT JOIN {$ordersTable} o ON o.id = oi.order_id
+             WHERE o.id IS NULL"
+        );
+
+        for ($index = 0; $index < $numberOfItems; $index++) {
+            $inventoryId = $makeInventory(
+                $makeProduct(),
+                225.0 + $index,
+                8 + $index
+            );
+            $inventoryIds[] = $inventoryId;
+            $stocks[$inventoryId] = 8 + $index;
+            $cartService->addItem($owner, $inventoryId, 2);
+        }
+
+        $failingCheckout = new CheckoutService(
+            $validationService,
+            new ReservationService(),
+            new OrderService($orderRepository)
+        );
+
+        try {
+            $failingCheckout->initialize($owner);
+            throw new RuntimeException('Se esperaba fallo creando pedido.');
+        } catch (RuntimeException $exception) {
+            assertCheckoutReservation(
+                $exception->getPrevious() instanceof PersistenceException,
+                'No se conservo la causa del fallo de pedido.'
+            );
+        }
+
+        foreach ($stocks as $inventoryId => $expectedStock) {
+            assertCheckoutReservationSame($expectedStock, $stock($inventoryId));
+        }
+        assertCheckoutReservationSame(0, $reservationCount($inventoryIds));
+        assertCheckoutReservationSame(
+            0,
+            (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$ordersTable} WHERE customer_id = %d",
+                $customerId
+            ))
+        );
+        assertCheckoutReservationSame(
+            $orphanItemsBefore,
+            (int) $wpdb->get_var(
+                "SELECT COUNT(*) FROM {$orderItemsTable} oi
+                 LEFT JOIN {$ordersTable} o ON o.id = oi.order_id
+                 WHERE o.id IS NULL"
+            )
+        );
+    };
+
+    $firstOrderFailureRepository = new class extends OrderRepository {
+        public function createItems(int $orderId, array $items): void
+        {
+            throw new PersistenceException(
+                'Fallo de order_items simulado.'
+            );
+        }
+    };
+    $makeOrderFailureScenario(
+        random_int(700000000, 799999999),
+        $firstOrderFailureRepository,
+        1
+    );
+
+    $secondOrderFailureRepository = new class extends OrderRepository {
+        private int $attempts = 0;
+
+        public function create(array $order): int
+        {
+            $this->attempts++;
+
+            if ($this->attempts === 2) {
+                throw new PersistenceException(
+                    'Fallo de segundo pedido simulado.'
+                );
+            }
+
+            return parent::create($order);
+        }
+    };
+    $makeOrderFailureScenario(
+        random_int(800000000, 899999999),
+        $secondOrderFailureRepository,
+        2
     );
 
     $checkoutSource = file_get_contents(
@@ -282,7 +431,6 @@ try {
     );
     assertCheckoutReservation(
         is_string($checkoutSource)
-        && ! str_contains($checkoutSource, 'OrderService')
         && ! str_contains($checkoutSource, 'commitStock')
         && ! str_contains($checkoutSource, '$wpdb'),
         'CheckoutService contiene integraciones fuera de alcance.'
@@ -290,5 +438,6 @@ try {
 
     echo "PASS checkout-reservation-integration-test\n";
 } finally {
+    wp_set_current_user(0);
     $wpdb->query('ROLLBACK');
 }

@@ -160,6 +160,35 @@ class ReservationService
         return $created;
     }
 
+    /** @param list<int> $reservationIds */
+    public function assignToOrder(
+        int $orderId,
+        array $reservationIds
+    ): void {
+        $this->assertPositive($orderId, 'order_id');
+        $this->repository->assignOrder(
+            $reservationIds,
+            $orderId,
+            current_time('mysql')
+        );
+    }
+
+    /**
+     * @param list<array<string, mixed>> $reservations
+     * @param list<array<string, mixed>> $items
+     */
+    public function cancelCheckout(
+        array $reservations,
+        array $items
+    ): void {
+        $this->releaseItems($items);
+        $this->repository->deleteByIds(array_map(
+            static fn (array $reservation): int =>
+                (int) $reservation['id'],
+            $reservations
+        ));
+    }
+
     /** @param list<array<string, mixed>> $items */
     public function cancelOrder(int $orderId, array $items): void
     {

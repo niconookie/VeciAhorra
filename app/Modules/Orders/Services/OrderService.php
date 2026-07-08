@@ -181,6 +181,84 @@ final class OrderService
         ];
     }
 
+    /**
+     * Persiste un pedido para items cuyo stock ya fue reservado.
+     *
+     * @return array<string, mixed>
+     */
+    public function createFromReservedItems(
+        int $customerId,
+        int $minimarketId,
+        array $items,
+        string $total,
+        string $expiresAt
+    ): array {
+        if ($customerId <= 0 || $minimarketId <= 0 || $items === []) {
+            throw new InvalidArgumentException(
+                'El pedido reservado contiene datos invalidos.'
+            );
+        }
+
+        $now = current_time('mysql');
+        $preparedItems = array_map(
+            static fn (array $item): array => [
+                'product_id' => (int) $item['product_id'],
+                'inventory_id' => (int) $item['inventory_id'],
+                'quantity' => (int) $item['quantity'],
+                'unit_price' => (string) $item['unit_price_snapshot'],
+                'subtotal' => (string) $item['subtotal'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            $items
+        );
+        $order = [
+            'customer_id' => $customerId,
+            'minimarket_id' => $minimarketId,
+            'total' => $total,
+            'status' => 'reserved',
+            'reservation_expires_at' => $expiresAt,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+        $orderId = null;
+
+        try {
+            $orderId = $this->repository->create($order);
+            $this->repository->createItems($orderId, $preparedItems);
+        } catch (PersistenceException $exception) {
+            if ($orderId !== null) {
+                $this->repository->delete($orderId);
+            }
+
+            throw new RuntimeException(
+                'No fue posible crear el pedido reservado.',
+                0,
+                $exception
+            );
+        }
+
+        $created = $this->repository->find($orderId);
+
+        if ($created === null) {
+            $this->repository->delete($orderId);
+
+            throw new RuntimeException(
+                'No fue posible recuperar el pedido reservado.'
+            );
+        }
+
+        return [...$created, 'items' => $preparedItems];
+    }
+
+    /** @param list<int> $orderIds */
+    public function cancelOrders(array $orderIds): void
+    {
+        foreach (array_reverse($orderIds) as $orderId) {
+            $this->repository->delete($orderId);
+        }
+    }
+
     /** @param list<array<string, mixed>> $lockedItems */
     private function cleanupFailedOrder(
         ?int $orderId,
