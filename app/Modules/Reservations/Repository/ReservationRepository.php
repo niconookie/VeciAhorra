@@ -70,6 +70,30 @@ class ReservationRepository extends Repository
         }
     }
 
+    /** @param list<int> $ids */
+    public function deleteByIds(array $ids): void
+    {
+        if ($ids === []) {
+            return;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '%d'));
+        $sql = sprintf(
+            'DELETE FROM %s WHERE id IN (%s)',
+            $this->table(self::TABLE),
+            $placeholders
+        );
+        $result = $this->db()->query(
+            $this->db()->prepare($sql, ...$ids)
+        );
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible eliminar las reservas incompletas.'
+            );
+        }
+    }
+
     /** @return list<array<string, mixed>> */
     public function findExpiredActive(string $now): array
     {

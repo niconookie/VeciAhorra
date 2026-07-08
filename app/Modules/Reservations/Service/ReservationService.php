@@ -126,6 +126,40 @@ class ReservationService
         return $created;
     }
 
+    /**
+     * Bloquea y crea reservas pre-order para todos los items del checkout.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function createForCheckout(array $items): array
+    {
+        $locked = $this->lockItems($items);
+        $created = [];
+
+        try {
+            foreach ($locked as $item) {
+                $created[] = $this->persist([
+                    'order_id' => null,
+                    'inventory_id' => $item['inventory_id'] ?? null,
+                    'product_id' => $item['product_id'] ?? null,
+                    'minimarket_id' => $item['minimarket_id'] ?? null,
+                    'quantity' => $item['quantity'] ?? null,
+                ]);
+            }
+        } catch (Throwable $exception) {
+            $this->releaseItems($locked);
+            $this->repository->deleteByIds(array_map(
+                static fn (array $reservation): int =>
+                    (int) $reservation['id'],
+                $created
+            ));
+
+            throw $exception;
+        }
+
+        return $created;
+    }
+
     /** @param list<array<string, mixed>> $items */
     public function cancelOrder(int $orderId, array $items): void
     {
@@ -161,8 +195,14 @@ class ReservationService
     /** @return array<string, mixed> */
     private function persist(array $data): array
     {
-        foreach (['order_id', 'inventory_id', 'product_id', 'minimarket_id', 'quantity'] as $field) {
+        foreach (['inventory_id', 'product_id', 'minimarket_id', 'quantity'] as $field) {
             $this->assertPositive($data[$field] ?? null, $field);
+        }
+
+        $orderId = $data['order_id'] ?? null;
+
+        if ($orderId !== null) {
+            $this->assertPositive($orderId, 'order_id');
         }
 
         $status = $data['status'] ?? 'active';
@@ -170,7 +210,7 @@ class ReservationService
         $reservedAt = current_datetime();
         $reservedAtSql = $reservedAt->format('Y-m-d H:i:s');
         $payload = [
-            'order_id' => (int) $data['order_id'],
+            'order_id' => $orderId === null ? null : (int) $orderId,
             'inventory_id' => (int) $data['inventory_id'],
             'product_id' => (int) $data['product_id'],
             'minimarket_id' => (int) $data['minimarket_id'],

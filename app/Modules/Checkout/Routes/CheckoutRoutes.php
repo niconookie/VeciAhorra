@@ -71,12 +71,17 @@ final class CheckoutRoutes
 
         $payload = $this->validatedPayload($request);
 
-        return $payload instanceof WP_REST_Response
-            ? $payload
-            : $this->response(
-                $this->controller->initialize([...$payload, ...$owner]),
-                201
-            );
+        if ($payload instanceof WP_REST_Response) {
+            return $payload;
+        }
+
+        $result = $this->controller->initialize([...$payload, ...$owner]);
+        $status = ($result['success'] ?? false) === true
+            && ($result['data']['reservation_created'] ?? false) === true
+                ? 201
+                : 200;
+
+        return $this->response($result, $status);
     }
 
     public function canAccessCheckout(WP_REST_Request $request): bool

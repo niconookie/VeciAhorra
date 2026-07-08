@@ -18,7 +18,7 @@ final class ReservationSchema implements TableInterface
     {
         $table
             ->id()
-            ->bigIntegerUnsigned('order_id')
+            ->bigIntegerUnsigned('order_id')->nullable()
             ->bigIntegerUnsigned('inventory_id')
             ->bigIntegerUnsigned('product_id')
             ->bigIntegerUnsigned('minimarket_id')

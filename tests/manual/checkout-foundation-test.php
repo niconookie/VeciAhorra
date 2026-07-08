@@ -107,14 +107,14 @@ assertCheckoutFoundationSame(
 );
 
 $initialized = checkoutFoundationRequest($checkoutRoute, []);
-assertCheckoutFoundationSame(201, $initialized->get_status());
+assertCheckoutFoundationSame(200, $initialized->get_status());
 assertCheckoutFoundationSame(
-    true,
-    $initialized->get_data()['data']['initialized'] ?? null
+    false,
+    $initialized->get_data()['data']['valid'] ?? null
 );
 assertCheckoutFoundationSame(
-    'checkout_initialized',
-    $initialized->get_data()['data']['status'] ?? null
+    false,
+    $initialized->get_data()['data']['reservation_created'] ?? null
 );
 
 foreach ([$validateRoute, $checkoutRoute] as $route) {
@@ -168,7 +168,6 @@ assertCheckoutFoundation(
     ! str_contains($moduleSource, '$wpdb')
     && ! str_contains($moduleSource, 'START TRANSACTION')
     && ! str_contains($moduleSource, 'OrderService')
-    && ! str_contains($moduleSource, 'ReservationService')
     && ! str_contains($moduleSource, 'InventoryLockService'),
     'Checkout foundation contiene efectos laterales fuera de alcance.'
 );
