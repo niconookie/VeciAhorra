@@ -75,6 +75,58 @@ class PaymentRepository extends Repository
         return $payment === null ? null : $this->withOrders($payment);
     }
 
+    public function findByReference(string $reference): ?array
+    {
+        $payment = $this->db()->get_row(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT *
+                     FROM %s
+                     WHERE payment_reference = %%s
+                     LIMIT 1',
+                    $this->table(self::PAYMENTS_TABLE)
+                ),
+                $reference
+            ),
+            ARRAY_A
+        );
+
+        return $payment === null ? null : $this->withOrders($payment);
+    }
+
+    public function updateSessionData(
+        int $id,
+        string $provider,
+        string $providerReference,
+        string $expiresAt,
+        string $updatedAt
+    ): void {
+        $result = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s
+                 SET provider = %%s,
+                     provider_reference = %%s,
+                     expires_at = %%s,
+                     updated_at = %%s
+                 WHERE id = %%d
+                   AND status = %%s',
+                $this->table(self::PAYMENTS_TABLE)
+            ),
+            $provider,
+            $providerReference,
+            $expiresAt,
+            $updatedAt,
+            $id,
+            'pending'
+        ));
+
+        if ($result !== 1) {
+            throw new PersistenceException(
+                'No fue posible guardar la sesion de pago.'
+            );
+        }
+    }
+
     /** @return list<array<string, mixed>> */
     public function list(): array
     {

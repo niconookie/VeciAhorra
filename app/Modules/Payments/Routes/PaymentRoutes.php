@@ -43,6 +43,16 @@ final class PaymentRoutes
                 'permission_callback' => [$this, 'canManagePayments'],
             ]
         );
+
+        register_rest_route(
+            self::NAMESPACE,
+            self::RESOURCE . '/(?P<id>\d+)/session',
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'createSession'],
+                'permission_callback' => [$this, 'canManagePayments'],
+            ]
+        );
     }
 
     public function index(WP_REST_Request $request): WP_REST_Response
@@ -63,6 +73,14 @@ final class PaymentRoutes
             $this->controller->store((array) $request->get_json_params()),
             201
         );
+    }
+
+    public function createSession(
+        WP_REST_Request $request
+    ): WP_REST_Response {
+        return $this->response($this->controller->createSession(
+            (int) ($request->get_url_params()['id'] ?? 0)
+        ));
     }
 
     public function canManagePayments(

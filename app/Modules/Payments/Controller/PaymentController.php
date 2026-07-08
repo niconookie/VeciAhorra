@@ -10,11 +10,14 @@ use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Payments\Requests\PaymentRequest;
 use VeciAhorra\Modules\Payments\Service\PaymentService;
+use VeciAhorra\Modules\Payments\Service\PaymentSessionService;
 
 final class PaymentController
 {
-    public function __construct(private PaymentService $service)
-    {
+    public function __construct(
+        private PaymentService $service,
+        private PaymentSessionService $sessionService
+    ) {
     }
 
     public function index(): array
@@ -42,6 +45,13 @@ final class PaymentController
         return $this->execute(fn (): array => $this->service->create(
             (new PaymentRequest($payload))->validated()
         ));
+    }
+
+    public function createSession(int $id): array
+    {
+        return $this->execute(
+            fn (): array => $this->sessionService->create($id)
+        );
     }
 
     private function execute(callable $callback): array

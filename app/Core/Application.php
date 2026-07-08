@@ -14,6 +14,8 @@ use VeciAhorra\Modules\Cart\Routes\CartRoutes;
 use VeciAhorra\Modules\Checkout\Routes\CheckoutRoutes;
 use VeciAhorra\Modules\Orders\Routes\OrderRoutes;
 use VeciAhorra\Modules\Payments\Routes\PaymentRoutes;
+use VeciAhorra\Modules\Payments\Gateway\DummyPaymentGateway;
+use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
 use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Products\Admin\ProductsPage;
 use VeciAhorra\Modules\Products\Routes\ProductRoutes;
@@ -36,6 +38,10 @@ final class Application
     public function __construct()
     {
         $this->container = new Container();
+        $this->container->bind(
+            PaymentGatewayInterface::class,
+            static fn (): DummyPaymentGateway => new DummyPaymentGateway()
+        );
     }
 
     /**

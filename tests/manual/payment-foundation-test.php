@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use VeciAhorra\Core\Config;
-use VeciAhorra\Core\Container;
+use VeciAhorra\Core\Application;
 use VeciAhorra\Database\MigrationManager;
 use VeciAhorra\Database\Migrations\CreatePaymentsTables;
 use VeciAhorra\Modules\Payments\Requests\PaymentRequest;
@@ -208,7 +208,8 @@ foreach (
 }
 
 assertPaymentFoundation(
-    (new Container())->make(PaymentRoutes::class) instanceof PaymentRoutes,
+    (new Application())->container()->make(PaymentRoutes::class)
+        instanceof PaymentRoutes,
     'Container no resolvio PaymentRoutes.'
 );
 
