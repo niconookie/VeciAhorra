@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Payments\Repository;
 
+use Throwable;
 use VeciAhorra\Database\Repository;
 use VeciAhorra\Exceptions\PersistenceException;
 
@@ -94,6 +95,74 @@ class PaymentRepository extends Repository
         return $payment === null ? null : $this->withOrders($payment);
     }
 
+    public function findByProviderReference(string $reference): ?array
+    {
+        return $this->findByProviderReferenceInternal($reference, false);
+    }
+
+    public function findByProviderReferenceForUpdate(
+        string $reference
+    ): ?array {
+        return $this->findByProviderReferenceInternal($reference, true);
+    }
+
+    public function updateStatus(
+        int $id,
+        string $expectedStatus,
+        string $status,
+        ?string $paidAt,
+        string $updatedAt
+    ): void {
+        $paidAtAssignment = $paidAt === null ? 'NULL' : '%s';
+        $result = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s
+                 SET status = %%s,
+                     paid_at = %s,
+                     updated_at = %%s
+                 WHERE id = %%d
+                   AND status = %%s',
+                $this->table(self::PAYMENTS_TABLE),
+                $paidAtAssignment
+            ),
+            ...array_values(array_filter(
+                [$status, $paidAt, $updatedAt, $id, $expectedStatus],
+                static fn (mixed $value): bool => $value !== null
+            ))
+        ));
+
+        if ($result !== 1) {
+            throw new PersistenceException(
+                'No fue posible actualizar el estado del pago.'
+            );
+        }
+    }
+
+    public function transaction(callable $callback): mixed
+    {
+        if ($this->db()->query('START TRANSACTION') === false) {
+            throw new PersistenceException(
+                'No fue posible iniciar la transaccion del pago.'
+            );
+        }
+
+        try {
+            $result = $callback();
+
+            if ($this->db()->query('COMMIT') === false) {
+                throw new PersistenceException(
+                    'No fue posible confirmar la transaccion del pago.'
+                );
+            }
+
+            return $result;
+        } catch (Throwable $exception) {
+            $this->db()->query('ROLLBACK');
+
+            throw $exception;
+        }
+    }
+
     public function updateSessionData(
         int $id,
         string $provider,
@@ -179,5 +248,27 @@ class PaymentRepository extends Repository
         );
 
         return $payment;
+    }
+
+    private function findByProviderReferenceInternal(
+        string $reference,
+        bool $forUpdate
+    ): ?array {
+        $payment = $this->db()->get_row(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT *
+                     FROM %s
+                     WHERE provider_reference = %%s
+                     LIMIT 1%s',
+                    $this->table(self::PAYMENTS_TABLE),
+                    $forUpdate ? ' FOR UPDATE' : ''
+                ),
+                $reference
+            ),
+            ARRAY_A
+        );
+
+        return $payment === null ? null : $this->withOrders($payment);
     }
 }

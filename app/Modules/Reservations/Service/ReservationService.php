@@ -173,6 +173,62 @@ class ReservationService
         );
     }
 
+    /** @param list<int> $orderIds */
+    public function confirmForOrders(array $orderIds): int
+    {
+        if ($orderIds === []) {
+            throw new InvalidArgumentException(
+                'La confirmacion requiere pedidos.'
+            );
+        }
+
+        foreach ($orderIds as $orderId) {
+            $this->assertPositive($orderId, 'order_id');
+        }
+
+        $reservations = $this->repository->findByOrderIds($orderIds);
+        $reservedOrderIds = array_values(array_unique(array_map(
+            static fn (array $reservation): int =>
+                (int) $reservation['order_id'],
+            $reservations
+        )));
+        sort($reservedOrderIds);
+        $expectedOrderIds = $orderIds;
+        sort($expectedOrderIds);
+
+        if ($reservations === [] || $reservedOrderIds !== $expectedOrderIds) {
+            throw new InvalidArgumentException(
+                'Los pedidos no tienen reservas confirmables.'
+            );
+        }
+
+        foreach ($reservations as $reservation) {
+            if (($reservation['status'] ?? null) !== 'active') {
+                throw new InvalidArgumentException(
+                    'Todas las reservas deben estar activas.'
+                );
+            }
+
+            if (! $this->inventoryLockService->commitStock(
+                (int) $reservation['inventory_id'],
+                (int) $reservation['quantity']
+            )) {
+                throw new RuntimeException(
+                    'No fue posible confirmar el stock reservado.'
+                );
+            }
+        }
+
+        return $this->repository->markConsumed(
+            array_map(
+                static fn (array $reservation): int =>
+                    (int) $reservation['id'],
+                $reservations
+            ),
+            current_time('mysql')
+        );
+    }
+
     /**
      * @param list<array<string, mixed>> $reservations
      * @param list<array<string, mixed>> $items

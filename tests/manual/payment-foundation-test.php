@@ -349,8 +349,8 @@ try {
     }
     foreach (
         [
-            'OrderService', 'ReservationService', 'InventoryLockService',
-            'Transbank', 'MercadoPago', 'Stripe', 'webhook', 'commitStock',
+            'InventoryLockService', 'Transbank', 'MercadoPago', 'Stripe',
+            'webhook', 'commitStock',
         ] as $forbidden
     ) {
         assertPaymentFoundation(

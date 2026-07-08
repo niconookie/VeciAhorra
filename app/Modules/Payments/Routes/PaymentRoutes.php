@@ -36,6 +36,16 @@ final class PaymentRoutes
 
         register_rest_route(
             self::NAMESPACE,
+            self::RESOURCE . '/confirm',
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'confirm'],
+                'permission_callback' => [$this, 'canManagePayments'],
+            ]
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
             self::RESOURCE . '/(?P<id>\d+)',
             [
                 'methods' => WP_REST_Server::READABLE,
@@ -80,6 +90,13 @@ final class PaymentRoutes
     ): WP_REST_Response {
         return $this->response($this->controller->createSession(
             (int) ($request->get_url_params()['id'] ?? 0)
+        ));
+    }
+
+    public function confirm(WP_REST_Request $request): WP_REST_Response
+    {
+        return $this->response($this->controller->confirm(
+            (array) $request->get_json_params()
         ));
     }
 

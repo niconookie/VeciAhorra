@@ -9,6 +9,8 @@ use Throwable;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Payments\Requests\PaymentRequest;
+use VeciAhorra\Modules\Payments\Requests\PaymentConfirmationRequest;
+use VeciAhorra\Modules\Payments\Service\PaymentConfirmationService;
 use VeciAhorra\Modules\Payments\Service\PaymentService;
 use VeciAhorra\Modules\Payments\Service\PaymentSessionService;
 
@@ -16,7 +18,8 @@ final class PaymentController
 {
     public function __construct(
         private PaymentService $service,
-        private PaymentSessionService $sessionService
+        private PaymentSessionService $sessionService,
+        private PaymentConfirmationService $confirmationService
     ) {
     }
 
@@ -52,6 +55,18 @@ final class PaymentController
         return $this->execute(
             fn (): array => $this->sessionService->create($id)
         );
+    }
+
+    public function confirm(array $payload): array
+    {
+        return $this->execute(function () use ($payload): array {
+            $data = (new PaymentConfirmationRequest($payload))->validated();
+
+            return $this->confirmationService->confirm(
+                $data['provider'],
+                $data['provider_reference']
+            );
+        });
     }
 
     private function execute(callable $callback): array

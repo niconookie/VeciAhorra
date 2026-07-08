@@ -259,6 +259,29 @@ final class OrderService
         }
     }
 
+    /** @param list<int> $orderIds */
+    public function markPaid(array $orderIds): int
+    {
+        if ($orderIds === []) {
+            throw new InvalidArgumentException(
+                'El pago debe contener al menos un pedido.'
+            );
+        }
+
+        foreach ($orderIds as $orderId) {
+            if (! is_int($orderId) || $orderId <= 0) {
+                throw new InvalidArgumentException(
+                    'Los identificadores de pedido deben ser positivos.'
+                );
+            }
+        }
+
+        return $this->repository->markPaid(
+            $orderIds,
+            current_time('mysql')
+        );
+    }
+
     /** @param list<array<string, mixed>> $lockedItems */
     private function cleanupFailedOrder(
         ?int $orderId,

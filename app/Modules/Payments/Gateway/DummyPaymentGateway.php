@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Payments\Gateway;
 
 use VeciAhorra\Modules\Payments\Models\Payment;
+use VeciAhorra\Modules\Payments\Models\PaymentConfirmationResult;
 
 final class DummyPaymentGateway implements PaymentGatewayInterface
 {
@@ -29,5 +30,13 @@ final class DummyPaymentGateway implements PaymentGatewayInterface
     public function getProviderName(): string
     {
         return 'dummy';
+    }
+
+    public function confirmPayment(
+        string $providerReference
+    ): PaymentConfirmationResult {
+        return str_starts_with($providerReference, 'DUMMY-FAIL-')
+            ? PaymentConfirmationResult::failed()
+            : PaymentConfirmationResult::paid();
     }
 }

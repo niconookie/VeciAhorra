@@ -56,6 +56,65 @@ class ReservationRepository extends Repository
         );
     }
 
+    /** @param list<int> $orderIds */
+    public function findByOrderIds(array $orderIds): array
+    {
+        if ($orderIds === []) {
+            return [];
+        }
+
+        $placeholders = implode(
+            ', ',
+            array_fill(0, count($orderIds), '%d')
+        );
+
+        return $this->db()->get_results(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT *
+                     FROM %s
+                     WHERE order_id IN (%s)
+                     ORDER BY id ASC',
+                    $this->table(self::TABLE),
+                    $placeholders
+                ),
+                ...$orderIds
+            ),
+            ARRAY_A
+        );
+    }
+
+    /** @param list<int> $ids */
+    public function markConsumed(array $ids, string $updatedAt): int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '%d'));
+        $sql = sprintf(
+                'UPDATE %s
+                 SET status = %%s,
+                     updated_at = %%s
+                 WHERE id IN (%s)
+                   AND status = %%s',
+                $this->table(self::TABLE),
+                $placeholders
+            );
+        $params = ['consumed', $updatedAt, ...$ids, 'active'];
+        $result = $this->db()->query(
+            $this->db()->prepare($sql, ...$params)
+        );
+
+        if ($result === false || $result !== count($ids)) {
+            throw new PersistenceException(
+                'No fue posible consumir las reservas.'
+            );
+        }
+
+        return $result;
+    }
+
     public function deleteByOrderId(int $orderId): void
     {
         $result = $this->db()->delete(
