@@ -8,6 +8,7 @@ use DomainException;
 use InvalidArgumentException;
 use RuntimeException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
+use VeciAhorra\Modules\Couriers\Repository\CourierRepository;
 use VeciAhorra\Modules\Delivery\Models\Delivery;
 use VeciAhorra\Modules\Delivery\Repository\DeliveryRepository;
 use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
@@ -35,7 +36,8 @@ final class DeliveryService
 
     public function __construct(
         private DeliveryRepository $repository,
-        private OrderRepository $orderRepository
+        private OrderRepository $orderRepository,
+        private CourierRepository $courierRepository
     ) {
     }
 
@@ -127,6 +129,49 @@ final class DeliveryService
         return $this->repository->find($deliveryId)
             ?? throw new RuntimeException(
                 'No fue posible recuperar la entrega actualizada.'
+            );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function assignCourier(int $deliveryId, int $courierId): array
+    {
+        $delivery = $this->repository->find($deliveryId);
+
+        if ($delivery === null) {
+            throw new RecordNotFoundException('Delivery not found.');
+        }
+
+        if (isset($delivery['courier_id']) && $delivery['courier_id'] !== null) {
+            throw new DomainException('Delivery already assigned.');
+        }
+
+        if ((string) $delivery['status'] !== Delivery::STATUS_PENDING) {
+            throw new DomainException(
+                'Delivery cannot be assigned in current state.'
+            );
+        }
+
+        $courier = $this->courierRepository->find($courierId);
+
+        if ($courier === null) {
+            throw new RecordNotFoundException('Courier not found.');
+        }
+
+        if (! $this->courierRepository->isApproved($courier)) {
+            throw new InvalidArgumentException('Courier is not approved.');
+        }
+
+        $this->repository->assignCourier(
+            $deliveryId,
+            $courierId,
+            current_time('mysql')
+        );
+
+        return $this->repository->find($deliveryId)
+            ?? throw new RuntimeException(
+                'No fue posible recuperar la entrega asignada.'
             );
     }
 

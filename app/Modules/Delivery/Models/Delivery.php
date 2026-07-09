@@ -24,6 +24,7 @@ final class Delivery
         public readonly int $orderId,
         public readonly int $customerId,
         public readonly int $minimarketId,
+        public readonly ?int $courierId,
         public readonly string $status,
         public readonly string $createdAt,
         public readonly string $updatedAt
@@ -37,6 +38,7 @@ final class Delivery
             (int) $data['order_id'],
             (int) $data['customer_id'],
             (int) $data['minimarket_id'],
+            isset($data['courier_id']) ? (int) $data['courier_id'] : null,
             (string) $data['status'],
             (string) $data['created_at'],
             (string) $data['updated_at']

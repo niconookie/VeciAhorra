@@ -18,6 +18,7 @@ final class DeliveryRepository extends Repository
         'order_id',
         'customer_id',
         'minimarket_id',
+        'courier_id',
         'status',
         'created_at',
         'updated_at',
@@ -146,6 +147,48 @@ final class DeliveryRepository extends Repository
                 'No fue posible actualizar el estado de la entrega.'
             );
         }
+    }
+
+    public function assignCourier(
+        int $id,
+        int $courierId,
+        string $updatedAt
+    ): void {
+        $result = $this->db()->update(
+            $this->table(self::TABLE),
+            [
+                'courier_id' => $courierId,
+                'status' => 'assigned',
+                'updated_at' => $updatedAt,
+            ],
+            ['id' => $id]
+        );
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible asignar el repartidor.'
+            );
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function findByCourier(int $courierId): array
+    {
+        return $this->db()->get_results(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT *
+                     FROM %s
+                     WHERE courier_id = %%d
+                     ORDER BY id DESC',
+                    $this->table(self::TABLE)
+                ),
+                $courierId
+            ),
+            ARRAY_A
+        );
     }
 
     /**

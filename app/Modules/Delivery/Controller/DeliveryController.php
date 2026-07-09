@@ -80,16 +80,28 @@ final class DeliveryController
         }
     }
 
+    public function assignCourier(int $id, array $payload): array
+    {
+        try {
+            return [
+                'success' => true,
+                'data' => $this->service->assignCourier(
+                    $id,
+                    (int) ($payload['courier_id'] ?? 0)
+                ),
+            ];
+        } catch (Throwable $exception) {
+            return $this->translateException($exception);
+        }
+    }
+
     private function translateException(Throwable $exception): array
     {
         if ($exception instanceof RecordNotFoundException) {
             return [
                 'success' => false,
                 'error' => [
-                    'code' => str_contains(
-                        $exception->getMessage(),
-                        'pedido'
-                    ) ? 'order_not_found' : 'delivery_not_found',
+                    'code' => $this->notFoundCode($exception),
                     'message' => $exception->getMessage(),
                 ],
             ];
@@ -135,5 +147,16 @@ final class DeliveryController
                 'message' => 'Ocurrio un error interno.',
             ],
         ];
+    }
+
+    private function notFoundCode(RecordNotFoundException $exception): string
+    {
+        return match ($exception->getMessage()) {
+            'Courier not found.' => 'courier_not_found',
+            'Delivery not found.' => 'delivery_not_found',
+            default => str_contains($exception->getMessage(), 'pedido')
+                ? 'order_not_found'
+                : 'delivery_not_found',
+        };
     }
 }

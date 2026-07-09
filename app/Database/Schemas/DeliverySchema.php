@@ -24,6 +24,8 @@ final class DeliverySchema implements TableInterface
             ->bigIntegerUnsigned('order_id')
             ->bigIntegerUnsigned('customer_id')
             ->bigIntegerUnsigned('minimarket_id')
+            ->bigIntegerUnsigned('courier_id')
+                ->nullable()
             ->string('status', 20)
                 ->default('pending')
             ->datetime('created_at')
@@ -31,6 +33,7 @@ final class DeliverySchema implements TableInterface
             ->index('order_id', 'deliveries_order_id_index')
             ->index('customer_id', 'deliveries_customer_id_index')
             ->index('minimarket_id', 'deliveries_minimarket_id_index')
+            ->index('courier_id', 'deliveries_courier_id_index')
             ->index('status', 'deliveries_status_index');
     }
 }
