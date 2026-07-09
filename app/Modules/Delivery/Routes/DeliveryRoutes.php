@@ -175,6 +175,7 @@ final class DeliveryRoutes
                 'validation_error' => 422,
                 'invalid_delivery_state_transition' => 409,
                 'cannot_track_cancelled_delivery' => 409,
+                'delivery_already_exists' => 409,
                 'delivery_not_found',
                 'order_not_found',
                 'courier_not_found' => 404,

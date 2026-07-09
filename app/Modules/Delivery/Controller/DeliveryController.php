@@ -200,6 +200,8 @@ final class DeliveryController
         return match ($exception->getMessage()) {
             'Cannot track cancelled delivery.' =>
                 'cannot_track_cancelled_delivery',
+            'Delivery already exists for order.' =>
+                'delivery_already_exists',
             default => 'invalid_delivery_state_transition',
         };
     }

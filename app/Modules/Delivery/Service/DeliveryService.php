@@ -69,6 +69,12 @@ final class DeliveryService
             );
         }
 
+        if ($this->repository->exists($orderId)) {
+            throw new DomainException(
+                'Delivery already exists for order.'
+            );
+        }
+
         $now = current_time('mysql');
         $deliveryId = $this->repository->create([
             'order_id' => $orderId,
