@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Database;
 
 use VeciAhorra\Core\Config;
+use VeciAhorra\Database\Migrations\CreateDeliveriesTable;
 use VeciAhorra\Database\Migrations\CreateInventoryTable;
 use VeciAhorra\Database\Migrations\CreateOrdersTables;
 use VeciAhorra\Database\Migrations\CreateReservationsTable;
@@ -68,7 +69,7 @@ final class MigrationManager
     /**
      * @return list<
      *     CreateInventoryTable|CreateOrdersTables|CreateReservationsTable|
-     *     CreateCartItemsTable|CreatePaymentsTables
+     *     CreateCartItemsTable|CreatePaymentsTables|CreateDeliveriesTable
      * >
      */
     private static function migrations(): array
@@ -79,6 +80,7 @@ final class MigrationManager
             new CreateReservationsTable(),
             new CreateCartItemsTable(),
             new CreatePaymentsTables(),
+            new CreateDeliveriesTable(),
         ];
     }
 }

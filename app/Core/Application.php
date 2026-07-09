@@ -13,6 +13,7 @@ use VeciAhorra\Modules\Inventory\Routes\InventoryRoutes;
 use VeciAhorra\Modules\Cart\Routes\CartRoutes;
 use VeciAhorra\Modules\Checkout\Routes\CheckoutRoutes;
 use VeciAhorra\Modules\CustomerPanel\Routes\CustomerPanelRoutes;
+use VeciAhorra\Modules\Delivery\Routes\DeliveryRoutes;
 use VeciAhorra\Modules\Orders\Routes\OrderRoutes;
 use VeciAhorra\Modules\Payments\Routes\PaymentRoutes;
 use VeciAhorra\Modules\Payments\Gateway\DummyPaymentGateway;
@@ -137,6 +138,15 @@ final class Application
         add_action(
             'rest_api_init',
             [$paymentRoutes, 'register']
+        );
+
+        $deliveryRoutes = $this->container->make(
+            DeliveryRoutes::class
+        );
+
+        add_action(
+            'rest_api_init',
+            [$deliveryRoutes, 'register']
         );
 
         $reservationRoutes = $this->container->make(
