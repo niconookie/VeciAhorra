@@ -37,7 +37,8 @@ final class DeliveryService
     public function __construct(
         private DeliveryRepository $repository,
         private OrderRepository $orderRepository,
-        private CourierRepository $courierRepository
+        private CourierRepository $courierRepository,
+        private DeliveryTrackingService $trackingService
     ) {
     }
 
@@ -126,6 +127,25 @@ final class DeliveryService
 
         $this->repository->updateStatus($deliveryId, $status, $now);
 
+        if (
+            in_array(
+                $status,
+                [
+                    Delivery::STATUS_ASSIGNED,
+                    Delivery::STATUS_PICKED_UP,
+                    Delivery::STATUS_DELIVERED,
+                ],
+                true
+            )
+        ) {
+            $this->trackingService->recordTracking(
+                $deliveryId,
+                null,
+                null,
+                $status
+            );
+        }
+
         return $this->repository->find($deliveryId)
             ?? throw new RuntimeException(
                 'No fue posible recuperar la entrega actualizada.'
@@ -167,6 +187,12 @@ final class DeliveryService
             $deliveryId,
             $courierId,
             current_time('mysql')
+        );
+        $this->trackingService->recordTracking(
+            $deliveryId,
+            null,
+            null,
+            Delivery::STATUS_ASSIGNED
         );
 
         return $this->repository->find($deliveryId)

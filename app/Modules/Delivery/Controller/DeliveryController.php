@@ -10,6 +10,7 @@ use Throwable;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Delivery\Service\DeliveryService;
+use VeciAhorra\Modules\Delivery\Service\DeliveryTrackingService;
 
 /**
  * Adaptador de aplicacion del modulo Delivery.
@@ -17,7 +18,8 @@ use VeciAhorra\Modules\Delivery\Service\DeliveryService;
 final class DeliveryController
 {
     public function __construct(
-        private DeliveryService $service
+        private DeliveryService $service,
+        private DeliveryTrackingService $trackingService
     ) {
     }
 
@@ -95,6 +97,39 @@ final class DeliveryController
         }
     }
 
+    public function getTracking(int $id): array
+    {
+        try {
+            return [
+                'success' => true,
+                'data' => $this->trackingService->getTracking($id),
+            ];
+        } catch (Throwable $exception) {
+            return $this->translateException($exception);
+        }
+    }
+
+    public function recordTracking(int $id, array $payload): array
+    {
+        try {
+            return [
+                'success' => true,
+                'data' => $this->trackingService->recordTracking(
+                    $id,
+                    isset($payload['latitude'])
+                        ? (float) $payload['latitude']
+                        : null,
+                    isset($payload['longitude'])
+                        ? (float) $payload['longitude']
+                        : null,
+                    (string) ($payload['event'] ?? '')
+                ),
+            ];
+        } catch (Throwable $exception) {
+            return $this->translateException($exception);
+        }
+    }
+
     private function translateException(Throwable $exception): array
     {
         if ($exception instanceof RecordNotFoundException) {
@@ -111,7 +146,7 @@ final class DeliveryController
             return [
                 'success' => false,
                 'error' => [
-                    'code' => 'invalid_delivery_state_transition',
+                    'code' => $this->domainCode($exception),
                     'message' => $exception->getMessage(),
                 ],
             ];
@@ -157,6 +192,15 @@ final class DeliveryController
             default => str_contains($exception->getMessage(), 'pedido')
                 ? 'order_not_found'
                 : 'delivery_not_found',
+        };
+    }
+
+    private function domainCode(DomainException $exception): string
+    {
+        return match ($exception->getMessage()) {
+            'Cannot track cancelled delivery.' =>
+                'cannot_track_cancelled_delivery',
+            default => 'invalid_delivery_state_transition',
         };
     }
 }
