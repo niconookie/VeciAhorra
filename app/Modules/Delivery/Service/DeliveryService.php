@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Delivery\Service;
 
+use DomainException;
 use InvalidArgumentException;
 use RuntimeException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
@@ -16,6 +17,22 @@ use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
  */
 final class DeliveryService
 {
+    private const TRANSITIONS = [
+        Delivery::STATUS_PENDING => [
+            Delivery::STATUS_ASSIGNED,
+            Delivery::STATUS_CANCELLED,
+        ],
+        Delivery::STATUS_ASSIGNED => [
+            Delivery::STATUS_PICKED_UP,
+            Delivery::STATUS_CANCELLED,
+        ],
+        Delivery::STATUS_PICKED_UP => [
+            Delivery::STATUS_DELIVERED,
+        ],
+        Delivery::STATUS_DELIVERED => [],
+        Delivery::STATUS_CANCELLED => [],
+    ];
+
     public function __construct(
         private DeliveryRepository $repository,
         private OrderRepository $orderRepository
@@ -68,6 +85,49 @@ final class DeliveryService
     public function getDelivery(int $id): ?array
     {
         return $this->repository->find($id);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function updateStatus(int $deliveryId, string $status): array
+    {
+        $delivery = $this->repository->find($deliveryId);
+
+        if ($delivery === null) {
+            throw new RecordNotFoundException('Delivery not found.');
+        }
+
+        if (! in_array($status, Delivery::allowedStatuses(), true)) {
+            throw new InvalidArgumentException(
+                'Invalid delivery status.'
+            );
+        }
+
+        $currentStatus = (string) $delivery['status'];
+        $allowedNextStatuses = self::TRANSITIONS[$currentStatus] ?? [];
+
+        if (! in_array($status, $allowedNextStatuses, true)) {
+            throw new DomainException(
+                'Invalid delivery state transition.'
+            );
+        }
+
+        $now = current_time('mysql');
+
+        if ($status === Delivery::STATUS_DELIVERED) {
+            $this->orderRepository->markDelivered(
+                (int) $delivery['order_id'],
+                $now
+            );
+        }
+
+        $this->repository->updateStatus($deliveryId, $status, $now);
+
+        return $this->repository->find($deliveryId)
+            ?? throw new RuntimeException(
+                'No fue posible recuperar la entrega actualizada.'
+            );
     }
 
     /**

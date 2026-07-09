@@ -208,6 +208,24 @@ class OrderRepository extends Repository
         return $result;
     }
 
+    public function markDelivered(int $id, string $updatedAt): void
+    {
+        $result = $this->db()->update(
+            $this->table(self::ORDERS_TABLE),
+            [
+                'status' => 'delivered',
+                'updated_at' => $updatedAt,
+            ],
+            ['id' => $id]
+        );
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible marcar el pedido como entregado.'
+            );
+        }
+    }
+
     /**
      * @return list<array<string, mixed>>
      */

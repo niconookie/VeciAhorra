@@ -52,6 +52,16 @@ final class DeliveryRoutes
                 'permission_callback' => [$this, 'canManageDeliveries'],
             ]
         );
+
+        register_rest_route(
+            self::NAMESPACE,
+            self::RESOURCE . '/(?P<id>\d+)/status',
+            [
+                'methods' => 'PATCH',
+                'callback' => [$this, 'updateStatus'],
+                'permission_callback' => [$this, 'canManageDeliveries'],
+            ]
+        );
     }
 
     public function index(WP_REST_Request $request): WP_REST_Response
@@ -78,6 +88,17 @@ final class DeliveryRoutes
         );
     }
 
+    public function updateStatus(
+        WP_REST_Request $request
+    ): WP_REST_Response {
+        return $this->response(
+            $this->controller->updateStatus(
+                (int) ($request->get_url_params()['id'] ?? 0),
+                (array) $request->get_json_params()
+            )
+        );
+    }
+
     public function canManageDeliveries(
         WP_REST_Request $request
     ): bool|WP_Error {
@@ -92,6 +113,7 @@ final class DeliveryRoutes
             ? $successStatus
             : match ($result['error']['code'] ?? '') {
                 'validation_error' => 422,
+                'invalid_delivery_state_transition' => 409,
                 'delivery_not_found', 'order_not_found' => 404,
                 default => 500,
             };

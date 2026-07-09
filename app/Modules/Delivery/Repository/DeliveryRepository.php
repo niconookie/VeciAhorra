@@ -127,6 +127,27 @@ final class DeliveryRepository extends Repository
         ) > 0;
     }
 
+    public function updateStatus(
+        int $id,
+        string $status,
+        string $updatedAt
+    ): void {
+        $result = $this->db()->update(
+            $this->table(self::TABLE),
+            [
+                'status' => $status,
+                'updated_at' => $updatedAt,
+            ],
+            ['id' => $id]
+        );
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible actualizar el estado de la entrega.'
+            );
+        }
+    }
+
     /**
      * @return array{0: list<string>, 1: list<int|string>}
      */

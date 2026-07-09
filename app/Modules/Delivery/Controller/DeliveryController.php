@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Delivery\Controller;
 
+use DomainException;
 use InvalidArgumentException;
 use Throwable;
 use VeciAhorra\Exceptions\PersistenceException;
@@ -64,6 +65,21 @@ final class DeliveryController
         }
     }
 
+    public function updateStatus(int $id, array $payload): array
+    {
+        try {
+            return [
+                'success' => true,
+                'data' => $this->service->updateStatus(
+                    $id,
+                    (string) ($payload['status'] ?? '')
+                ),
+            ];
+        } catch (Throwable $exception) {
+            return $this->translateException($exception);
+        }
+    }
+
     private function translateException(Throwable $exception): array
     {
         if ($exception instanceof RecordNotFoundException) {
@@ -74,6 +90,16 @@ final class DeliveryController
                         $exception->getMessage(),
                         'pedido'
                     ) ? 'order_not_found' : 'delivery_not_found',
+                    'message' => $exception->getMessage(),
+                ],
+            ];
+        }
+
+        if ($exception instanceof DomainException) {
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => 'invalid_delivery_state_transition',
                     'message' => $exception->getMessage(),
                 ],
             ];
