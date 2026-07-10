@@ -21,6 +21,7 @@ use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
 use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Products\Admin\ProductsPage;
 use VeciAhorra\Modules\Products\Routes\ProductRoutes;
+use VeciAhorra\Modules\Frontend\FrontendModule;
 
 /**
  * Clase principal de la aplicación.
@@ -51,6 +52,11 @@ final class Application
      */
     public function run(): void
     {
+        $frontendModule = $this->container->make(
+            FrontendModule::class
+        );
+        $frontendModule->register();
+
         /*
         |--------------------------------------------------------------------------
         | Menú del administrador
