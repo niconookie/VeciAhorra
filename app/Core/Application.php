@@ -22,6 +22,7 @@ use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Products\Admin\ProductsPage;
 use VeciAhorra\Modules\Products\Routes\ProductRoutes;
 use VeciAhorra\Modules\Frontend\FrontendModule;
+use VeciAhorra\Modules\Catalog\CatalogModule;
 
 /**
  * Clase principal de la aplicación.
@@ -56,6 +57,11 @@ final class Application
             FrontendModule::class
         );
         $frontendModule->register();
+
+        $catalogModule = $this->container->make(
+            CatalogModule::class
+        );
+        $catalogModule->register();
 
         /*
         |--------------------------------------------------------------------------
