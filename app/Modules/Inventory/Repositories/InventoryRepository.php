@@ -114,6 +114,40 @@ final class InventoryRepository extends Repository
         return $row === null ? null : $row;
     }
 
+    /**
+     * Returns active inventory rows for a bounded set of products.
+     *
+     * @param list<int> $productIds
+     * @return list<array<string, mixed>>
+     */
+    public function findActiveByProductIds(array $productIds): array
+    {
+        $productIds = array_values(array_unique(array_filter(
+            array_map('intval', $productIds),
+            static fn (int $id): bool => $id > 0
+        )));
+
+        if ($productIds === []) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($productIds), '%d'));
+        $sql = sprintf(
+            'SELECT *
+             FROM %s
+             WHERE status = %%s
+               AND product_id IN (%s)
+             ORDER BY id ASC',
+            $this->table(self::TABLE),
+            $placeholders
+        );
+
+        return $this->db()->get_results(
+            $this->db()->prepare($sql, 'active', ...$productIds),
+            ARRAY_A
+        );
+    }
+
     public function create(array $data): int
     {
         $payload = $this->only($data, self::CREATE_FIELDS);

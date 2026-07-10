@@ -14,6 +14,45 @@ use VeciAhorra\Modules\Stores\Models\Store;
  */
 final class StoreRepository extends BaseRepository
 {
+    /**
+     * Returns publicly active minimarkets for a bounded ID set.
+     *
+     * @param list<int> $ids
+     */
+    public function findActiveByIds(array $ids): Collection
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', $ids),
+            static fn (int $id): bool => $id > 0
+        )));
+        $collection = new Collection();
+
+        if ($ids === []) {
+            return $collection;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '%d'));
+        $sql = sprintf(
+            'SELECT *
+             FROM %s
+             WHERE status = %%s
+               AND id IN (%s)
+             ORDER BY id ASC',
+            $this->table($this->table),
+            $placeholders
+        );
+        $rows = $this->db()->get_results(
+            $this->db()->prepare($sql, 'active', ...$ids),
+            ARRAY_A
+        );
+
+        foreach ($rows as $row) {
+            $collection->add($this->hydrate($row));
+        }
+
+        return $collection;
+    }
+
     public function bulkUpdateStatus(
         array $ids,
         string $status,

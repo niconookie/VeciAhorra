@@ -9,6 +9,8 @@ use InvalidArgumentException;
 final class CatalogListRequest
 {
     private const ORDERS = ['name', 'price', 'newest'];
+    private const MAXIMUM_PAGE = 1000000;
+    private const MAXIMUM_ID = 999999999999999999;
 
     public function __construct(private array $input)
     {
@@ -21,7 +23,7 @@ final class CatalogListRequest
             'category' => $this->optionalId('category'),
             'brand' => $this->optionalId('brand'),
             'search' => $this->search(),
-            'page' => $this->integer('page', 1, 1, PHP_INT_MAX),
+            'page' => $this->integer('page', 1, 1, self::MAXIMUM_PAGE),
             'per_page' => $this->integer('per_page', 20, 1, 100),
             'order_by' => $this->orderBy(),
         ];
@@ -33,7 +35,7 @@ final class CatalogListRequest
             return null;
         }
 
-        return $this->integer($key, 0, 1, PHP_INT_MAX);
+        return $this->integer($key, 0, 1, self::MAXIMUM_ID);
     }
 
     private function search(): ?string

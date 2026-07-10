@@ -17,3 +17,10 @@ cache or purpose-built read query while preserving this public response contract
 The API does not expose inventory IDs, minimarket IDs, per-store stock, internal
 states or timestamps. It does not register write methods and has no frontend
 consumer in this phase.
+
+The product detail keeps the summary fields and adds the sanitized description,
+commercial availability, minimum/maximum price, public offers, up to six related
+products and non-sensitive response metadata. Offers require active inventory,
+positive stock and price, and an active minimarket. They are ordered by price,
+stock descending and inventory ID. The detail is read-only and uses the existing
+`GET /catalog/products/{id}` route.

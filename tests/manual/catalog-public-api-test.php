@@ -5,6 +5,7 @@ declare(strict_types=1);
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -59,6 +60,7 @@ assertPublicCatalog($transaction !== false, 'No se inicio transaccion.');
 try {
     $products = new ProductRepository();
     $inventory = new InventoryRepository();
+    $stores = new StoreRepository();
     $token = 'catalog-' . bin2hex(random_bytes(5));
     $now = current_time('mysql');
     $createProduct = static function (
@@ -102,6 +104,32 @@ try {
         ]);
     };
     $seed = random_int(800000000, 899999990);
+    $createStore = static function (int $id) use ($stores, $now): void {
+        $stores->create([
+            'id' => $id,
+            'business_name' => 'Catalog store ' . $id,
+            'legal_name' => 'Catalog store legal ' . $id,
+            'owner_name' => 'Catalog owner',
+            'rut' => '1-9',
+            'email' => "catalog-{$id}@example.test",
+            'phone' => '000000000',
+            'mobile' => null,
+            'address' => null,
+            'commune' => null,
+            'city' => null,
+            'region' => null,
+            'status' => 'active',
+            'onboarding_status' => 'complete',
+            'approved_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    };
+
+    foreach (range($seed, $seed + 6) as $storeId) {
+        $createStore($storeId);
+    }
+
     $createInventory($availableId, $seed, 12.50, 4);
     $createInventory($availableId, $seed + 1, 8.50, 2);
     $createInventory($availableId, $seed + 2, 4.00, 9, 'inactive');

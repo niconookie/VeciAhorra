@@ -12,10 +12,13 @@ use VeciAhorra\Modules\ProductCatalogs\Services\CategoryService;
 use VeciAhorra\Modules\ProductCatalogs\Services\UnitService;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Stores\Models\Store;
+use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 final class CatalogService
 {
     private const READ_BATCH_SIZE = 200;
+    private const RELATED_LIMIT = 6;
 
     /** @var array<string, array<int, array{id: int, name: string}>> */
     private array $catalogMaps = [];
@@ -25,18 +28,19 @@ final class CatalogService
         private InventoryRepository $inventory,
         private CategoryService $categories,
         private BrandService $brands,
-        private UnitService $units
+        private UnitService $units,
+        private StoreRepository $stores
     ) {
     }
 
     /** @param array{category: ?int, brand: ?int, search: ?string, page: int, per_page: int, order_by: string} $filters */
     public function list(array $filters): array
     {
-        $available = $this->availableInventory();
+        $publicInventory = $this->publicInventory();
         $products = [];
 
         foreach ($this->productCandidates($filters['search']) as $product) {
-            if (! $product instanceof Product || ! $this->isVisible($product, $available)) {
+            if (! $this->isVisible($product, $publicInventory['summaries'])) {
                 continue;
             }
 
@@ -48,15 +52,14 @@ final class CatalogService
                 continue;
             }
 
-            $products[] = $this->serialize($product, $available[(int) $product->id]);
+            $products[] = $this->serializeSummary(
+                $product,
+                $publicInventory['summaries'][(int) $product->id]
+            );
         }
 
-        $this->sort($products, $filters['order_by']);
-        $products = array_map(static function (array $product): array {
-            unset($product['_created_at']);
-
-            return $product;
-        }, $products);
+        $this->sortSummaries($products, $filters['order_by']);
+        $products = array_map([$this, 'withoutInternalFields'], $products);
         $total = count($products);
         $offset = ($filters['page'] - 1) * $filters['per_page'];
 
@@ -78,67 +81,234 @@ final class CatalogService
         }
 
         $product = $this->products->findById($id);
-        $available = $this->availableInventory($id);
 
-        if ($product === null || ! $this->isVisible($product, $available)) {
+        if ($product === null || $product->status !== Product::STATUS_ACTIVE) {
             throw new RecordNotFoundException('Catalog product not found.');
         }
 
-        $result = $this->serialize($product, $available[$id]);
-        unset($result['_created_at']);
+        $publicInventory = $this->publicInventory([$id]);
 
-        return $result;
+        if (! $this->isVisible($product, $publicInventory['summaries'])) {
+            throw new RecordNotFoundException('Catalog product not found.');
+        }
+
+        $offers = $publicInventory['offers'][$id];
+        $summary = $publicInventory['summaries'][$id];
+        $related = $this->relatedProducts($product);
+        $result = $this->withoutInternalFields(
+            $this->serializeSummary($product, $summary)
+        );
+
+        return array_merge($result, [
+            'description' => wp_strip_all_tags((string) ($product->description ?? '')),
+            'availability' => 'in_stock',
+            'price' => [
+                'min' => $summary['min_price'],
+                'max' => $summary['max_price'],
+                'offers' => count($offers),
+            ],
+            'offers' => $offers,
+            'related_products' => $related,
+            'meta' => [
+                'related_products' => count($related),
+            ],
+        ]);
     }
 
-    /** @return array<int, array{min_price: string, minimarkets: array<int, true>}> */
-    private function availableInventory(?int $productId = null): array
+    /**
+     * @param list<int>|null $productIds
+     * @return array{
+     *   summaries: array<int, array{min_price: string, max_price: string, minimarkets: array<int, true>}>,
+     *   offers: array<int, list<array{inventory_id: int, minimarket_id: int, minimarket: string, price: string, stock: int}>>
+     * }
+     */
+    private function publicInventory(?array $productIds = null): array
     {
-        $available = [];
+        $rows = $this->inventoryRows($productIds);
+        $validRows = [];
+        $storeIds = [];
+
+        foreach ($rows as $row) {
+            $stock = (int) ($row['stock'] ?? 0);
+            $rawPrice = $row['price'] ?? null;
+            $productId = (int) ($row['product_id'] ?? 0);
+            $storeId = (int) ($row['minimarket_id'] ?? 0);
+            $inventoryId = (int) ($row['id'] ?? 0);
+
+            if (
+                $inventoryId <= 0
+                || $productId <= 0
+                || $storeId <= 0
+                || $stock <= 0
+            ) {
+                continue;
+            }
+
+            $price = $this->normalizePrice($rawPrice);
+
+            if ($price === null) {
+                continue;
+            }
+
+            $row['_public_price'] = $price;
+            $validRows[] = $row;
+            $storeIds[$storeId] = true;
+        }
+
+        $publicStores = $this->publicStores(array_keys($storeIds));
+        $offers = [];
+
+        foreach ($validRows as $row) {
+            $storeId = (int) $row['minimarket_id'];
+
+            if (! isset($publicStores[$storeId])) {
+                continue;
+            }
+
+            $productId = (int) $row['product_id'];
+            $offers[$productId][] = [
+                'inventory_id' => (int) $row['id'],
+                'minimarket_id' => $storeId,
+                'minimarket' => $publicStores[$storeId],
+                'price' => (string) $row['_public_price'],
+                'stock' => (int) $row['stock'],
+            ];
+        }
+
+        $summaries = [];
+
+        foreach ($offers as $productId => &$productOffers) {
+            usort($productOffers, static function (array $left, array $right): int {
+                $price = (float) $left['price'] <=> (float) $right['price'];
+
+                if ($price !== 0) {
+                    return $price;
+                }
+
+                $stock = $right['stock'] <=> $left['stock'];
+
+                return $stock !== 0
+                    ? $stock
+                    : $left['inventory_id'] <=> $right['inventory_id'];
+            });
+            $prices = array_column($productOffers, 'price');
+            $minimarkets = [];
+
+            foreach ($productOffers as $offer) {
+                $minimarkets[$offer['minimarket_id']] = true;
+            }
+
+            $summaries[$productId] = [
+                'min_price' => (string) reset($prices),
+                'max_price' => (string) end($prices),
+                'minimarkets' => $minimarkets,
+            ];
+        }
+        unset($productOffers);
+
+        return ['summaries' => $summaries, 'offers' => $offers];
+    }
+
+    private function normalizePrice(mixed $price): ?string
+    {
+        if (
+            ! is_numeric($price)
+            || ! is_finite((float) $price)
+            || (float) $price <= 0
+        ) {
+            return null;
+        }
+
+        return number_format((float) $price, 2, '.', '');
+    }
+
+    /** @param list<int>|null $productIds @return list<array<string, mixed>> */
+    private function inventoryRows(?array $productIds): array
+    {
+        if ($productIds !== null) {
+            $rows = [];
+
+            foreach (array_chunk(array_values(array_unique($productIds)), self::READ_BATCH_SIZE) as $ids) {
+                array_push($rows, ...$this->inventory->findActiveByProductIds($ids));
+            }
+
+            return $rows;
+        }
+
+        $rows = [];
         $page = 1;
 
         do {
-            $rows = $this->inventory->paginate([
+            $batch = $this->inventory->paginate([
                 'status' => 'active',
-                'product_id' => $productId,
                 'page' => $page,
                 'per_page' => self::READ_BATCH_SIZE,
             ]);
+            array_push($rows, ...$batch);
+            $page++;
+        } while (count($batch) === self::READ_BATCH_SIZE);
 
-            foreach ($rows as $row) {
-                $stock = (int) ($row['stock'] ?? 0);
-                $rowProductId = (int) ($row['product_id'] ?? 0);
-                $minimarketId = (int) ($row['minimarket_id'] ?? 0);
-                $rawPrice = $row['price'] ?? null;
+        return $rows;
+    }
 
-                if (
-                    $stock <= 0
-                    || $rowProductId <= 0
-                    || $minimarketId <= 0
-                    || ! is_numeric($rawPrice)
-                    || ! is_finite((float) $rawPrice)
-                    || (float) $rawPrice <= 0
-                ) {
-                    continue;
+    /** @param list<int> $ids @return array<int, string> */
+    private function publicStores(array $ids): array
+    {
+        $stores = [];
+
+        foreach (array_chunk($ids, self::READ_BATCH_SIZE) as $batch) {
+            foreach ($this->stores->findActiveByIds($batch) as $store) {
+                if ($store instanceof Store && (int) $store->id > 0) {
+                    $stores[(int) $store->id] = (string) $store->business_name;
                 }
+            }
+        }
 
-                $price = number_format((float) $rawPrice, 2, '.', '');
+        return $stores;
+    }
 
-                if (! isset($available[$rowProductId])) {
-                    $available[$rowProductId] = [
-                        'min_price' => $price,
-                        'minimarkets' => [],
-                    ];
-                } elseif ((float) $price < (float) $available[$rowProductId]['min_price']) {
-                    $available[$rowProductId]['min_price'] = $price;
-                }
+    /** @return list<array<string, mixed>> */
+    private function relatedProducts(Product $current): array
+    {
+        $categoryId = (int) ($current->category_id ?? 0);
 
-                $available[$rowProductId]['minimarkets'][$minimarketId] = true;
+        if ($categoryId <= 0) {
+            return [];
+        }
+
+        $candidates = [];
+
+        foreach ($this->productCandidates(null) as $product) {
+            if ((int) $product->id !== (int) $current->id && (int) $product->category_id === $categoryId) {
+                $candidates[] = $product;
+            }
+        }
+
+        usort($candidates, static function (Product $left, Product $right): int {
+            $name = strcasecmp((string) $left->name, (string) $right->name);
+
+            return $name !== 0 ? $name : (int) $left->id <=> (int) $right->id;
+        });
+        $ids = array_map(static fn (Product $product): int => (int) $product->id, $candidates);
+        $publicInventory = $this->publicInventory($ids);
+        $related = [];
+
+        foreach ($candidates as $product) {
+            if (! $this->isVisible($product, $publicInventory['summaries'])) {
+                continue;
             }
 
-            $page++;
-        } while (count($rows) === self::READ_BATCH_SIZE);
+            $related[] = $this->withoutInternalFields($this->serializeSummary(
+                $product,
+                $publicInventory['summaries'][(int) $product->id]
+            ));
 
-        return $available;
+            if (count($related) === self::RELATED_LIMIT) {
+                break;
+            }
+        }
+
+        return $related;
     }
 
     /** @return iterable<Product> */
@@ -166,16 +336,16 @@ final class CatalogService
         } while (count($batch) === self::READ_BATCH_SIZE);
     }
 
-    /** @param array<int, array{min_price: string, minimarkets: array<int, true>}> $available */
-    private function isVisible(Product $product, array $available): bool
+    /** @param array<int, array{min_price: string, max_price: string, minimarkets: array<int, true>}> $summaries */
+    private function isVisible(Product $product, array $summaries): bool
     {
         return $product->status === Product::STATUS_ACTIVE
             && (int) $product->id > 0
-            && isset($available[(int) $product->id]);
+            && isset($summaries[(int) $product->id]);
     }
 
-    /** @param array{min_price: string, minimarkets: array<int, true>} $availability */
-    private function serialize(Product $product, array $availability): array
+    /** @param array{min_price: string, max_price: string, minimarkets: array<int, true>} $summary */
+    private function serializeSummary(Product $product, array $summary): array
     {
         $description = wp_strip_all_tags((string) ($product->description ?? ''));
 
@@ -188,8 +358,8 @@ final class CatalogService
             'category' => $this->catalogItem($this->categories, (int) ($product->category_id ?? 0)),
             'brand' => $this->catalogItem($this->brands, (int) ($product->brand_id ?? 0)),
             'unit' => $this->catalogItem($this->units, (int) ($product->unit_id ?? 0)),
-            'min_price' => $availability['min_price'],
-            'available_minimarkets' => count($availability['minimarkets']),
+            'min_price' => $summary['min_price'],
+            'available_minimarkets' => count($summary['minimarkets']),
             '_created_at' => (string) $product->created_at,
         ];
     }
@@ -225,7 +395,7 @@ final class CatalogService
     }
 
     /** @param list<array<string, mixed>> $products */
-    private function sort(array &$products, string $orderBy): void
+    private function sortSummaries(array &$products, string $orderBy): void
     {
         usort($products, static function (array $left, array $right) use ($orderBy): int {
             if ($orderBy === 'price') {
@@ -242,5 +412,13 @@ final class CatalogService
 
             return strcasecmp($left['name'], $right['name']);
         });
+    }
+
+    /** @param array<string, mixed> $product */
+    private function withoutInternalFields(array $product): array
+    {
+        unset($product['_created_at']);
+
+        return $product;
     }
 }
