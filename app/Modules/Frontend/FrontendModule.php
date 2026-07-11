@@ -42,6 +42,10 @@ final class FrontendModule
             FrontendController::CART_SHORTCODE,
             [$this->controller, 'renderCart']
         );
+        add_shortcode(
+            FrontendController::CHECKOUT_SHORTCODE,
+            [$this->controller, 'renderCheckout']
+        );
         add_action(
             'wp',
             [($this->cartSession ?? new CartSession()), 'prepareForRequest']

@@ -16,6 +16,7 @@ final class FrontendAssets
     public const SCRIPT_HANDLE = 'veciahorra-frontend';
     public const OFFER_SCRIPT_HANDLE = 'veciahorra-product-offers';
     public const CART_SCRIPT_HANDLE = 'veciahorra-cart';
+    public const CHECKOUT_SCRIPT_HANDLE = 'veciahorra-checkout';
     public const REST_NAMESPACE = 'veciahorra/v1';
 
     private bool $registered = false;
@@ -61,6 +62,13 @@ final class FrontendAssets
             Config::PLUGIN_VERSION,
             true
         );
+        wp_register_script(
+            self::CHECKOUT_SCRIPT_HANDLE,
+            $baseUrl . 'js/veciahorra-checkout.js',
+            [self::SCRIPT_HANDLE],
+            Config::PLUGIN_VERSION,
+            true
+        );
     }
 
     public function enqueueProductOffers(): void
@@ -81,6 +89,16 @@ final class FrontendAssets
 
         $this->enqueue();
         wp_enqueue_script(self::CART_SCRIPT_HANDLE);
+    }
+
+    public function enqueueCheckout(): void
+    {
+        if (is_admin()) {
+            return;
+        }
+
+        $this->enqueue();
+        wp_enqueue_script(self::CHECKOUT_SCRIPT_HANDLE);
     }
 
     public function enqueue(): void
@@ -112,6 +130,13 @@ final class FrontendAssets
     public function configuration(): array
     {
         $userId = get_current_user_id();
+        $configuredMinimum = apply_filters(
+            'veciahorra_minimum_delivery_amount',
+            8000
+        );
+        $minimumDeliveryAmount = $this->minimumDeliveryAmount(
+            $configuredMinimum
+        );
 
         return [
             'restUrl' => esc_url_raw(rest_url(self::REST_NAMESPACE . '/')),
@@ -123,7 +148,16 @@ final class FrontendAssets
             ],
             'locale' => sanitize_text_field(determine_locale()),
             'currency' => 'CLP',
-            'pages' => [],
+            'pages' => [
+                'cart' => esc_url_raw((string) apply_filters(
+                    'veciahorra_frontend_cart_url',
+                    home_url('/carrito/')
+                )),
+                'checkout' => esc_url_raw($this->checkoutUrl()),
+            ],
+            'checkout' => [
+                'minimumDeliveryAmount' => max(0, $minimumDeliveryAmount),
+            ],
             'cart' => [
                 'sessionHeader' => 'X-Veciahorra-Cart-Session',
                 'sessionId' => $userId > 0
@@ -131,5 +165,47 @@ final class FrontendAssets
                     : ($this->cartSession ?? new CartSession())->identifier(),
             ],
         ];
+    }
+
+    public function checkoutUrl(): string
+    {
+        $page = get_page_by_path('checkout');
+        $default = $page instanceof \WP_Post
+            && has_shortcode($page->post_content, 'veciahorra_checkout')
+            ? (string) get_permalink($page)
+            : '';
+        $url = apply_filters('veciahorra_frontend_checkout_url', $default);
+
+        return is_string($url) ? $url : '';
+    }
+
+    private function minimumDeliveryAmount(mixed $value): int
+    {
+        if (is_int($value) && $value >= 0) {
+            return $value;
+        }
+
+        if (
+            is_float($value)
+            && is_finite($value)
+            && $value >= 0
+            && floor($value) === $value
+            && $value <= PHP_INT_MAX
+        ) {
+            return (int) $value;
+        }
+
+        if (
+            is_string($value)
+            && preg_match('/^(?:0|[1-9]\d*)$/D', $value) === 1
+        ) {
+            $validated = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $validated !== false && $validated >= 0
+                ? $validated
+                : 8000;
+        }
+
+        return 8000;
     }
 }

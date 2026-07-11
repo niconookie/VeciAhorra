@@ -16,6 +16,7 @@ final class ViewRenderer
         'page-placeholder' => 'Views/page-placeholder.php',
         'product-detail' => 'Views/product-detail.php',
         'cart' => 'Views/cart.php',
+        'checkout' => 'Views/checkout.php',
         'button' => 'Components/button.php',
         'card' => 'Components/card.php',
         'loader' => 'Components/loader.php',

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Public checkout browser test</title></head>
+<body>
+<div class="veciahorra-frontend">
+<section data-va-checkout>
+    <div data-va-checkout-loading></div>
+    <div data-va-checkout-error hidden><p data-va-checkout-error-message></p><button data-va-checkout-retry>Reintentar</button></div>
+    <div data-va-checkout-empty hidden>Vacío</div>
+    <div data-va-checkout-content hidden>
+        <div data-va-checkout-groups></div><strong data-va-checkout-total></strong>
+        <form data-va-checkout-form novalidate>
+            <div class="va-field"><input name="first_name" required data-va-field><p id="first-error" data-va-field-error hidden></p></div>
+            <div class="va-field"><input name="last_name" required data-va-field><p id="last-error" data-va-field-error hidden></p></div>
+            <div class="va-field"><input name="phone" type="tel" required data-va-field><p id="phone-error" data-va-field-error hidden></p></div>
+            <div class="va-field"><input name="email" type="email" required data-va-field><p id="email-error" data-va-field-error hidden></p></div>
+            <fieldset><legend>Método de entrega</legend><div data-va-delivery-options></div><p data-va-delivery-minimum hidden></p></fieldset>
+            <section data-va-delivery-fields hidden>
+                <div class="va-field"><input name="address" data-va-field><p id="address-error" data-va-field-error hidden></p></div>
+                <div class="va-field"><input name="commune" data-va-field><p id="commune-error" data-va-field-error hidden></p></div>
+                <div class="va-field"><input name="reference" data-va-field></div>
+                <div class="va-field"><textarea name="notes" data-va-field></textarea></div>
+            </section>
+            <button type="submit" data-va-checkout-submit disabled>Continuar al pago</button>
+            <p role="status" aria-live="polite" data-va-checkout-status hidden></p>
+        </form>
+    </div>
+</section>
+</div>
+<pre id="result">RUNNING</pre>
+<script>
+    var calls = [];
+    function item(id, storeId, store, subtotal) {
+        return { id: id, product_id: 100 + id, inventory_id: 200 + id, minimarket_id: storeId, minimarket_name: store, product_name: 'Producto ' + id, quantity: 1, unit_price_snapshot: subtotal, subtotal: subtotal };
+    }
+    var queue = [
+        { success: true, data: [item(2, 2, 'Mismo nombre', '3999.00'), item(1, 1, 'Mismo nombre', '4000.00')], total: '7999.00' },
+        { success: true, data: [item(3, 1, 'Minimarket A', '4000.00'), item(4, 2, 'Minimarket B', '4000.00')], total: '8000.00' },
+        { success: true, data: [item(5, 1, 'Minimarket A', '8001.00')], total: '8001.00' },
+        { success: true, data: [], total: '0.00' }
+    ];
+    window.VeciAhorra = {
+        locale: 'es-CL', currency: 'CLP', currentUser: { id: 0, loggedIn: false },
+        cart: { sessionHeader: 'X-Veciahorra-Cart-Session', sessionId: 'guest' },
+        checkout: { minimumDeliveryAmount: 8000 },
+        api: { get: function (path, options) { calls.push({ method: 'GET', path: path, options: options }); return Promise.resolve(queue.shift()); } }
+    };
+</script>
+<script src="../../assets/frontend/js/veciahorra-checkout.js"></script>
+<script>
+    (function () {
+        'use strict';
+        var root = document.querySelector('[data-va-checkout]');
+        var form = root.querySelector('form');
+        var result = document.getElementById('result');
+        function assert(value, message) { if (!value) { throw new Error(message); } }
+        function wait() { return new Promise(function (resolve) { setTimeout(resolve, 30); }); }
+        function ready() { return new Promise(function (resolve) { (function check() { root.vaCheckout ? resolve() : setTimeout(check, 10); }()); }); }
+        function input(name, value) { var field = form.elements[name]; field.value = value; field.dispatchEvent(new Event('input', { bubbles: true })); }
+
+        ready().then(wait).then(function () {
+            var summary = root.vaCheckout.getSummary();
+            var radios = form.querySelectorAll('input[name="delivery_method"]');
+            assert(calls.length === 1 && calls[0].path === '/cart', 'solo GET cart al abrir');
+            assert(calls[0].options.headers['X-Veciahorra-Cart-Session'] === 'guest', 'identidad invitada');
+            assert(summary.totalCents === 799900, 'total global 7999');
+            assert(summary.groups.length === 2 && summary.groups[0].id === 1, 'agrupacion determinista');
+            assert(summary.groups[0].subtotalCents === 400000 && summary.groups[1].subtotalCents === 399900, 'subtotales minimarket');
+            assert(radios.length === 1 && radios[0].value === 'pickup' && radios[0].checked, '7999 solo retiro');
+            assert(!root.querySelector('[data-va-delivery-minimum]').hidden, 'mensaje minimo visible');
+            assert(root.querySelector('[data-va-delivery-fields]').hidden, 'despacho inaccesible bajo minimo');
+            var fakeDelivery = document.createElement('input');
+            fakeDelivery.type = 'radio'; fakeDelivery.name = 'delivery_method'; fakeDelivery.value = 'delivery'; fakeDelivery.checked = true;
+            form.querySelector('[data-va-delivery-options]').append(fakeDelivery);
+            fakeDelivery.dispatchEvent(new Event('change', { bubbles: true }));
+            assert(root.querySelector('[data-va-delivery-fields]').hidden, 'manipulacion DOM no habilita despacho');
+            return root.vaCheckout.load();
+        }).then(wait).then(function () {
+            var radios = form.querySelectorAll('input[name="delivery_method"]');
+            assert(root.vaCheckout.getSummary().totalCents === 800000, 'total exacto 8000');
+            assert(radios.length === 2, '8000 permite retiro y despacho');
+            assert(radios[0].checked, 'retiro recomendado');
+            radios[1].checked = true;
+            radios[1].dispatchEvent(new Event('change', { bubbles: true }));
+            assert(!root.querySelector('[data-va-delivery-fields]').hidden, 'muestra campos despacho');
+            assert(form.elements.address.required && form.elements.commune.required, 'direccion y comuna requeridas');
+            input('first_name', 'Ana'); input('last_name', 'Pérez'); input('phone', '12'); input('email', 'incorrecto');
+            root.vaCheckout.validate();
+            assert(form.elements.phone.getAttribute('aria-invalid') === 'true', 'telefono invalido');
+            assert(form.elements.email.getAttribute('aria-invalid') === 'true', 'correo invalido');
+            input('phone', '+56 9 1234 5678'); input('email', 'ana@example.test'); input('address', 'Calle 1'); input('commune', 'Santiago');
+            assert(!form.querySelector('[data-va-checkout-submit]').disabled, 'formulario delivery valido');
+            form.elements.address.value = '';
+            radios[0].checked = true;
+            radios[0].dispatchEvent(new Event('change', { bubbles: true }));
+            assert(root.querySelector('[data-va-delivery-fields]').hidden, 'retorno oculta despacho');
+            assert(!form.elements.address.required && !form.elements.commune.required, 'despacho deja de bloquear');
+            assert(!form.querySelector('[data-va-checkout-submit]').disabled, 'pickup valido');
+            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            assert(root.querySelector('[data-va-checkout-status]').textContent.includes('No se guardaron datos'), 'accion local informativa');
+            assert(calls.every(function (call) { return call.method === 'GET' && call.path === '/cart'; }), 'sin llamadas transaccionales');
+            return wait().then(function () {
+                assert(!form.querySelector('[data-va-checkout-submit]').disabled, 'boton recupera estado tras accion');
+                return root.vaCheckout.load();
+            });
+        }).then(wait).then(function () {
+            assert(root.vaCheckout.getSummary().totalCents === 800100, 'total superior a 8000');
+            assert(form.querySelectorAll('input[name="delivery_method"]').length === 2, 'superior permite despacho');
+            var invalid = window.VeciAhorra.publicCheckout.normalizedGroups([
+                item(9, 1, 'A', 'NaN'), item(10, 1, 'A', '-1'), item(11, 1, 'A', 'Infinity')
+            ]);
+            assert(!invalid.valid && invalid.totalCents === 0, 'numericos invalidos seguros');
+            [true, false, [], {}, 1.5, '2abc', '2.5'].forEach(function (bad) {
+                assert(window.VeciAhorra.publicCheckout.positiveInteger(bad) === null, 'id/cantidad invalido rechazado');
+            });
+            var mismatch = item(12, 1, 'A', '10.00'); mismatch.quantity = 2;
+            assert(!window.VeciAhorra.publicCheckout.normalizedGroups([mismatch]).valid, 'subtotal manipulado rechazado');
+            var duplicateA = item(13, 1, 'A', '1.00');
+            var duplicateB = item(14, 1, 'A', '1.00'); duplicateB.inventory_id = duplicateA.inventory_id;
+            assert(!window.VeciAhorra.publicCheckout.normalizedGroups([duplicateA, duplicateB]).valid, 'inventario duplicado seguro');
+            return root.vaCheckout.load();
+        }).then(wait).then(function () {
+            assert(!root.querySelector('[data-va-checkout-empty]').hidden, 'carrito vacio controlado');
+            assert(calls.length === 4, 'una lectura por apertura/recarga');
+            window.VeciAhorra.api.get = function (path) { calls.push({ method: 'GET', path: path }); return Promise.reject({ message: 'Error de red.' }); };
+            return root.vaCheckout.load();
+        }).then(wait).then(function () {
+            assert(!root.querySelector('[data-va-checkout-error]').hidden, 'respuesta fallida controlada');
+            assert(root.querySelector('[data-va-checkout-content]').hidden, 'fallo no deja formulario operativo');
+            window.VeciAhorra.api.get = function (path) { calls.push({ method: 'GET', path: path }); return Promise.resolve({ success: true, data: null }); };
+            return root.vaCheckout.load();
+        }).then(wait).then(function () {
+            assert(!root.querySelector('[data-va-checkout-error]').hidden, 'respuesta incompleta controlada');
+            document.body.setAttribute('data-result', 'PASS');
+            result.textContent = 'PASS public-checkout-browser-test';
+        }).catch(function (error) {
+            document.body.setAttribute('data-result', 'FAIL');
+            result.textContent = 'FAIL ' + error.message;
+        });
+    }());
+</script>
+</body>
+</html>

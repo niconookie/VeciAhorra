@@ -14,6 +14,7 @@ final class FrontendController
 {
     public const SHORTCODE = 'veciahorra_frontend';
     public const CART_SHORTCODE = 'veciahorra_cart';
+    public const CHECKOUT_SHORTCODE = 'veciahorra_checkout';
 
     private int $instance = 0;
 
@@ -84,6 +85,30 @@ final class FrontendController
         $this->instance++;
         $instanceId = 'va-cart-' . $this->instance;
         $page = $this->views->render('cart', [
+            'instanceId' => $instanceId,
+            'checkoutUrl' => $this->assets->checkoutUrl(),
+        ]);
+
+        return $this->views->render('layout', [
+            'content' => $page,
+            'instanceId' => $instanceId,
+        ]);
+    }
+
+    /** @param array<string, mixed>|string $attributes */
+    public function renderCheckout(
+        array|string $attributes = [],
+        ?string $content = null,
+        string $tag = ''
+    ): string {
+        if (is_admin()) {
+            return '';
+        }
+
+        $this->assets->enqueueCheckout();
+        $this->instance++;
+        $instanceId = 'va-checkout-' . $this->instance;
+        $page = $this->views->render('checkout', [
             'instanceId' => $instanceId,
         ]);
 

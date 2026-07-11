@@ -64,3 +64,22 @@ El frontend no los calcula ni consulta precios actuales de Inventory. Las
 mutaciones vuelven a solicitar el carrito para representar el estado confirmado
 por el servidor. Esta fase no inicia Checkout, no reserva stock y depende de los
 mensajes y validaciones REST existentes.
+
+## Checkout público — UI Foundation
+
+`[veciahorra_checkout]` monta una experiencia exclusivamente visual que obtiene
+el carrito mediante `GET /cart`, agrupa sus líneas por minimarket y calcula de
+forma defensiva subtotales de grupo y total global desde los subtotales públicos.
+No invoca Checkout, Orders, Reservations, Payments ni Delivery.
+
+La configuración frontend `checkout.minimumDeliveryAmount` tiene valor inicial
+8000 CLP y puede ajustarse mediante el filtro
+`veciahorra_minimum_delivery_amount`. La UI aplica RB-CHK-001 al total global:
+bajo el mínimo solo presenta retiro; desde el mínimo presenta retiro y despacho.
+La decisión es informativa y deberá ser recalculada por backend en una fase
+transaccional posterior.
+
+El formulario valida contacto y muestra dirección/comuna solo para despacho. El
+botón “Continuar al pago” cambia a un estado informativo local: no persiste datos,
+no modifica el carrito y no simula reservas. El administrador debe crear una
+página con el shortcode; el módulo no crea páginas ni rewrite rules.

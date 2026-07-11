@@ -1,5 +1,6 @@
 <?php
 /** @var string $instanceId */
+/** @var string $checkoutUrl */
 $titleId = $instanceId . '-title';
 ?>
 <section class="va-public-cart" data-va-cart aria-labelledby="<?php echo esc_attr($titleId); ?>">
@@ -46,6 +47,13 @@ $titleId = $instanceId . '-title';
             <strong><?php esc_html_e('Total', 'veciahorra'); ?></strong>
             <strong data-va-cart-total></strong>
         </footer>
+        <div class="va-public-cart__checkout">
+            <?php if ($checkoutUrl !== '') : ?>
+                <a class="va-button" href="<?php echo esc_url($checkoutUrl); ?>" data-va-cart-checkout><?php esc_html_e('Continuar al checkout', 'veciahorra'); ?></a>
+            <?php else : ?>
+                <span class="va-help-text" role="status" data-va-cart-checkout-unavailable><?php esc_html_e('Checkout no disponible temporalmente.', 'veciahorra'); ?></span>
+            <?php endif; ?>
+        </div>
     </div>
     <p class="va-visually-hidden" role="status" aria-live="polite" aria-atomic="true" data-va-cart-status></p>
 </section>
