@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Public cart browser test</title></head>
+<body>
+<div class="veciahorra-frontend">
+<section data-va-cart>
+    <button type="button" data-va-cart-clear hidden>Vaciar carrito</button>
+    <div data-va-cart-loading></div>
+    <div data-va-cart-error hidden><p data-va-cart-error-message></p><button type="button" data-va-cart-retry>Reintentar</button></div>
+    <div data-va-cart-empty hidden></div>
+    <div data-va-cart-content hidden>
+        <table class="va-cart-table"><thead><tr><th>Producto</th></tr></thead><tbody data-va-cart-items></tbody></table>
+        <strong data-va-cart-total></strong>
+    </div>
+    <p role="status" aria-live="polite" data-va-cart-status></p>
+</section>
+</div>
+<pre id="result">RUNNING</pre>
+<script>
+    var calls = [];
+    var getQueue = [
+        { success: true, data: [], total: '0.00' },
+        { success: true, data: [{ id: 7, product_name: 'Arroz', product_image_url: null, minimarket_name: 'Tienda', unit_price_snapshot: '10.25', quantity: 2, subtotal: '20.50' }], total: '20.50' },
+        { success: true, data: [{ id: 7, product_name: 'Arroz', product_image_url: null, minimarket_name: 'Tienda', unit_price_snapshot: '10.25', quantity: 1, subtotal: '10.25' }], total: '10.25' },
+        { success: true, data: [], total: '0.00' },
+        { success: true, data: [{ id: 8, product_name: null, product_image_url: null, minimarket_name: null, unit_price_snapshot: '1.00', quantity: 1, subtotal: '1.00' }], total: '1.00' },
+        { success: true, data: [], total: '0.00' }
+    ];
+    window.VeciAhorra = {
+        locale: 'es-CL', currency: 'CLP',
+        currentUser: { id: 0, loggedIn: false },
+        cart: { sessionHeader: 'X-Veciahorra-Cart-Session', sessionId: 'guest-session' },
+        api: {
+            get: function (path, options) { calls.push({ method: 'GET', path: path, options: options }); return Promise.resolve(getQueue.shift()); },
+            patch: function (path, body, options) { calls.push({ method: 'PATCH', path: path, body: body, options: options }); return Promise.resolve({ success: true, data: true }); },
+            delete: function (path, options) { calls.push({ method: 'DELETE', path: path, options: options }); return Promise.resolve({ success: true, data: true }); }
+        }
+    };
+</script>
+<script src="../../assets/frontend/js/veciahorra-cart.js"></script>
+<script>
+    (function () {
+        'use strict';
+        var root = document.querySelector('[data-va-cart]');
+        var result = document.getElementById('result');
+        function assert(value, message) { if (!value) { throw new Error(message); } }
+        function wait() { return new Promise(function (resolve) { setTimeout(resolve, 30); }); }
+        function ready() { return new Promise(function (resolve) { (function check() { root.vaCart ? resolve() : setTimeout(check, 10); }()); }); }
+
+        ready().then(wait).then(function () {
+            assert(!root.querySelector('[data-va-cart-empty]').hidden, 'carrito vacio');
+            assert(calls[0].path === '/cart', 'GET al abrir');
+            assert(calls[0].options.headers['X-Veciahorra-Cart-Session'] === 'guest-session', 'identidad invitada');
+            return root.vaCart.load();
+        }).then(wait).then(function () {
+            assert(!root.querySelector('[data-va-cart-content]').hidden, 'render contenido');
+            assert(root.textContent.includes('Arroz') && root.textContent.includes('Tienda'), 'datos publicos');
+            assert(root.querySelectorAll('[data-cart-item-id]').length === 1, 'una fila');
+            assert(root.querySelectorAll('[aria-label]').length >= 3, 'controles accesibles');
+            root.querySelector('[aria-label^="Disminuir"]').click();
+            return wait();
+        }).then(wait).then(function () {
+            var patch = calls.find(function (call) { return call.method === 'PATCH'; });
+            assert(patch.path === '/cart/items/7', 'ruta PATCH');
+            assert(JSON.stringify(patch.body) === JSON.stringify({ quantity: 1 }), 'payload PATCH exacto');
+            assert(root.querySelector('[data-va-cart-status]').textContent === 'Cantidad actualizada.', 'aria live actualizacion');
+            window.VeciAhorra.api.patch = function () {
+                return Promise.reject({ status: 422, code: 'validation_error', message: 'Stock insuficiente.' });
+            };
+            root.querySelector('[aria-label^="Aumentar"]').click();
+            return wait();
+        }).then(function () {
+            assert(root.querySelector('[data-va-cart-error-message]').textContent === 'Stock insuficiente.', 'mensaje API visible');
+            window.VeciAhorra.api.patch = function (path, body, options) { calls.push({ method: 'PATCH', path: path, body: body, options: options }); return Promise.resolve({ success: true }); };
+            root.querySelector('[aria-label^="Eliminar"]').click();
+            return wait();
+        }).then(wait).then(function () {
+            assert(root.querySelector('[data-va-cart-status]').textContent === 'Producto eliminado del carrito.', 'aria live eliminar');
+            return root.vaCart.load();
+        }).then(wait).then(function () {
+            assert(root.textContent.includes('Producto no disponible'), 'producto neutro');
+            assert(root.textContent.includes('Minimarket no disponible'), 'minimarket neutro');
+            root.querySelector('[data-va-cart-clear]').click();
+            return wait();
+        }).then(wait).then(function () {
+            assert(calls.some(function (call) { return call.method === 'DELETE' && call.path === '/cart'; }), 'vaciar carrito');
+            assert(root.querySelector('[data-va-cart-status]').textContent === 'Carrito vaciado.', 'aria live vaciar');
+            assert(window.matchMedia('(max-width: 47.99rem)').matches || document.querySelector('.va-cart-table'), 'estructura responsive');
+            document.body.setAttribute('data-result', 'PASS');
+            result.textContent = 'PASS public-cart-browser-test';
+        }).catch(function (error) {
+            document.body.setAttribute('data-result', 'FAIL');
+            result.textContent = 'FAIL ' + error.message;
+        });
+    }());
+</script>
+</body>
+</html>

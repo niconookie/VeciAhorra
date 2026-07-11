@@ -232,6 +232,7 @@
         var addLabel = root.querySelector('[data-va-add-label]');
         var addLoading = root.querySelector('[data-va-add-loading]');
         var cartSuccess = root.querySelector('[data-va-cart-success]');
+        var viewCart = root.querySelector('[data-va-view-cart]');
         var cartError = root.querySelector('[data-va-cart-error]');
         var currentProduct = null;
         var isAddingToCart = false;
@@ -379,16 +380,8 @@
         }
 
         function publicCartError(requestError) {
-            var publicCodes = [
-                'validation_error',
-                'cart_identity_required',
-                'cart_item_not_found',
-                'invalid_json'
-            ];
-
             if (
                 requestError
-                && publicCodes.indexOf(requestError.code) !== -1
                 && typeof requestError.message === 'string'
                 && requestError.message.trim() !== ''
             ) {
@@ -445,6 +438,7 @@
 
                     cartSuccess.hidden = false;
                     text(cartSuccess, 'Producto agregado al carrito.');
+                    viewCart.hidden = false;
 
                     return response;
                 })

@@ -104,6 +104,76 @@ final class CartService
             : $this->repository->findBySession($sessionId);
     }
 
+    /** @return array{items: list<array<string, mixed>>, total: string} */
+    public function getPublicCart(array $owner): array
+    {
+        [$sessionId, $userId] = $this->owner($owner);
+        $items = $userId !== null
+            ? $this->repository->findPublicByUser($userId)
+            : $this->repository->findPublicBySession($sessionId);
+        $imageIds = [];
+        $totalCents = 0;
+
+        foreach ($items as $item) {
+            $imageId = $this->nullableInteger(
+                $item['product_image_id'] ?? null
+            );
+
+            if ($imageId !== null && $imageId > 0) {
+                $imageIds[$imageId] = $imageId;
+            }
+        }
+
+        if ($imageIds !== []) {
+            _prime_post_caches(array_values($imageIds), false, true);
+            update_meta_cache('post', array_values($imageIds));
+        }
+
+        foreach ($items as &$item) {
+            $quantity = $this->cartQuantity($item['quantity'] ?? null);
+            $unitCents = $this->decimalToCents(
+                $item['unit_price_snapshot'] ?? null
+            );
+            $subtotalCents = $quantity !== null && $unitCents !== null
+                && $unitCents <= intdiv(PHP_INT_MAX, $quantity)
+                    ? $unitCents * $quantity
+                    : null;
+            $imageId = $this->nullableInteger(
+                $item['product_image_id'] ?? null
+            );
+            $imageUrl = $imageId !== null && $imageId > 0
+                ? wp_get_attachment_image_url($imageId, 'thumbnail')
+                : false;
+
+            $item['product_name'] = is_string($item['product_name'] ?? null)
+                ? $item['product_name']
+                : null;
+            $item['product_image_id'] = $imageId;
+            $item['product_image_url'] = is_string($imageUrl)
+                ? $imageUrl
+                : null;
+            $item['minimarket_name'] = is_string(
+                $item['minimarket_name'] ?? null
+            ) ? $item['minimarket_name'] : null;
+            $item['subtotal'] = $subtotalCents === null
+                ? null
+                : $this->formatCents($subtotalCents);
+
+            if (
+                $subtotalCents !== null
+                && $totalCents <= PHP_INT_MAX - $subtotalCents
+            ) {
+                $totalCents += $subtotalCents;
+            }
+        }
+        unset($item);
+
+        return [
+            'items' => $items,
+            'total' => $this->formatCents($totalCents),
+        ];
+    }
+
     public function updateQuantity(
         array $owner,
         int $id,
@@ -329,5 +399,43 @@ final class CartService
         }
 
         return number_format((float) $price, 2, '.', '');
+    }
+
+    private function cartQuantity(mixed $value): ?int
+    {
+        try {
+            return $this->integerValue($value, 'quantity del carrito');
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+    }
+
+    private function decimalToCents(mixed $value): ?int
+    {
+        if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+
+        if (! preg_match('/^\d+(?:\.\d{1,2})?$/D', $normalized)) {
+            return null;
+        }
+
+        [$whole, $decimal] = array_pad(explode('.', $normalized, 2), 2, '');
+        $decimal = str_pad($decimal, 2, '0');
+
+        if (strlen($whole) > strlen((string) intdiv(PHP_INT_MAX, 100))) {
+            return null;
+        }
+
+        $cents = ((int) $whole * 100) + (int) $decimal;
+
+        return $cents >= 0 ? $cents : null;
+    }
+
+    private function formatCents(int $cents): string
+    {
+        return sprintf('%d.%02d', intdiv($cents, 100), $cents % 100);
     }
 }

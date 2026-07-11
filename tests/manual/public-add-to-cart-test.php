@@ -67,7 +67,8 @@ $html = $controller->renderPlaceholder(['product_id' => 123]);
 foreach ([
     'data-va-add-to-cart', 'disabled', 'aria-busy="false"',
     'data-va-add-loading', 'data-va-cart-success', 'aria-live="polite"',
-    'data-va-cart-error', 'role="alert"',
+    'data-va-cart-error', 'role="alert"', 'data-va-view-cart',
+    'Ver carrito', '/carrito/',
 ] as $contract) {
     assertPublicAddToCartContains($contract, $html);
 }
@@ -87,6 +88,7 @@ foreach ([
     'payload.inventory_id !== selectedId', 'cartRequestOptions',
     'cart.sessionHeader', "setAttribute('aria-busy'",
     '.finally(function ()', 'Producto agregado al carrito.',
+    'viewCart.hidden = false',
     'No fue posible agregar el producto al carrito. Intenta nuevamente.',
 ] as $contract) {
     assertPublicAddToCartContains($contract, $javascript);

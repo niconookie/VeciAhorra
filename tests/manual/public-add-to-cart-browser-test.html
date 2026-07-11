@@ -16,6 +16,7 @@
         <section class="va-cart-action">
             <button type="button" data-va-add-to-cart disabled aria-busy="false"><span data-va-add-label>Agregar</span><span data-va-add-loading hidden>Agregando</span></button>
             <p data-va-cart-success hidden></p><p data-va-cart-error hidden></p>
+            <a href="/carrito/" data-va-view-cart hidden>Ver carrito</a>
         </section>
     </article>
 </div>
@@ -66,6 +67,8 @@
         }
         ready().then(wait).then(function () {
             assert(button.disabled, 'boton inicial deshabilitado');
+            button.click();
+            assert(postCalls.length === 0, 'envio sin oferta seleccionada');
             root.vaOfferSelector.select(101);
             assert(!button.disabled, 'seleccion valida habilita boton');
             button.click();
@@ -84,14 +87,22 @@
             assert(!button.disabled && !root.vaOfferSelector.isAddingToCart(), 'restablece tras exito');
             assert(root.vaOfferSelector.getState().selectedInventoryId === 101, 'conserva seleccion');
             assert(!root.querySelector('[data-va-cart-success]').hidden, 'mensaje exito');
+            assert(!root.querySelector('[data-va-view-cart]').hidden, 'acceso al carrito tras exito');
             assert(root.querySelector('[data-va-selected-stock]').textContent === '1', 'no descuenta stock visual');
+            window.VeciAhorra.currentUser = { id: 7, loggedIn: true };
+            button.click();
+            pending.resolve({ success: true, data: { id: 1, created: false } });
+            return wait();
+        }).then(function () {
+            assert(Object.keys(postCalls[1].options.headers).length === 0, 'autenticado no envia identidad invitada');
+            window.VeciAhorra.currentUser = { id: 0, loggedIn: false };
             return clickAndReject({ status: 422, code: 'validation_error', message: 'Stock insuficiente.', data: null });
         }).then(function () {
             assert(!button.disabled, 'reactiva tras 4xx');
             assert(root.querySelector('[data-va-cart-error]').textContent === 'Stock insuficiente.', 'mensaje publico 4xx');
             return clickAndReject({ status: 500, code: 'internal_error', message: 'SQL private', data: null });
         }).then(function () {
-            assert(!root.querySelector('[data-va-cart-error]').textContent.includes('SQL'), 'oculta detalle 5xx');
+            assert(root.querySelector('[data-va-cart-error]').textContent === 'SQL private', 'preserva mensaje REST');
             return clickAndReject({ status: 0, code: 'network_error', message: 'Network details', data: null });
         }).then(function () {
             assert(!button.disabled, 'reactiva tras red');

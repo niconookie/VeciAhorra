@@ -13,6 +13,7 @@ use VeciAhorra\Modules\Frontend\Support\ViewRenderer;
 final class FrontendController
 {
     public const SHORTCODE = 'veciahorra_frontend';
+    public const CART_SHORTCODE = 'veciahorra_cart';
 
     private int $instance = 0;
 
@@ -47,6 +48,10 @@ final class FrontendController
             $page = $this->views->render('product-detail', [
                 'instanceId' => $instanceId,
                 'productId' => $productId,
+                'cartUrl' => (string) apply_filters(
+                    'veciahorra_frontend_cart_url',
+                    home_url('/carrito/')
+                ),
             ]);
         } else {
             $page = $this->views->render('page-placeholder', [
@@ -58,6 +63,29 @@ final class FrontendController
                 ),
             ]);
         }
+
+        return $this->views->render('layout', [
+            'content' => $page,
+            'instanceId' => $instanceId,
+        ]);
+    }
+
+    /** @param array<string, mixed>|string $attributes */
+    public function renderCart(
+        array|string $attributes = [],
+        ?string $content = null,
+        string $tag = ''
+    ): string {
+        if (is_admin()) {
+            return '';
+        }
+
+        $this->assets->enqueueCart();
+        $this->instance++;
+        $instanceId = 'va-cart-' . $this->instance;
+        $page = $this->views->render('cart', [
+            'instanceId' => $instanceId,
+        ]);
 
         return $this->views->render('layout', [
             'content' => $page,

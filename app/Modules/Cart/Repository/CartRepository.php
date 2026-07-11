@@ -45,6 +45,18 @@ final class CartRepository extends Repository
         return $this->findBy('user_id', $userId);
     }
 
+    /** @return list<array<string, mixed>> */
+    public function findPublicBySession(string $sessionId): array
+    {
+        return $this->findPublicBy('session_id', $sessionId);
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function findPublicByUser(int $userId): array
+    {
+        return $this->findPublicBy('user_id', $userId);
+    }
+
     public function findItemByInventoryForSession(
         string $sessionId,
         int $inventoryId
@@ -200,6 +212,43 @@ final class CartRepository extends Repository
         $sql = sprintf(
             'SELECT * FROM %s WHERE %s = %s ORDER BY id ASC',
             $this->table(self::TABLE),
+            $field,
+            $placeholder
+        );
+
+        return $this->db()->get_results(
+            $this->db()->prepare($sql, $value),
+            ARRAY_A
+        );
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function findPublicBy(string $field, string|int $value): array
+    {
+        $placeholder = is_int($value) ? '%d' : '%s';
+        $sql = sprintf(
+            'SELECT
+                cart.id AS id,
+                cart.session_id AS session_id,
+                cart.user_id AS user_id,
+                cart.inventory_id AS inventory_id,
+                cart.product_id AS product_id,
+                cart.minimarket_id AS minimarket_id,
+                cart.quantity AS quantity,
+                cart.unit_price_snapshot AS unit_price_snapshot,
+                cart.created_at AS created_at,
+                cart.updated_at AS updated_at,
+                products.name AS product_name,
+                products.image_id AS product_image_id,
+                stores.business_name AS minimarket_name
+             FROM %s AS cart
+             LEFT JOIN %s AS products ON products.id = cart.product_id
+             LEFT JOIN %s AS stores ON stores.id = cart.minimarket_id
+             WHERE cart.%s = %s
+             ORDER BY cart.id ASC',
+            $this->table(self::TABLE),
+            $this->table('products'),
+            $this->table('stores'),
             $field,
             $placeholder
         );

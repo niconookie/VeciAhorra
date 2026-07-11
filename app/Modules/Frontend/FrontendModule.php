@@ -38,6 +38,10 @@ final class FrontendModule
             FrontendController::SHORTCODE,
             [$this->controller, 'renderPlaceholder']
         );
+        add_shortcode(
+            FrontendController::CART_SHORTCODE,
+            [$this->controller, 'renderCart']
+        );
         add_action(
             'wp',
             [($this->cartSession ?? new CartSession()), 'prepareForRequest']

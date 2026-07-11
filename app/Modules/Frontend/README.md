@@ -45,3 +45,22 @@ la selección, redirigir, modificar stock ni iniciar Checkout. Cart 22.x sólo
 valida actualmente identidad, IDs positivos y existencia del inventario; las
 validaciones de estado, stock y precio siguen siendo una dependencia backend y
 no se simulan como autoridad en el navegador.
+
+## Carrito público
+
+`[veciahorra_cart]` renderiza el carrito y lo revalida con `GET /cart` cada vez
+que se monta. La vista representa carga, carrito vacío, error recuperable,
+contenido, total y controles accesibles de cantidad y eliminación. En escritorio
+usa tabla y en pantallas pequeñas transforma cada fila en una tarjeta.
+
+El flujo consume exclusivamente `GET /cart`, `POST /cart/items` desde la ficha
+del producto, `PATCH /cart/items/{id}`, `DELETE /cart/items/{id}` y
+`DELETE /cart`. Invitados usan el encabezado de sesión existente y usuarios
+autenticados usan cookie, nonce e identidad WordPress. No se almacena el carrito
+en el navegador.
+
+Precio, subtotal y total se muestran exactamente desde la respuesta de Cart.
+El frontend no los calcula ni consulta precios actuales de Inventory. Las
+mutaciones vuelven a solicitar el carrito para representar el estado confirmado
+por el servidor. Esta fase no inicia Checkout, no reserva stock y depende de los
+mensajes y validaciones REST existentes.

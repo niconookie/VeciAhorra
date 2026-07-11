@@ -19,9 +19,12 @@ final class CartController
     public function index(array $owner): array
     {
         try {
+            $cart = $this->service->getPublicCart($owner);
+
             return [
                 'success' => true,
-                'data' => $this->service->getCart($owner),
+                'data' => $cart['items'],
+                'total' => $cart['total'],
             ];
         } catch (Throwable $exception) {
             return $this->error($exception);
