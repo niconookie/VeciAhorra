@@ -124,6 +124,9 @@
 .veciahorra-frontend .va-checkout-delivery legend { font-size: 1.25rem; font-weight: 700; padding-inline: var(--va-space-1); }
 .veciahorra-frontend .va-delivery-option { align-items: center; cursor: pointer; display: flex; gap: var(--va-space-2); margin-block: var(--va-space-2); }
 .veciahorra-frontend .va-checkout-form__submit { justify-self: start; min-width: min(100%, 16rem); }
+.veciahorra-frontend .va-checkout-form__submit[aria-busy="true"] { cursor: wait; }
+.veciahorra-frontend .va-checkout-validation-errors:focus-visible { outline: 0.1875rem solid var(--va-color-danger); outline-offset: 0.1875rem; }
+.veciahorra-frontend .va-checkout-validation-errors ul { margin-bottom: 0; }
 
 @keyframes va-spin { to { transform: rotate(360deg); } }
 @media (min-width: 30rem) { .veciahorra-frontend .va-container { padding: var(--va-space-4); } }

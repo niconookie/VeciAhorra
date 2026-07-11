@@ -22,6 +22,12 @@
         return Number.isSafeInteger(number) ? number : null;
     }
 
+    function nonNegativeInteger(value) {
+        return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+            ? value
+            : null;
+    }
+
     function decimalToCents(value) {
         var normalized;
         var parts;
@@ -100,7 +106,7 @@
         return node;
     }
 
-    function normalizedGroups(items) {
+    function normalizedGroups(items, allowDomainInvalid) {
         var groups = new Map();
         var inventories = new Set();
         var invalid = false;
@@ -117,6 +123,7 @@
             var subtotalCents = null;
             var key = minimarketId === null ? 0 : minimarketId;
             var group;
+            var domainInvalid = allowDomainInvalid === true && item.valid === false;
 
             if (
                 quantity !== null
@@ -164,7 +171,11 @@
                 subtotalCents: subtotalCents
             });
             if (subtotalCents === null) {
-                invalid = true;
+                if (!domainInvalid) {
+                    invalid = true;
+                }
+            } else if (item.valid === false) {
+                // Backend excludes invalid domain items from its authoritative total.
             } else if (
                 Number.isSafeInteger(group.subtotalCents + subtotalCents)
                 && Number.isSafeInteger(totalCents + subtotalCents)
@@ -193,6 +204,100 @@
         };
     }
 
+    function normalizedValidation(payload, previousItems) {
+        var data = payload && payload.success === true ? payload.data : null;
+        var metadata = new Map();
+        var items;
+        var errors;
+        var summary;
+        var normalized;
+        var summaryCents;
+
+        previousItems.forEach(function (item) {
+            var id = positiveInteger(item && item.id);
+            if (id !== null) {
+                metadata.set(id, item);
+            }
+        });
+
+        if (
+            !data
+            || typeof data.valid !== 'boolean'
+            || !Array.isArray(data.items)
+            || !Array.isArray(data.errors)
+            || !data.summary
+            || typeof data.summary !== 'object'
+        ) {
+            throw { code: 'invalid_response', message: 'El servidor entregó una respuesta incompleta. Inténtalo nuevamente.' };
+        }
+
+        items = data.items.map(function (item) {
+            var id = positiveInteger(item && item.id);
+            var previous = id === null ? null : metadata.get(id);
+            if (!item || typeof item !== 'object' || typeof item.valid !== 'boolean' || !Array.isArray(item.errors)) {
+                throw { code: 'invalid_response', message: 'El servidor entregó ítems de validación incompletos.' };
+            }
+            return Object.assign({}, item, {
+                product_name: previous && typeof previous.product_name === 'string' ? previous.product_name : null,
+                minimarket_name: previous && typeof previous.minimarket_name === 'string' ? previous.minimarket_name : null
+            });
+        });
+
+        errors = data.errors.map(function (error) {
+            if (
+                !error
+                || typeof error !== 'object'
+                || typeof error.code !== 'string'
+                || typeof error.message !== 'string'
+                || error.message.trim() === ''
+            ) {
+                throw { code: 'invalid_response', message: 'El servidor entregó errores de validación incompletos.' };
+            }
+            return {
+                code: error.code,
+                message: error.message.trim(),
+                cartItemId: error.cart_item_id === undefined
+                    ? null
+                    : positiveInteger(error.cart_item_id)
+            };
+        });
+
+        summary = data.summary;
+        summaryCents = decimalToCents(summary.total);
+        if (
+            nonNegativeInteger(summary.item_count) === null
+            || nonNegativeInteger(summary.valid_item_count) === null
+            || nonNegativeInteger(summary.invalid_item_count) === null
+            || summaryCents === null
+            || summary.item_count !== items.length
+            || summary.valid_item_count + summary.invalid_item_count !== summary.item_count
+        ) {
+            throw { code: 'invalid_response', message: 'El resumen validado está incompleto.' };
+        }
+
+        normalized = normalizedGroups(items, true);
+        if (!normalized.valid || normalized.totalCents !== summaryCents) {
+            throw { code: 'invalid_response', message: 'Los importes validados no son consistentes.' };
+        }
+        if (
+            data.valid !== (
+                summary.item_count > 0
+                && summary.invalid_item_count === 0
+            )
+            || (data.valid && errors.length !== 0)
+        ) {
+            throw { code: 'invalid_response', message: 'El estado de validación no es consistente.' };
+        }
+
+        return {
+            valid: data.valid,
+            errors: errors,
+            items: items,
+            groups: normalized.groups,
+            totalCents: summaryCents
+        };
+    }
+
     function mount(root) {
         var loading = root.querySelector('[data-va-checkout-loading]');
         var error = root.querySelector('[data-va-checkout-error]');
@@ -208,14 +313,22 @@
         var form = root.querySelector('[data-va-checkout-form]');
         var submit = root.querySelector('[data-va-checkout-submit]');
         var status = root.querySelector('[data-va-checkout-status]');
+        var validationErrors = root.querySelector('[data-va-checkout-validation-errors]');
+        var validationErrorList = root.querySelector('[data-va-checkout-validation-error-list]');
         var minimum = config.checkout && config.checkout.minimumDeliveryAmount;
         var minimumUnits = typeof minimum === 'number' && Number.isSafeInteger(minimum) && minimum >= 0
             ? minimum
             : 8000;
         var minimumCents = minimumUnits * 100;
         var calculated = null;
+        var visibleItems = [];
         var deliveryEligible = false;
         var submitted = false;
+        var validated = false;
+        var validating = false;
+        var requestSequence = 0;
+        var activeController = null;
+        var defaultSubmitText = 'Continuar al pago';
 
         function showError(message) {
             loading.hidden = true;
@@ -223,6 +336,61 @@
             content.hidden = true;
             error.hidden = false;
             errorMessage.textContent = message;
+            validated = false;
+            submit.textContent = defaultSubmitText;
+            submit.disabled = true;
+        }
+
+        function clearValidationMessages() {
+            validationErrors.hidden = true;
+            validationErrorList.replaceChildren();
+            status.hidden = true;
+            status.textContent = '';
+        }
+
+        function invalidateValidation() {
+            if (validating) {
+                requestSequence += 1;
+                if (activeController) {
+                    activeController.abort();
+                }
+                activeController = null;
+                validating = false;
+                submit.removeAttribute('aria-busy');
+                root.removeAttribute('aria-busy');
+            }
+            validated = false;
+            submit.textContent = defaultSubmitText;
+            clearValidationMessages();
+        }
+
+        function showValidationErrors(errors) {
+            validationErrorList.replaceChildren();
+            errors.forEach(function (problem) {
+                validationErrorList.append(element('li', '', problem.message));
+            });
+            validationErrors.hidden = false;
+            status.hidden = false;
+            status.textContent = 'La información del carrito cambió. Revisa los problemas indicados.';
+            validationErrors.focus();
+        }
+
+        function communicationMessage(error) {
+            if (error && error.code === 'timeout') {
+                return 'La validación tardó demasiado. Inténtalo nuevamente.';
+            }
+            if (error && error.code === 'invalid_response') {
+                return error.message;
+            }
+            if (error && error.status >= 500) {
+                return 'No fue posible validar la compra por un error interno. Inténtalo nuevamente.';
+            }
+            if (error && [400, 404, 409, 422].indexOf(error.status) !== -1) {
+                return error.message || 'No fue posible validar la compra. Revisa los datos e inténtalo nuevamente.';
+            }
+            return error && typeof error.message === 'string' && error.message.trim() !== ''
+                ? error.message
+                : 'No fue posible validar la compra. Comprueba tu conexión e inténtalo nuevamente.';
         }
 
         function renderLine(entry) {
@@ -277,17 +445,76 @@
             return selected ? selected.value : 'pickup';
         }
 
-        function renderDelivery(summary) {
+        function renderDelivery(summary, preferredMethod) {
             deliveryEligible = summary.totalCents >= minimumCents;
-            optionsRoot.replaceChildren(deliveryOption('pickup', 'Retiro en minimarket', true));
+            optionsRoot.replaceChildren(deliveryOption(
+                'pickup',
+                'Retiro en minimarket',
+                preferredMethod !== 'delivery' || !deliveryEligible
+            ));
             if (deliveryEligible) {
-                optionsRoot.append(deliveryOption('delivery', 'Despacho', false));
+                optionsRoot.append(deliveryOption(
+                    'delivery',
+                    'Despacho',
+                    preferredMethod === 'delivery'
+                ));
                 minimumMessage.hidden = true;
             } else {
                 minimumMessage.textContent = 'El despacho está disponible para compras desde ' + moneyFromCents(minimumCents) + '.';
                 minimumMessage.hidden = false;
             }
             updateDeliveryFields();
+        }
+
+        function monetarySignature(items) {
+            return items.map(function (item) {
+                return [
+                    positiveInteger(item && item.id),
+                    positiveInteger(item && item.quantity),
+                    decimalToCents(item && item.unit_price_snapshot),
+                    decimalToCents(item && item.subtotal)
+                ].join(':');
+            }).sort().join('|');
+        }
+
+        function applyValidation(result) {
+            var previousTotal = calculated ? calculated.totalCents : null;
+            var previousSignature = monetarySignature(visibleItems);
+            var previousMethod = selectedMethod();
+            var changed = previousTotal !== result.totalCents
+                || previousSignature !== monetarySignature(result.items);
+            var forcedPickup = previousMethod === 'delivery'
+                && result.totalCents < minimumCents;
+
+            calculated = {
+                groups: result.groups,
+                totalCents: result.totalCents,
+                valid: true
+            };
+            visibleItems = result.items;
+            renderGroups(calculated);
+            renderDelivery(calculated, forcedPickup ? 'pickup' : previousMethod);
+            clearValidationMessages();
+
+            if (changed || forcedPickup) {
+                status.hidden = false;
+                status.textContent = forcedPickup
+                    ? 'El total validado es inferior al mínimo requerido para despacho. El método de entrega cambió automáticamente a retiro.'
+                    : 'El carrito cambió mientras preparabas tu compra. Se actualizaron los valores antes de continuar.';
+            }
+
+            if (result.valid) {
+                validated = true;
+                submit.textContent = 'Continuar';
+                status.hidden = false;
+                status.textContent = (status.textContent ? status.textContent + ' ' : '')
+                    + 'Compra validada correctamente.';
+            } else {
+                validated = false;
+                submit.textContent = defaultSubmitText;
+                showValidationErrors(result.errors.length > 0 ? result.errors : [{ message: 'La compra contiene datos no válidos.' }]);
+            }
+            validateForm(false);
         }
 
         function fieldError(input, message) {
@@ -332,7 +559,7 @@
                 }
                 valid = fieldValid && valid;
             });
-            submit.disabled = submitted || !valid;
+            submit.disabled = submitted || validating || !valid;
             return valid;
         }
 
@@ -363,8 +590,9 @@
                 return;
             }
             calculated = normalizedGroups(items);
+            visibleItems = items.slice();
             renderGroups(calculated);
-            renderDelivery(calculated);
+            renderDelivery(calculated, 'pickup');
             empty.hidden = true;
             content.hidden = false;
             if (!calculated.valid) {
@@ -375,6 +603,7 @@
         }
 
         function load() {
+            invalidateValidation();
             loading.hidden = false;
             error.hidden = true;
             empty.hidden = true;
@@ -389,41 +618,103 @@
 
         form.addEventListener('input', function (event) {
             if (event.target.matches('[data-va-field]')) {
+                invalidateValidation();
                 validateForm(false);
             }
         });
         form.addEventListener('change', function (event) {
             if (event.target.name === 'delivery_method') {
+                invalidateValidation();
                 updateDeliveryFields();
             } else if (event.target.matches('[data-va-field]')) {
+                invalidateValidation();
                 validateForm(false);
             }
         });
-        form.addEventListener('submit', function (event) {
+
+        function validatePurchase() {
             var firstInvalid;
-            event.preventDefault();
-            if (submitted || !validateForm(true)) {
+            var requestId;
+            var timer;
+            var timedOut = false;
+
+            if (validating) {
+                return Promise.resolve(null);
+            }
+            if (validated) {
+                status.hidden = false;
+                status.textContent = 'La compra ya está validada. El siguiente paso se incorporará en 28.7.3.';
+                return Promise.resolve(null);
+            }
+            if (!validateForm(true)) {
                 firstInvalid = form.querySelector('[aria-invalid="true"]');
                 if (firstInvalid) {
                     firstInvalid.focus();
                 }
-                return;
+                return Promise.resolve(null);
             }
-            submitted = true;
+
+            clearValidationMessages();
+            validating = true;
+            requestId = ++requestSequence;
+            activeController = new AbortController();
             submit.disabled = true;
+            submit.textContent = 'Validando…';
+            submit.setAttribute('aria-busy', 'true');
+            root.setAttribute('aria-busy', 'true');
             status.hidden = false;
-            status.textContent = 'La conexión con el flujo transaccional se incorporará en 28.7.2. No se guardaron datos ni se modificó el carrito.';
-            window.setTimeout(function () {
-                submitted = false;
-                validateForm(false);
-            }, 0);
+            status.textContent = 'Validando compra…';
+            timer = window.setTimeout(function () {
+                timedOut = true;
+                activeController.abort();
+            }, REQUEST_TIMEOUT);
+
+            return config.api.post(
+                '/checkout/validate',
+                {},
+                requestOptions(activeController.signal)
+            ).then(function (payload) {
+                if (requestId !== requestSequence) {
+                    return null;
+                }
+                applyValidation(normalizedValidation(payload, visibleItems));
+                return payload;
+            }).catch(function (requestError) {
+                if (requestId !== requestSequence) {
+                    return null;
+                }
+                validated = false;
+                submit.textContent = defaultSubmitText;
+                showValidationErrors([{
+                    message: timedOut
+                        ? 'La validación tardó demasiado. Inténtalo nuevamente.'
+                        : communicationMessage(requestError)
+                }]);
+                return null;
+            }).finally(function () {
+                window.clearTimeout(timer);
+                if (requestId === requestSequence) {
+                    validating = false;
+                    activeController = null;
+                    submit.removeAttribute('aria-busy');
+                    root.removeAttribute('aria-busy');
+                    submit.textContent = validated ? 'Continuar' : defaultSubmitText;
+                    validateForm(false);
+                }
+            });
+        }
+
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            validatePurchase();
         });
         retry.addEventListener('click', load);
 
         root.vaCheckout = {
             load: load,
             getSummary: function () { return calculated; },
-            validate: function () { return validateForm(true); }
+            validate: function () { return validateForm(true); },
+            validatePurchase: validatePurchase
         };
         load();
     }
@@ -440,6 +731,7 @@
         positiveInteger: positiveInteger,
         decimalToCents: decimalToCents,
         normalizedGroups: normalizedGroups,
+        normalizedValidation: normalizedValidation,
         initialize: initialize
     };
     window.VeciAhorra = config;

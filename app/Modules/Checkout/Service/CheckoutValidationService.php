@@ -8,6 +8,7 @@ use VeciAhorra\Modules\Cart\Service\CartService;
 use VeciAhorra\Modules\Inventory\Services\InventoryService;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Services\ProductService;
+use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 /**
  * Valida un carrito para checkout sin producir efectos laterales.
@@ -17,7 +18,8 @@ final class CheckoutValidationService
     public function __construct(
         private CartService $cartService,
         private InventoryService $inventoryService,
-        private ProductService $productService
+        private ProductService $productService,
+        private StoreRepository $storeRepository
     ) {
     }
 
@@ -33,9 +35,17 @@ final class CheckoutValidationService
         $errors = [];
         $validCount = 0;
         $totalCents = 0;
+        $activeMinimarketIds = array_fill_keys(array_map(
+            static fn (array $store): int => (int) $store['id'],
+            $this->storeRepository->findActiveByIds(array_map(
+                static fn (array $item): int =>
+                    (int) ($item['minimarket_id'] ?? 0),
+                $cartItems
+            ))->toArray()
+        ), true);
 
         foreach ($cartItems as $cartItem) {
-            $result = $this->validateItem($cartItem);
+            $result = $this->validateItem($cartItem, $activeMinimarketIds);
             $items[] = $result;
 
             if ($result['valid']) {
@@ -75,11 +85,16 @@ final class CheckoutValidationService
         ];
     }
 
-    private function validateItem(array $cartItem): array
+    /** @param array<int, true> $activeMinimarketIds */
+    private function validateItem(
+        array $cartItem,
+        array $activeMinimarketIds
+    ): array
     {
         $id = (int) ($cartItem['id'] ?? 0);
         $inventoryId = (int) ($cartItem['inventory_id'] ?? 0);
         $productId = (int) ($cartItem['product_id'] ?? 0);
+        $minimarketId = (int) ($cartItem['minimarket_id'] ?? 0);
         $quantity = (int) ($cartItem['quantity'] ?? 0);
         $snapshot = $cartItem['unit_price_snapshot'] ?? null;
         $errors = [];
@@ -96,6 +111,16 @@ final class CheckoutValidationService
             $errors[] = $this->error(
                 'invalid_quantity',
                 'La quantity debe ser mayor que 0.'
+            );
+        }
+
+        if (
+            $minimarketId <= 0
+            || ! isset($activeMinimarketIds[$minimarketId])
+        ) {
+            $errors[] = $this->error(
+                'minimarket_inactive',
+                'El minimarket asociado no esta disponible.'
             );
         }
 
@@ -129,6 +154,16 @@ final class CheckoutValidationService
                 $errors[] = $this->error(
                     'inventory_product_mismatch',
                     'El inventario no corresponde al producto del carrito.'
+                );
+            }
+
+            if (
+                (int) ($inventory['minimarket_id'] ?? 0)
+                    !== $minimarketId
+            ) {
+                $errors[] = $this->error(
+                    'inventory_minimarket_mismatch',
+                    'El inventario no corresponde al minimarket del carrito.'
                 );
             }
 
@@ -184,7 +219,7 @@ final class CheckoutValidationService
             'id' => $id,
             'inventory_id' => $inventoryId,
             'product_id' => $productId,
-            'minimarket_id' => (int) ($cartItem['minimarket_id'] ?? 0),
+            'minimarket_id' => $minimarketId,
             'quantity' => $quantity,
             'unit_price_snapshot' => $snapshotCents === null
                 ? $snapshot

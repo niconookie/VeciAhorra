@@ -119,16 +119,18 @@ try {
         mixed $snapshot
     ) use (
         $cartRepository,
+        $inventoryRepository,
         $sessionId,
-        $minimarketId,
         $now
     ): int {
+        $inventoryRow = $inventoryRepository->find($inventoryId);
+
         return $cartRepository->create([
             'session_id' => $sessionId,
             'user_id' => null,
             'inventory_id' => $inventoryId,
             'product_id' => $productId,
-            'minimarket_id' => $minimarketId,
+            'minimarket_id' => (int) ($inventoryRow['minimarket_id'] ?? 0),
             'quantity' => $quantity,
             'unit_price_snapshot' => $snapshot,
             'created_at' => $now,

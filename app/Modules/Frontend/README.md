@@ -70,16 +70,33 @@ mensajes y validaciones REST existentes.
 `[veciahorra_checkout]` monta una experiencia exclusivamente visual que obtiene
 el carrito mediante `GET /cart`, agrupa sus líneas por minimarket y calcula de
 forma defensiva subtotales de grupo y total global desde los subtotales públicos.
-No invoca Checkout, Orders, Reservations, Payments ni Delivery.
+No invoca operaciones transaccionales de Checkout, Orders, Reservations,
+Payments ni Delivery.
 
 La configuración frontend `checkout.minimumDeliveryAmount` tiene valor inicial
 8000 CLP y puede ajustarse mediante el filtro
 `veciahorra_minimum_delivery_amount`. La UI aplica RB-CHK-001 al total global:
 bajo el mínimo solo presenta retiro; desde el mínimo presenta retiro y despacho.
-La decisión es informativa y deberá ser recalculada por backend en una fase
-transaccional posterior.
+Tras validar, la decisión visual se recalcula con el total autoritativo entregado
+por backend; la validación definitiva del método se incorporará en una fase
+transaccional posterior porque el contrato actual no recibe el método de entrega.
 
 El formulario valida contacto y muestra dirección/comuna solo para despacho. El
-botón “Continuar al pago” cambia a un estado informativo local: no persiste datos,
-no modifica el carrito y no simula reservas. El administrador debe crear una
+botón “Continuar al pago” valida la compra y después cambia a un estado
+informativo: no persiste datos, no modifica el carrito y no simula reservas. El administrador debe crear una
 página con el shortcode; el módulo no crea páginas ni rewrite rules.
+
+### Validación backend pública
+
+El botón del formulario envía exclusivamente un objeto JSON vacío a
+`POST /checkout/validate`, porque ese es el contrato vigente de
+`CheckoutRequest`. La identidad se resuelve mediante la sesión del carrito para
+invitados o la sesión WordPress para usuarios autenticados; no se reenvían ítems,
+datos del cliente, métodos de entrega, IDs ni importes.
+
+La respuesta sustituye cantidades, snapshots, subtotales y total visibles antes
+de reevaluar RB-CHK-001. Los nombres públicos del `GET /cart` se conservan solo
+como etiquetas de presentación. Errores múltiples se anuncian y cualquier cambio
+posterior del formulario invalida el estado visual. Una segunda activación tras
+validar solo informa que la conexión transaccional llegará en 28.7.3: no se llama
+a `POST /checkout`, no se crean reservas, pedidos o pagos y no se modifica Cart.

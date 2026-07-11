@@ -30,6 +30,11 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
             <p class="va-alert va-alert--info" data-va-checkout-reservation><?php esc_html_e('La disponibilidad y el tiempo de reserva se confirmarán al continuar.', 'veciahorra'); ?></p>
         </section>
 
+        <section class="va-alert va-alert--error va-checkout-validation-errors" tabindex="-1" aria-live="assertive" data-va-checkout-validation-errors hidden>
+            <h2><?php esc_html_e('Revisa los problemas de tu compra', 'veciahorra'); ?></h2>
+            <ul data-va-checkout-validation-error-list></ul>
+        </section>
+
         <form class="va-checkout-form" data-va-checkout-form novalidate>
             <section aria-labelledby="<?php echo esc_attr($instanceId . '-customer-title'); ?>">
                 <h2 id="<?php echo esc_attr($instanceId . '-customer-title'); ?>"><?php esc_html_e('Datos del cliente', 'veciahorra'); ?></h2>

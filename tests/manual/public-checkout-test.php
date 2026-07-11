@@ -112,10 +112,12 @@ $css = (string) file_get_contents(
 foreach ([
     "config.api.get('/cart'", 'normalizedGroups', 'decimalToCents',
     'positiveInteger', 'REQUEST_TIMEOUT',
-    'minimumDeliveryAmount', "deliveryOption('pickup'",
-    "deliveryOption('delivery'", 'summary.totalCents >= minimumCents',
+    "config.api.post(", "'/checkout/validate'", '{}',
+    'normalizedValidation', 'Validando…', 'Compra validada correctamente.',
+    'minimumDeliveryAmount', 'deliveryOption(', "'pickup'",
+    "'delivery'", 'summary.totalCents >= minimumCents',
     "['address', 'commune']", 'aria-invalid', 'aria-describedby',
-    'event.preventDefault()', 'No se guardaron datos ni se modificó el carrito.',
+    'event.preventDefault()', 'El siguiente paso se incorporará en 28.7.3.',
 ] as $contract) {
     assertPublicCheckoutContains($contract, $javascript);
 }
@@ -124,8 +126,8 @@ assertPublicCheckout(
     'Checkout debe cargar el carrito una vez por cada load.'
 );
 foreach ([
-    'config.api.post', 'config.api.patch', 'config.api.delete',
-    '/checkout', '/orders', '/reservations', '/payments', '/deliveries',
+    'config.api.patch', 'config.api.delete',
+    "'/checkout'", '/orders', '/reservations', '/payments', '/deliveries',
     'localStorage', 'sessionStorage',
 ] as $forbidden) {
     assertPublicCheckout(
@@ -133,6 +135,10 @@ foreach ([
         "Checkout contiene operacion prohibida: {$forbidden}"
     );
 }
+assertPublicCheckout(
+    substr_count($javascript, "'/checkout/validate'") === 1,
+    'Debe existir una sola llamada al endpoint de validacion.'
+);
 foreach ([
     '.veciahorra-frontend .va-checkout',
     '.veciahorra-frontend .va-checkout-form__grid',
@@ -144,7 +150,7 @@ foreach ([
 
 $changed = shell_exec('git status --short 2>&1') ?? '';
 foreach ([
-    'app/Modules/Cart/', 'app/Modules/Checkout/', 'app/Modules/Orders/',
+    'app/Modules/Cart/', 'app/Modules/Orders/',
     'app/Modules/Reservations/', 'app/Modules/Payments/',
     'app/Modules/Delivery/',
 ] as $forbiddenPath) {
@@ -153,5 +159,17 @@ foreach ([
         "Se modifico un modulo cerrado: {$forbiddenPath}"
     );
 }
+$normalizedChanged = str_replace('\\', '/', $changed);
+preg_match_all(
+    '/^.. (app\/Modules\/Checkout\/[^\r\n]+)$/m',
+    $normalizedChanged,
+    $checkoutChanges
+);
+assertPublicCheckout(
+    ($checkoutChanges[1] ?? []) === [
+        'app/Modules/Checkout/Service/CheckoutValidationService.php',
+    ],
+    'Se modificaron archivos de Checkout fuera de la validacion autorizada.'
+);
 
 echo "PASS public-checkout-test\n";
