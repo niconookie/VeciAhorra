@@ -20,3 +20,28 @@ fases posteriores y no son registradas ni apropiadas en 28.1.
 Componentes disponibles: Loader, Alert, Empty state, Button y Card. Badge, Modal,
 Pagination, Price y StockBadge se incorporarán únicamente cuando una fase futura
 los necesite y disponga de contrato backend.
+
+## Selección pública de ofertas
+
+`[veciahorra_frontend product_id="123"]` renderiza la ficha pública y consulta
+únicamente `GET /catalog/products/123`. El script específico mantiene una
+selección por producto con `selectedInventoryId` como fuente de verdad, la
+conserva tras recargar mientras siga disponible y la limpia si desaparece.
+
+La selección 28.4 no llama por sí misma a Cart. `getCartPayload()` prepara la
+forma `{ inventory_id, quantity: 1 }`; precio y stock son datos de presentación
+que el backend debe resolver nuevamente.
+
+## Agregar al carrito
+
+La ficha envía exclusivamente `POST /cart/items` con `inventory_id` y cantidad
+fija `1`. Para usuarios autenticados se reutilizan cookie WordPress, credenciales
+same-origin y nonce REST. Para invitados, `CartSession` conserva un identificador
+opaco dentro de `Core\Session` y el cliente lo presenta mediante el encabezado
+`X-Veciahorra-Cart-Session` ya aceptado por Cart; no se usa localStorage.
+
+La integración bloquea envíos concurrentes y representa éxito/error sin limpiar
+la selección, redirigir, modificar stock ni iniciar Checkout. Cart 22.x sólo
+valida actualmente identidad, IDs positivos y existencia del inventario; las
+validaciones de estado, stock y precio siguen siendo una dependencia backend y
+no se simulan como autoridad en el navegador.

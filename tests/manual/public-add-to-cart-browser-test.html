@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Public add to cart browser test</title></head>
+<body>
+<div class="veciahorra-frontend">
+    <article data-va-product-detail data-product-id="10">
+        <h1 data-va-product-name></h1><p data-va-product-description></p>
+        <div data-va-product-loading></div><div data-va-product-error hidden></div>
+        <section data-va-offer-section hidden>
+            <div role="radiogroup" data-va-offer-list></div><div data-va-offers-empty hidden></div>
+        </section>
+        <section data-va-selection-summary hidden>
+            <p data-va-selection-status></p>
+            <dl data-va-selection-values hidden><dd data-va-selected-store></dd><dd data-va-selected-price></dd><dd data-va-selected-stock></dd></dl>
+        </section>
+        <section class="va-cart-action">
+            <button type="button" data-va-add-to-cart disabled aria-busy="false"><span data-va-add-label>Agregar</span><span data-va-add-loading hidden>Agregando</span></button>
+            <p data-va-cart-success hidden></p><p data-va-cart-error hidden></p>
+        </section>
+    </article>
+</div>
+<pre id="result">RUNNING</pre>
+<script>
+    var product = { id: 10, name: 'Producto', offers: [
+        { inventory_id: 101, minimarket_id: 1, minimarket: 'Uno', price: '1000.00', stock: 1 }
+    ] };
+    var postCalls = [];
+    var pending = null;
+    function deferred() {
+        var item = {};
+        item.promise = new Promise(function (resolve, reject) { item.resolve = resolve; item.reject = reject; });
+        return item;
+    }
+    window.VeciAhorra = {
+        locale: 'es-CL', currency: 'CLP', currentUser: { id: 0, loggedIn: false },
+        cart: { sessionHeader: 'X-Veciahorra-Cart-Session', sessionId: 'a'.repeat(64) },
+        api: {
+            get: function () { return Promise.resolve({ success: true, data: product }); },
+            post: function (path, payload, options) {
+                postCalls.push({ path: path, payload: payload, options: options });
+                pending = deferred();
+                return pending.promise;
+            }
+        }
+    };
+</script>
+<script src="../../assets/frontend/js/veciahorra-product-offers.js"></script>
+<script>
+    (function () {
+        'use strict';
+        var root = document.querySelector('[data-va-product-detail]');
+        var button = root.querySelector('[data-va-add-to-cart]');
+        var result = document.getElementById('result');
+        function assert(condition, message) { if (!condition) { throw new Error(message); } }
+        function wait() { return new Promise(function (resolve) { setTimeout(resolve, 20); }); }
+        function ready() {
+            return new Promise(function (resolve) {
+                function check() { root.vaOfferSelector ? resolve() : setTimeout(check, 10); }
+                check();
+            });
+        }
+        function clickAndReject(error) {
+            button.click();
+            pending.reject(error);
+            return wait();
+        }
+        ready().then(wait).then(function () {
+            assert(button.disabled, 'boton inicial deshabilitado');
+            root.vaOfferSelector.select(101);
+            assert(!button.disabled, 'seleccion valida habilita boton');
+            button.click();
+            button.click();
+            assert(postCalls.length === 1, 'doble clic duplico peticion');
+            assert(button.disabled, 'boton activo durante peticion');
+            assert(button.getAttribute('aria-busy') === 'true', 'aria-busy durante peticion');
+            assert(root.vaOfferSelector.isAddingToCart(), 'estado isAddingToCart');
+            assert(postCalls[0].path === '/cart/items', 'endpoint real');
+            assert(JSON.stringify(Object.keys(postCalls[0].payload).sort()) === JSON.stringify(['inventory_id', 'quantity']), 'payload exacto');
+            assert(postCalls[0].payload.inventory_id === 101 && postCalls[0].payload.quantity === 1, 'valores payload');
+            assert(postCalls[0].options.headers['X-Veciahorra-Cart-Session'] === 'a'.repeat(64), 'identidad invitada');
+            pending.resolve({ success: true, data: { id: 1, created: true } });
+            return wait();
+        }).then(function () {
+            assert(!button.disabled && !root.vaOfferSelector.isAddingToCart(), 'restablece tras exito');
+            assert(root.vaOfferSelector.getState().selectedInventoryId === 101, 'conserva seleccion');
+            assert(!root.querySelector('[data-va-cart-success]').hidden, 'mensaje exito');
+            assert(root.querySelector('[data-va-selected-stock]').textContent === '1', 'no descuenta stock visual');
+            return clickAndReject({ status: 422, code: 'validation_error', message: 'Stock insuficiente.', data: null });
+        }).then(function () {
+            assert(!button.disabled, 'reactiva tras 4xx');
+            assert(root.querySelector('[data-va-cart-error]').textContent === 'Stock insuficiente.', 'mensaje publico 4xx');
+            return clickAndReject({ status: 500, code: 'internal_error', message: 'SQL private', data: null });
+        }).then(function () {
+            assert(!root.querySelector('[data-va-cart-error]').textContent.includes('SQL'), 'oculta detalle 5xx');
+            return clickAndReject({ status: 0, code: 'network_error', message: 'Network details', data: null });
+        }).then(function () {
+            assert(!button.disabled, 'reactiva tras red');
+            button.click();
+            pending.resolve(null);
+            return wait();
+        }).then(function () {
+            assert(!button.disabled, 'reactiva tras respuesta invalida');
+            assert(root.vaOfferSelector.getState().selectedInventoryId === 101, 'mantiene seleccion tras error');
+            product.offers = [];
+            return root.vaOfferSelector.reload();
+        }).then(function () {
+            assert(button.disabled, 'deshabilita si desaparece oferta');
+            assert(root.vaOfferSelector.getState().selectedInventoryId === null, 'limpia seleccion desaparecida');
+            document.body.setAttribute('data-result', 'PASS');
+            result.textContent = 'PASS public-add-to-cart-browser-test';
+        }).catch(function (error) {
+            document.body.setAttribute('data-result', 'FAIL');
+            result.textContent = 'FAIL ' + error.message;
+        });
+    }());
+</script>
+</body>
+</html>

@@ -67,16 +67,32 @@ final class CartRepository extends Repository
         );
     }
 
-    public function findInventorySnapshot(int $inventoryId): ?array
+    public function findInventoryContext(int $inventoryId): ?array
     {
         $row = $this->db()->get_row(
             $this->db()->prepare(
                 sprintf(
-                    'SELECT id, product_id, minimarket_id, price
-                     FROM %s
-                     WHERE id = %%d
+                    'SELECT
+                        inventory.id AS inventory_id,
+                        inventory.product_id AS product_id,
+                        inventory.minimarket_id AS minimarket_id,
+                        inventory.price AS inventory_price,
+                        inventory.stock AS inventory_stock,
+                        inventory.status AS inventory_status,
+                        products.id AS resolved_product_id,
+                        products.status AS product_status,
+                        stores.id AS resolved_minimarket_id,
+                        stores.status AS minimarket_status
+                     FROM %s AS inventory
+                     LEFT JOIN %s AS products
+                       ON products.id = inventory.product_id
+                     LEFT JOIN %s AS stores
+                       ON stores.id = inventory.minimarket_id
+                     WHERE inventory.id = %%d
                      LIMIT 1',
-                    $this->table('inventory')
+                    $this->table('inventory'),
+                    $this->table('products'),
+                    $this->table('stores')
                 ),
                 $inventoryId
             ),
@@ -86,35 +102,37 @@ final class CartRepository extends Repository
         return $row === null ? null : $row;
     }
 
-    public function incrementQuantity(int $id, int $quantity): bool
-    {
-        $result = $this->db()->query(
+    public function findOwnedItem(
+        int $id,
+        ?string $sessionId,
+        ?int $userId
+    ): ?array {
+        $where = $this->ownerWhere($id, $sessionId, $userId);
+        $ownerField = $userId !== null ? 'user_id' : 'session_id';
+        $placeholder = $userId !== null ? '%d' : '%s';
+        $row = $this->db()->get_row(
             $this->db()->prepare(
                 sprintf(
-                    'UPDATE %s
-                     SET quantity = quantity + %%d,
-                         updated_at = %%s
-                     WHERE id = %%d',
-                    $this->table(self::TABLE)
+                    'SELECT * FROM %s
+                     WHERE id = %%d AND %s = %s
+                     LIMIT 1',
+                    $this->table(self::TABLE),
+                    $ownerField,
+                    $placeholder
                 ),
-                $quantity,
-                current_time('mysql'),
-                $id
-            )
+                $where['id'],
+                $where[$ownerField]
+            ),
+            ARRAY_A
         );
 
-        if ($result === false) {
-            throw new PersistenceException(
-                'No fue posible incrementar el item del carrito.'
-            );
-        }
-
-        return $result === 1;
+        return $row === null ? null : $row;
     }
 
     public function updateQuantity(
         int $id,
         int $quantity,
+        string $unitPriceSnapshot,
         ?string $sessionId,
         ?int $userId
     ): bool {
@@ -122,6 +140,7 @@ final class CartRepository extends Repository
             $this->table(self::TABLE),
             [
                 'quantity' => $quantity,
+                'unit_price_snapshot' => $unitPriceSnapshot,
                 'updated_at' => current_time('mysql'),
             ],
             $this->ownerWhere($id, $sessionId, $userId)

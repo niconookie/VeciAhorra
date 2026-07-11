@@ -10,6 +10,10 @@ use VeciAhorra\Modules\Frontend\Support\ViewRenderer;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_save_path(sys_get_temp_dir());
+}
+
 if (! function_exists('set_current_screen')) {
     require_once ABSPATH . 'wp-admin/includes/class-wp-screen.php';
     require_once ABSPATH . 'wp-admin/includes/screen.php';

@@ -14,6 +14,7 @@ final class ViewRenderer
     private const VIEWS = [
         'layout' => 'Views/layout.php',
         'page-placeholder' => 'Views/page-placeholder.php',
+        'product-detail' => 'Views/product-detail.php',
         'button' => 'Components/button.php',
         'card' => 'Components/card.php',
         'loader' => 'Components/loader.php',

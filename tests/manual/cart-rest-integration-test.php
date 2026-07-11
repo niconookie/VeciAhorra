@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
+use VeciAhorra\Modules\Products\Models\Product;
+use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -48,12 +51,32 @@ function cartRestRequest(
 global $wpdb;
 
 $inventoryRepository = new InventoryRepository();
+$productRepository = new ProductRepository();
+$storeRepository = new StoreRepository();
 $transaction = $wpdb->query('START TRANSACTION');
 assertCartRest($transaction !== false, 'No se inicio la transaccion.');
 
 try {
     $now = current_time('mysql');
-    $minimarketId = random_int(52000000, 52999999);
+    $token = 'cart-rest-' . bin2hex(random_bytes(5));
+    $minimarketId = $storeRepository->create([
+        'business_name' => $token, 'legal_name' => $token,
+        'owner_name' => 'Owner', 'rut' => '1-9',
+        'email' => $token . '@example.test', 'phone' => '000',
+        'mobile' => null, 'address' => null, 'commune' => null,
+        'city' => null, 'region' => null, 'status' => 'active',
+        'onboarding_status' => 'complete', 'approved_at' => $now,
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $makeProduct = static function (string $suffix) use ($productRepository, $token, $now): int {
+        return $productRepository->create([
+            'woo_product_id' => null, 'name' => "{$token} {$suffix}",
+            'slug' => "{$token}-{$suffix}", 'sku' => null,
+            'description' => null, 'category_id' => null, 'brand_id' => null,
+            'unit_id' => null, 'image_id' => null, 'status' => Product::STATUS_ACTIVE,
+            'created_at' => $now, 'updated_at' => $now,
+        ]);
+    };
     $makeInventory = static function (
         int $productId,
         float $price
@@ -62,26 +85,26 @@ try {
             'product_id' => $productId,
             'minimarket_id' => $minimarketId,
             'price' => $price,
-            'stock' => 0,
-            'status' => 'inactive',
+            'stock' => 20,
+            'status' => 'active',
             'created_at' => $now,
             'updated_at' => $now,
         ]);
     };
     $firstInventoryId = $makeInventory(
-        random_int(53000000, 53999999),
+        $makeProduct('first'),
         1490.50
     );
     $secondInventoryId = $makeInventory(
-        random_int(54000000, 54999999),
+        $makeProduct('second'),
         800.0
     );
     $thirdInventoryId = $makeInventory(
-        random_int(55000000, 55999999),
+        $makeProduct('third'),
         500.0
     );
     $userInventoryId = $makeInventory(
-        random_int(56000000, 56999999),
+        $makeProduct('user'),
         2000.0
     );
     $collection = '/veciahorra/v1/cart';

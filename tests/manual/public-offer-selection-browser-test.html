@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Public offer selection browser test</title>
+    <link rel="stylesheet" href="../../assets/frontend/css/veciahorra-frontend.css">
+</head>
+<body>
+<div class="veciahorra-frontend">
+    <article data-va-product-detail data-product-id="10">
+        <h1 data-va-product-name></h1>
+        <p data-va-product-description></p>
+        <div data-va-product-loading></div>
+        <div data-va-product-error hidden></div>
+        <section data-va-offer-section hidden>
+            <div role="radiogroup" data-va-offer-list></div>
+            <div data-va-offers-empty hidden></div>
+        </section>
+        <section data-va-selection-summary hidden>
+            <p data-va-selection-status></p>
+            <dl data-va-selection-values hidden>
+                <dd data-va-selected-store></dd>
+                <dd data-va-selected-price></dd>
+                <dd data-va-selected-stock></dd>
+            </dl>
+        </section>
+        <section class="va-cart-action">
+            <button type="button" data-va-add-to-cart disabled aria-busy="false">
+                <span data-va-add-label>Agregar</span>
+                <span data-va-add-loading hidden>Agregando</span>
+            </button>
+            <p data-va-cart-success hidden></p>
+            <p data-va-cart-error hidden></p>
+        </section>
+    </article>
+</div>
+<pre id="result">RUNNING</pre>
+<script>
+    var product = {
+        id: 10,
+        name: 'Producto de prueba',
+        description: 'Detalle',
+        offers: [
+            { inventory_id: 101, minimarket_id: 1, minimarket: 'Uno', price: '1000.00', stock: 1 }
+        ]
+    };
+    window.VeciAhorra = {
+        locale: 'es-CL',
+        currency: 'CLP',
+        api: {
+            get: function () {
+                return Promise.resolve({ success: true, data: product });
+            }
+        }
+    };
+</script>
+<script src="../../assets/frontend/js/veciahorra-product-offers.js"></script>
+<script>
+    (function () {
+        'use strict';
+
+        var root = document.querySelector('[data-va-product-detail]');
+        var result = document.getElementById('result');
+
+        function assert(condition, message) {
+            if (!condition) {
+                throw new Error(message);
+            }
+        }
+
+        function ready() {
+            return new Promise(function (resolve) {
+                function check() {
+                    if (root.vaOfferSelector && root.querySelectorAll('[role="radio"]').length) {
+                        resolve();
+                    } else {
+                        setTimeout(check, 10);
+                    }
+                }
+                check();
+            });
+        }
+
+        ready().then(function () {
+            var selector = root.vaOfferSelector;
+            var firstState = selector.getState();
+
+            assert(firstState.offers.length === 1, 'producto con una oferta');
+            assert(firstState.selectedInventoryId === null, 'estado inicial sin seleccion');
+            selector.select(101);
+            assert(selector.getState().selection.available_stock === 1, 'stock uno');
+            selector.select(101);
+            assert(selector.getState().selectedInventoryId === 101, 'seleccion repetida');
+
+            product = {
+                id: 10,
+                name: 'Producto de prueba',
+                offers: [
+                    { inventory_id: 101, minimarket_id: 1, minimarket: 'Uno', price: '1000.00', stock: 1 },
+                    { inventory_id: 102, minimarket_id: 2, minimarket: 'Dos', price: '900.00', stock: 4 }
+                ]
+            };
+            return selector.reload();
+        }).then(function () {
+            var selector = root.vaOfferSelector;
+
+            assert(selector.getState().selectedInventoryId === 101, 'conservacion tras recarga');
+            selector.select(102);
+            assert(selector.getState().selection.minimarket_id === 2, 'cambio entre ofertas');
+            assert(root.querySelectorAll('[aria-checked="true"]').length === 1, 'seleccion exclusiva');
+            selector.select(999);
+            assert(selector.getState().error.code === 'invalid_offer', 'oferta manipulada');
+            selector.select(102);
+            product.offers = [product.offers[0]];
+
+            return selector.reload();
+        }).then(function () {
+            var selector = root.vaOfferSelector;
+
+            assert(selector.getState().selectedInventoryId === null, 'limpieza de oferta desaparecida');
+            assert(selector.getState().error.code === 'offer_unavailable', 'estado de oferta desaparecida');
+            product.offers = [];
+
+            return selector.reload();
+        }).then(function () {
+            assert(!root.querySelector('[data-va-offers-empty]').hidden, 'producto sin ofertas');
+            product.offers = [
+                { inventory_id: 101, minimarket_id: 1, minimarket: 'Uno', price: '1000.00', stock: 1 },
+                { inventory_id: 102, minimarket_id: 2, minimarket: 'Dos', price: '900.00', stock: 4 }
+            ];
+
+            return root.vaOfferSelector.reload();
+        }).then(function () {
+            var buttons = root.querySelectorAll('[role="radio"]');
+
+            buttons[0].focus();
+            buttons[0].dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'ArrowDown',
+                bubbles: true
+            }));
+            assert(root.vaOfferSelector.getState().selectedInventoryId === 102, 'seleccion por teclado');
+            document.body.setAttribute('data-result', 'PASS');
+            result.textContent = 'PASS public-offer-selection-browser-test';
+        }).catch(function (error) {
+            document.body.setAttribute('data-result', 'FAIL');
+            result.textContent = 'FAIL ' + error.message;
+        });
+    }());
+</script>
+</body>
+</html>

@@ -34,24 +34,47 @@ final class CartService
                 $inventoryId
             );
 
+        $totalQuantity = $quantity;
+
         if ($existing !== null) {
-            $this->repository->incrementQuantity(
-                (int) $existing['id'],
-                $quantity
+            $existingQuantity = $this->integerValue(
+                $existing['quantity'] ?? null,
+                'cantidad existente del carrito'
             );
+
+            if ($existingQuantity > PHP_INT_MAX - $quantity) {
+                throw new InvalidArgumentException(
+                    'La cantidad total solicitada no es valida.'
+                );
+            }
+
+            $totalQuantity += $existingQuantity;
+        }
+
+        $inventory = $this->validatedInventory(
+            $inventoryId,
+            $totalQuantity
+        );
+
+        if ($existing !== null) {
+            $updated = $this->repository->updateQuantity(
+                (int) $existing['id'],
+                $totalQuantity,
+                $inventory['price'],
+                $sessionId,
+                $userId
+            );
+
+            if (! $updated) {
+                throw new RecordNotFoundException(
+                    'El item del carrito no existe.'
+                );
+            }
 
             return [
                 'id' => (int) $existing['id'],
                 'created' => false,
             ];
-        }
-
-        $inventory = $this->repository->findInventorySnapshot($inventoryId);
-
-        if ($inventory === null) {
-            throw new InvalidArgumentException(
-                'El inventario solicitado no existe.'
-            );
         }
 
         $now = current_time('mysql');
@@ -90,9 +113,28 @@ final class CartService
         $this->assertPositive($quantity, 'quantity');
         [$sessionId, $userId] = $this->owner($owner);
 
+        $item = $this->repository->findOwnedItem(
+            $id,
+            $sessionId,
+            $userId
+        );
+
+        if ($item === null) {
+            throw new RecordNotFoundException(
+                'El item del carrito no existe.'
+            );
+        }
+
+        $inventoryId = $this->integerValue(
+            $item['inventory_id'] ?? null,
+            'inventory_id del carrito'
+        );
+        $inventory = $this->validatedInventory($inventoryId, $quantity);
+
         $updated = $this->repository->updateQuantity(
             $id,
             $quantity,
+            $inventory['price'],
             $sessionId,
             $userId
         );
@@ -156,5 +198,136 @@ final class CartService
                 "El campo {$field} debe ser un entero positivo."
             );
         }
+    }
+
+    /** @return array{product_id: int, minimarket_id: int, price: string, stock: int} */
+    private function validatedInventory(int $inventoryId, int $quantity): array
+    {
+        $inventory = $this->repository->findInventoryContext($inventoryId);
+
+        if ($inventory === null) {
+            throw new InvalidArgumentException(
+                'El inventario solicitado no existe.'
+            );
+        }
+
+        if (($inventory['inventory_status'] ?? null) !== 'active') {
+            throw new InvalidArgumentException(
+                'El inventario solicitado no esta activo.'
+            );
+        }
+
+        $productId = $this->integerValue(
+            $inventory['product_id'] ?? null,
+            'producto del inventario'
+        );
+        $resolvedProductId = $this->nullableInteger(
+            $inventory['resolved_product_id'] ?? null
+        );
+
+        if (
+            $resolvedProductId !== $productId
+            || ($inventory['product_status'] ?? null) !== 'active'
+        ) {
+            throw new InvalidArgumentException(
+                'El producto asociado no esta disponible.'
+            );
+        }
+
+        $minimarketId = $this->integerValue(
+            $inventory['minimarket_id'] ?? null,
+            'minimarket del inventario'
+        );
+        $resolvedMinimarketId = $this->nullableInteger(
+            $inventory['resolved_minimarket_id'] ?? null
+        );
+
+        if (
+            $resolvedMinimarketId !== $minimarketId
+            || ($inventory['minimarket_status'] ?? null) !== 'active'
+        ) {
+            throw new InvalidArgumentException(
+                'El minimarket asociado no esta disponible.'
+            );
+        }
+
+        $price = $this->normalizedPrice(
+            $inventory['inventory_price'] ?? null
+        );
+
+        $stock = $this->integerValue(
+            $inventory['inventory_stock'] ?? null,
+            'stock del inventario',
+            false
+        );
+
+        if ($stock <= 0) {
+            throw new InvalidArgumentException(
+                'El inventario no tiene stock disponible.'
+            );
+        }
+
+        if ($quantity > $stock) {
+            throw new InvalidArgumentException(
+                'La cantidad solicitada supera el stock disponible.'
+            );
+        }
+
+        return [
+            'product_id' => $productId,
+            'minimarket_id' => $minimarketId,
+            'price' => $price,
+            'stock' => $stock,
+        ];
+    }
+
+    private function integerValue(
+        mixed $value,
+        string $field,
+        bool $positive = true
+    ): int {
+        if (is_string($value) && preg_match('/^-?\d+$/D', $value) === 1) {
+            $validated = filter_var($value, FILTER_VALIDATE_INT);
+            $value = $validated === false ? null : $validated;
+        }
+
+        if (! is_int($value) || ($positive && $value <= 0)) {
+            throw new InvalidArgumentException(
+                "El {$field} no es valido."
+            );
+        }
+
+        return $value;
+    }
+
+    private function nullableInteger(mixed $value): ?int
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value) && ctype_digit($value)) {
+            $validated = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $validated === false ? null : $validated;
+        }
+
+        return is_int($value) ? $value : null;
+    }
+
+    private function normalizedPrice(mixed $price): string
+    {
+        if (
+            (! is_int($price) && ! is_float($price) && ! is_string($price))
+            || ! is_numeric($price)
+            || ! is_finite((float) $price)
+            || (float) $price <= 0
+        ) {
+            throw new InvalidArgumentException(
+                'El precio del inventario no es valido.'
+            );
+        }
+
+        return number_format((float) $price, 2, '.', '');
     }
 }

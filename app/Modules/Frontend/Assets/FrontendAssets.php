@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Frontend\Assets;
 
 use VeciAhorra\Core\Config;
+use VeciAhorra\Modules\Frontend\Support\CartSession;
 
 /**
  * Registers and enqueues assets only for a rendered VeciAhorra mount point.
@@ -13,10 +14,15 @@ final class FrontendAssets
 {
     public const STYLE_HANDLE = 'veciahorra-frontend';
     public const SCRIPT_HANDLE = 'veciahorra-frontend';
+    public const OFFER_SCRIPT_HANDLE = 'veciahorra-product-offers';
     public const REST_NAMESPACE = 'veciahorra/v1';
 
     private bool $registered = false;
     private bool $enqueued = false;
+
+    public function __construct(private ?CartSession $cartSession = null)
+    {
+    }
 
     public function registerAssets(): void
     {
@@ -40,6 +46,23 @@ final class FrontendAssets
             Config::PLUGIN_VERSION,
             true
         );
+        wp_register_script(
+            self::OFFER_SCRIPT_HANDLE,
+            $baseUrl . 'js/veciahorra-product-offers.js',
+            [self::SCRIPT_HANDLE],
+            Config::PLUGIN_VERSION,
+            true
+        );
+    }
+
+    public function enqueueProductOffers(): void
+    {
+        if (is_admin()) {
+            return;
+        }
+
+        $this->enqueue();
+        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);
     }
 
     public function enqueue(): void
@@ -83,6 +106,12 @@ final class FrontendAssets
             'locale' => sanitize_text_field(determine_locale()),
             'currency' => 'CLP',
             'pages' => [],
+            'cart' => [
+                'sessionHeader' => 'X-Veciahorra-Cart-Session',
+                'sessionId' => $userId > 0
+                    ? ''
+                    : ($this->cartSession ?? new CartSession())->identifier(),
+            ],
         ];
     }
 }

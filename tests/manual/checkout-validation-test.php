@@ -10,6 +10,7 @@ use VeciAhorra\Modules\Checkout\Service\CheckoutService;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -46,6 +47,7 @@ $cartRepository = new CartRepository();
 $cartService = new CartService($cartRepository);
 $inventoryRepository = new InventoryRepository();
 $productRepository = new ProductRepository();
+$storeRepository = new StoreRepository();
 $checkoutService = (new Container())->make(CheckoutService::class);
 $transaction = $wpdb->query('START TRANSACTION');
 assertCheckoutValidation($transaction !== false, 'No se inicio transaccion.');
@@ -83,15 +85,26 @@ try {
         string $status = 'active'
     ) use (
         $inventoryRepository,
+        $storeRepository,
         $minimarketId,
         $now,
         &$inventoryOffset
     ): int {
         $inventoryOffset++;
+        $storeId = $minimarketId + $inventoryOffset;
+        $storeRepository->create([
+            'id' => $storeId, 'business_name' => 'Checkout store ' . $storeId,
+            'legal_name' => 'Checkout legal', 'owner_name' => 'Owner',
+            'rut' => '1-9', 'email' => "checkout-{$storeId}@example.test",
+            'phone' => '000', 'mobile' => null, 'address' => null,
+            'commune' => null, 'city' => null, 'region' => null,
+            'status' => 'active', 'onboarding_status' => 'complete',
+            'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
+        ]);
 
         return $inventoryRepository->create([
             'product_id' => $productId,
-            'minimarket_id' => $minimarketId + $inventoryOffset,
+            'minimarket_id' => $storeId,
             'price' => $price,
             'stock' => $stock,
             'status' => $status,
@@ -146,7 +159,7 @@ try {
         10,
         'inactive'
     );
-    $cartService->addItem($owner, $inactiveInventoryId, 1);
+    $insertCartItem($inactiveInventoryId, $activeProductId, 1, 600.0);
 
     $invalidQuantityInventoryId = $makeInventory(
         $activeProductId,
@@ -165,7 +178,7 @@ try {
         800.0,
         1
     );
-    $cartService->addItem($owner, $insufficientInventoryId, 2);
+    $insertCartItem($insufficientInventoryId, $activeProductId, 2, 800.0);
 
     $changedPriceInventoryId = $makeInventory(
         $activeProductId,
@@ -183,7 +196,12 @@ try {
         1100.0,
         10
     );
-    $cartService->addItem($owner, $inactiveProductInventoryId, 1);
+    $insertCartItem(
+        $inactiveProductInventoryId,
+        $inactiveProductId,
+        1,
+        1100.0
+    );
 
     $ordersTable = $wpdb->prefix . Config::TABLE_PREFIX . 'orders';
     $reservationsTable = $wpdb->prefix . Config::TABLE_PREFIX . 'reservations';

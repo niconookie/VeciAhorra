@@ -49,10 +49,39 @@
 .veciahorra-frontend .va-loader { align-items: center; display: flex; gap: var(--va-space-2); }
 .veciahorra-frontend .va-loader__indicator { animation: va-spin 0.8s linear infinite; border: 0.1875rem solid var(--va-color-border); border-radius: 50%; border-top-color: var(--va-color-primary); height: 1.5rem; width: 1.5rem; }
 .veciahorra-frontend .va-announcer { height: 1px; overflow: hidden; position: absolute; width: 1px; clip-path: inset(50%); }
+.veciahorra-frontend .va-product-detail { display: grid; gap: var(--va-space-4); }
+.veciahorra-frontend .va-product-detail__eyebrow { color: var(--va-color-muted); font-size: 0.875rem; margin: 0 0 var(--va-space-1); text-transform: uppercase; }
+.veciahorra-frontend .va-product-detail__header h1 { margin-block: 0 var(--va-space-2); }
+.veciahorra-frontend .va-product-detail__description,
+.veciahorra-frontend .va-help-text { color: var(--va-color-muted); }
+.veciahorra-frontend .va-offer-section { display: grid; gap: var(--va-space-3); }
+.veciahorra-frontend .va-offer-section h2,
+.veciahorra-frontend .va-selection-summary h2 { margin: 0; }
+.veciahorra-frontend .va-offer-grid { display: grid; gap: var(--va-space-3); grid-template-columns: minmax(0, 1fr); }
+.veciahorra-frontend .va-offer-card { align-items: flex-start; background: var(--va-color-background); border: 2px solid var(--va-color-border); border-radius: var(--va-radius-md); color: var(--va-color-text); display: grid; gap: var(--va-space-2); min-height: 7rem; padding: var(--va-space-3); text-align: left; width: 100%; }
+.veciahorra-frontend button.va-offer-card { cursor: pointer; }
+.veciahorra-frontend .va-offer-card--selected { border-color: var(--va-color-primary); box-shadow: 0 0 0 0.125rem color-mix(in srgb, var(--va-color-primary) 25%, transparent); }
+.veciahorra-frontend .va-offer-card--selected::after { color: var(--va-color-success); content: "Seleccionada"; font-weight: 700; }
+.veciahorra-frontend .va-offer-card--unavailable { background: #f3f5f4; color: var(--va-color-muted); cursor: not-allowed; }
+.veciahorra-frontend .va-offer-card__price { color: var(--va-color-primary); font-size: 1.25rem; font-weight: 700; }
+.veciahorra-frontend .va-offer-card__stock { color: var(--va-color-muted); }
+.veciahorra-frontend .va-offer-card:focus-visible { outline: 0.1875rem solid var(--va-color-secondary); outline-offset: 0.1875rem; }
+.veciahorra-frontend .va-selection-summary { background: color-mix(in srgb, var(--va-color-primary) 7%, var(--va-color-background)); border: 1px solid var(--va-color-border); border-radius: var(--va-radius-lg); padding: var(--va-space-4); }
+.veciahorra-frontend .va-selection-summary__values { display: grid; gap: var(--va-space-3); grid-template-columns: minmax(0, 1fr); margin-bottom: 0; }
+.veciahorra-frontend .va-selection-summary__values div { display: grid; gap: var(--va-space-1); }
+.veciahorra-frontend .va-selection-summary__values dt { color: var(--va-color-muted); font-size: 0.875rem; }
+.veciahorra-frontend .va-selection-summary__values dd { font-weight: 700; margin: 0; }
+.veciahorra-frontend .va-cart-action { align-items: start; border-top: 1px solid var(--va-color-border); display: grid; gap: var(--va-space-3); padding-top: var(--va-space-4); }
+.veciahorra-frontend .va-cart-action h2 { margin: 0; }
+.veciahorra-frontend .va-cart-action__button { min-width: min(100%, 16rem); }
+.veciahorra-frontend .va-cart-action__button[aria-busy="true"] { cursor: wait; }
+.veciahorra-frontend .va-cart-action__message { border: 1px solid currentcolor; border-radius: var(--va-radius-md); margin: 0; padding: var(--va-space-3); }
+.veciahorra-frontend .va-cart-action__message--success { color: var(--va-color-success); }
+.veciahorra-frontend .va-cart-action__message--error { color: var(--va-color-danger); }
 
 @keyframes va-spin { to { transform: rotate(360deg); } }
 @media (min-width: 30rem) { .veciahorra-frontend .va-container { padding: var(--va-space-4); } }
-@media (min-width: 48rem) { .veciahorra-frontend .va-placeholder { grid-template-columns: repeat(2, minmax(0, 1fr)); } .veciahorra-frontend .va-placeholder > h1 { grid-column: 1 / -1; } }
+@media (min-width: 48rem) { .veciahorra-frontend .va-placeholder { grid-template-columns: repeat(2, minmax(0, 1fr)); } .veciahorra-frontend .va-placeholder > h1 { grid-column: 1 / -1; } .veciahorra-frontend .va-offer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .veciahorra-frontend .va-selection-summary__values { grid-template-columns: repeat(3, minmax(0, 1fr)); } .veciahorra-frontend .va-cart-action { grid-template-columns: minmax(0, 1fr) auto; } .veciahorra-frontend .va-cart-action h2, .veciahorra-frontend .va-cart-action__message { grid-column: 1 / -1; } }
 @media (min-width: 64rem) { .veciahorra-frontend .va-container { padding: var(--va-space-5); } }
-@media (min-width: 80rem) { .veciahorra-frontend .va-container { padding-inline: 0; } }
+@media (min-width: 80rem) { .veciahorra-frontend .va-container { padding-inline: 0; } .veciahorra-frontend .va-offer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .veciahorra-frontend .va-loader__indicator { animation: none; } }

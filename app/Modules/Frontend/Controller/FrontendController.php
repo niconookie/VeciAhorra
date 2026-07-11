@@ -35,14 +35,29 @@ final class FrontendController
         $this->assets->enqueue();
         $this->instance++;
         $instanceId = 'va-frontend-' . $this->instance;
-        $page = $this->views->render('page-placeholder', [
-            'instanceId' => $instanceId,
-            'title' => __('VeciAhorra', 'veciahorra'),
-            'message' => __(
-                'La experiencia de clientes estará disponible próximamente.',
-                'veciahorra'
-            ),
-        ]);
+        $attributes = shortcode_atts(
+            ['product_id' => 0],
+            is_array($attributes) ? $attributes : [],
+            self::SHORTCODE
+        );
+        $productId = absint($attributes['product_id']);
+
+        if ($productId > 0) {
+            $this->assets->enqueueProductOffers();
+            $page = $this->views->render('product-detail', [
+                'instanceId' => $instanceId,
+                'productId' => $productId,
+            ]);
+        } else {
+            $page = $this->views->render('page-placeholder', [
+                'instanceId' => $instanceId,
+                'title' => __('VeciAhorra', 'veciahorra'),
+                'message' => __(
+                    'La experiencia de clientes estará disponible próximamente.',
+                    'veciahorra'
+                ),
+            ]);
+        }
 
         return $this->views->render('layout', [
             'content' => $page,

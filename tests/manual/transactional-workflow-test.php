@@ -13,6 +13,7 @@ use VeciAhorra\Modules\Payments\Service\PaymentService;
 use VeciAhorra\Modules\Payments\Service\PaymentSessionService;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -65,8 +66,10 @@ $sessionService = $container->make(PaymentSessionService::class);
 $confirmationService = $container->make(PaymentConfirmationService::class);
 $productRepository = new ProductRepository();
 $inventoryRepository = new InventoryRepository();
+$storeRepository = new StoreRepository();
 $productId = 0;
 $inventoryId = 0;
+$storeId = 0;
 $orderIds = [];
 $paymentId = 0;
 
@@ -87,9 +90,19 @@ try {
         'created_at' => $now,
         'updated_at' => $now,
     ]);
+    $storeId = $storeRepository->create([
+        'business_name' => 'Transactional store ' . $token,
+        'legal_name' => 'Transactional legal ' . $token,
+        'owner_name' => 'Owner', 'rut' => '1-9',
+        'email' => "transactional-{$token}@example.test", 'phone' => '000',
+        'mobile' => null, 'address' => null, 'commune' => null,
+        'city' => null, 'region' => null, 'status' => 'active',
+        'onboarding_status' => 'complete', 'approved_at' => $now,
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
     $inventoryId = $inventoryRepository->create([
         'product_id' => $productId,
-        'minimarket_id' => random_int(600000000, 609999999),
+        'minimarket_id' => $storeId,
         'price' => 3200.0,
         'stock' => 5,
         'status' => 'active',
@@ -238,5 +251,8 @@ try {
     }
     if ($productId > 0) {
         $wpdb->delete($tables['products'], ['id' => $productId]);
+    }
+    if ($storeId > 0) {
+        $wpdb->delete($prefix . 'stores', ['id' => $storeId]);
     }
 }

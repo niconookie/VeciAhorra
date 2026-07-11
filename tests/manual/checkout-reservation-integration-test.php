@@ -16,6 +16,7 @@ use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
 use VeciAhorra\Modules\Reservations\Repository\ReservationRepository;
 use VeciAhorra\Modules\Reservations\Service\ReservationService;
+use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -44,6 +45,7 @@ $cartRepository = new CartRepository();
 $cartService = new CartService($cartRepository);
 $inventoryRepository = new InventoryRepository();
 $productRepository = new ProductRepository();
+$storeRepository = new StoreRepository();
 $checkoutService = (new Container())->make(CheckoutService::class);
 $validationService = (new Container())->make(
     CheckoutValidationService::class
@@ -86,15 +88,26 @@ try {
         string $status = 'active'
     ) use (
         $inventoryRepository,
+        $storeRepository,
         $minimarketBase,
         $now,
         &$minimarketOffset
     ): int {
         $minimarketOffset++;
+        $storeId = $minimarketBase + $minimarketOffset;
+        $storeRepository->create([
+            'id' => $storeId, 'business_name' => 'Reservation store ' . $storeId,
+            'legal_name' => 'Reservation legal', 'owner_name' => 'Owner',
+            'rut' => '1-9', 'email' => "reservation-{$storeId}@example.test",
+            'phone' => '000', 'mobile' => null, 'address' => null,
+            'commune' => null, 'city' => null, 'region' => null,
+            'status' => 'active', 'onboarding_status' => 'complete',
+            'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
+        ]);
 
         return $inventoryRepository->create([
             'product_id' => $productId,
-            'minimarket_id' => $minimarketBase + $minimarketOffset,
+            'minimarket_id' => $storeId,
             'price' => $price,
             'stock' => $stock,
             'status' => $status,
@@ -117,6 +130,27 @@ try {
                 . ')',
             ...$inventoryIds
         ));
+    $seedStaleCartItem = static function (
+        array $owner,
+        int $inventoryId,
+        int $productId,
+        int $quantity,
+        string $snapshot
+    ) use ($cartRepository, $inventoryRepository, $now): int {
+        $inventoryRow = $inventoryRepository->find($inventoryId);
+
+        return $cartRepository->create([
+            'session_id' => $owner['session_id'],
+            'user_id' => $owner['user_id'],
+            'inventory_id' => $inventoryId,
+            'product_id' => $productId,
+            'minimarket_id' => (int) $inventoryRow['minimarket_id'],
+            'quantity' => $quantity,
+            'unit_price_snapshot' => $snapshot,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    };
 
     $emptyOwner = [
         'session_id' => 'empty-checkout-' . bin2hex(random_bytes(8)),
@@ -145,7 +179,13 @@ try {
         'session_id' => 'inactive-checkout-' . bin2hex(random_bytes(8)),
         'user_id' => null,
     ];
-    $cartService->addItem($inactiveOwner, $inactiveInventoryId, 1);
+    $seedStaleCartItem(
+        $inactiveOwner,
+        $inactiveInventoryId,
+        $inactiveProductId,
+        1,
+        '500.00'
+    );
     $inactive = $checkoutService->initialize($inactiveOwner);
     assertCheckoutReservationSame(false, $inactive['valid']);
     assertCheckoutReservationSame(false, $inactive['reservation_created']);
@@ -162,7 +202,13 @@ try {
         'session_id' => 'stock-checkout-' . bin2hex(random_bytes(8)),
         'user_id' => null,
     ];
-    $cartService->addItem($insufficientOwner, $insufficientInventoryId, 2);
+    $seedStaleCartItem(
+        $insufficientOwner,
+        $insufficientInventoryId,
+        $insufficientProductId,
+        2,
+        '600.00'
+    );
     $insufficient = $checkoutService->initialize($insufficientOwner);
     assertCheckoutReservationSame(false, $insufficient['valid']);
     assertCheckoutReservationSame(false, $insufficient['reservation_created']);

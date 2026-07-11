@@ -6,6 +6,7 @@ namespace VeciAhorra\Modules\Frontend;
 
 use VeciAhorra\Modules\Frontend\Assets\FrontendAssets;
 use VeciAhorra\Modules\Frontend\Controller\FrontendController;
+use VeciAhorra\Modules\Frontend\Support\CartSession;
 
 /**
  * Registers the public frontend infrastructure without business features.
@@ -16,7 +17,8 @@ final class FrontendModule
 
     public function __construct(
         private FrontendAssets $assets,
-        private FrontendController $controller
+        private FrontendController $controller,
+        private ?CartSession $cartSession = null
     ) {
     }
 
@@ -35,6 +37,10 @@ final class FrontendModule
         add_shortcode(
             FrontendController::SHORTCODE,
             [$this->controller, 'renderPlaceholder']
+        );
+        add_action(
+            'wp',
+            [($this->cartSession ?? new CartSession()), 'prepareForRequest']
         );
     }
 }

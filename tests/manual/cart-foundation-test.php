@@ -138,7 +138,13 @@ try {
 
     assertCartFoundationSame(
         true,
-        $repository->updateQuantity($sessionItemId, 5, $sessionId, null)
+        $repository->updateQuantity(
+            $sessionItemId,
+            5,
+            '1290.00',
+            $sessionId,
+            null
+        )
     );
     assertCartFoundationSame(
         5,
