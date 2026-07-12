@@ -20,6 +20,8 @@ use VeciAhorra\Modules\Payments\Gateway\DummyPaymentGateway;
 use VeciAhorra\Modules\Payments\Gateway\MockPaymentGateway;
 use VeciAhorra\Modules\Payments\Gateway\PaymentConfirmationGatewayInterface;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
+use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration;
+use VeciAhorra\Modules\Payments\Gateway\WebpayPaymentGateway;
 use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Products\Admin\ProductsPage;
 use VeciAhorra\Modules\Products\Routes\ProductRoutes;
@@ -44,6 +46,38 @@ final class Application
     public function __construct()
     {
         $this->container = new Container();
+        $this->registerPaymentGateway();
+    }
+
+    private function registerPaymentGateway(): void
+    {
+        if (
+            PaymentGatewayConfiguration::gateway()
+                === PaymentGatewayConfiguration::GATEWAY_WEBPAY
+        ) {
+            $this->container->singleton(
+                WebpayPaymentGateway::class,
+                static fn (): WebpayPaymentGateway =>
+                    new WebpayPaymentGateway(
+                        PaymentGatewayConfiguration::webpay()
+                    )
+            );
+            $this->container->bind(
+                PaymentGatewayInterface::class,
+                fn (): WebpayPaymentGateway => $this->container->make(
+                    WebpayPaymentGateway::class
+                )
+            );
+            $this->container->bind(
+                PaymentConfirmationGatewayInterface::class,
+                fn (): WebpayPaymentGateway => $this->container->make(
+                    WebpayPaymentGateway::class
+                )
+            );
+
+            return;
+        }
+
         $this->container->bind(
             PaymentGatewayInterface::class,
             static fn (): MockPaymentGateway => new MockPaymentGateway()

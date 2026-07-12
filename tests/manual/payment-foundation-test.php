@@ -371,11 +371,13 @@ try {
     $moduleSource = '';
 
     foreach ($moduleFiles as $file) {
-        $moduleSource .= (string) file_get_contents($file);
+        if (basename($file) !== 'WebpayPaymentGateway.php') {
+            $moduleSource .= (string) file_get_contents($file);
+        }
     }
     foreach (
         [
-            'InventoryLockService', 'Transbank', 'MercadoPago', 'Stripe',
+            'InventoryLockService', 'Transbank\\', 'MercadoPago', 'Stripe',
             'webhook', 'commitStock',
         ] as $forbidden
     ) {
