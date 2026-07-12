@@ -159,7 +159,7 @@ try {
     );
 
     $confirmed = $confirmationService->confirm(
-        'dummy',
+        $session['provider'],
         $session['provider_reference']
     );
     assertTransactionalWorkflowSame('paid', $confirmed['status']);
@@ -187,7 +187,7 @@ try {
     );
 
     $confirmedAgain = $confirmationService->confirm(
-        'dummy',
+        $session['provider'],
         $session['provider_reference']
     );
     assertTransactionalWorkflowSame('paid', $confirmedAgain['status']);

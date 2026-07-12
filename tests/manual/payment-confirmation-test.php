@@ -152,7 +152,7 @@ try {
     $paymentIds[] = (int) $successfulPayment['id'];
     $session = $sessionService->create((int) $successfulPayment['id']);
     $response = paymentConfirmationRequest([
-        'provider' => 'dummy',
+        'provider' => 'mock',
         'provider_reference' => $session['provider_reference'],
     ]);
     $result = $response->get_data()['data'] ?? [];
@@ -196,7 +196,7 @@ try {
     }
 
     $idempotent = paymentConfirmationRequest([
-        'provider' => 'dummy',
+        'provider' => 'mock',
         'provider_reference' => $session['provider_reference'],
     ]);
     assertPaymentConfirmationSame(200, $idempotent->get_status());

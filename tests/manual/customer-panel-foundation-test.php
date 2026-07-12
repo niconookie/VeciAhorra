@@ -178,7 +178,7 @@ try {
     ));
     assertCustomerPanelSame('Reservado', $summary['visible_status'] ?? null);
     assertCustomerPanelSame('pending', $summary['payment_status'] ?? null);
-    assertCustomerPanelSame('dummy', $summary['payment_method'] ?? null);
+    assertCustomerPanelSame('mock', $summary['payment_method'] ?? null);
 
     $detail = customerPanelRequest(
         '/veciahorra/v1/me/orders/' . $owned['order']['id']
@@ -197,7 +197,7 @@ try {
         'No se serializo el producto.'
     );
     assertCustomerPanelSame('pending', $data['payment']['status'] ?? null);
-    assertCustomerPanelSame('dummy', $data['payment']['method'] ?? null);
+    assertCustomerPanelSame('mock', $data['payment']['method'] ?? null);
 
     assertCustomerPanelSame(
         404,

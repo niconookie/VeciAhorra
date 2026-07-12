@@ -239,6 +239,13 @@ try {
         $concurrentResults[1]['payment_session_id']
     );
     $firstSession = $concurrentResults[0];
+    assertPublicPaymentBackendSame('ready', $firstSession['status']);
+    assertPublicPaymentBackendSame('mock', $firstSession['provider']);
+    assertPublicPaymentBackend(
+        is_string($firstSession['redirect_url'])
+            && $firstSession['redirect_url'] !== '',
+        'La sesion publica no integro el resultado Mock.'
+    );
     $replayedSession = $paymentSessionService->start(
         $multiple['checkout_id'],
         $key,

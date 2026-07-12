@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use VeciAhorra\Core\Config;
 use VeciAhorra\Core\Application;
-use VeciAhorra\Modules\Payments\Gateway\DummyPaymentGateway;
+use VeciAhorra\Modules\Payments\Gateway\MockPaymentGateway;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
 use VeciAhorra\Modules\Payments\Models\Payment;
 use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
@@ -66,8 +66,8 @@ assertPaymentSession(
     'Application no resolvio PaymentSessionService.'
 );
 assertPaymentSession(
-    (new DummyPaymentGateway()) instanceof PaymentGatewayInterface,
-    'DummyPaymentGateway no implementa el contrato.'
+    (new MockPaymentGateway()) instanceof PaymentGatewayInterface,
+    'MockPaymentGateway no implementa el contrato.'
 );
 
 $routePattern = '/veciahorra/v1/payments/(?P<id>\d+)/session';
@@ -140,13 +140,15 @@ try {
     $first = $sessionService->create($paymentId);
     assertPaymentSessionSame($paymentId, $first['payment_id']);
     assertPaymentSessionSame('pending', $first['status']);
-    assertPaymentSessionSame('dummy', $first['provider']);
+    assertPaymentSessionSame('mock', $first['provider']);
     assertPaymentSession(
-        preg_match('/^DUMMY-[A-F0-9]{8}$/', $first['provider_reference']) === 1,
-        'Referencia Dummy invalida.'
+        preg_match('/^MOCK-[A-F0-9]{24}$/', $first['provider_reference']) === 1,
+        'Referencia Mock invalida.'
     );
     assertPaymentSessionSame(
-        'https://dummy.veciahorra/pay/' . $first['provider_reference'],
+        home_url(
+            '/veciahorra/mock-payment/' . $first['provider_reference']
+        ),
         $first['payment_url']
     );
     assertPaymentSession(
@@ -159,7 +161,7 @@ try {
     );
 
     $stored = $repository->find($paymentId);
-    assertPaymentSessionSame('dummy', $stored['provider'] ?? null);
+    assertPaymentSessionSame('mock', $stored['provider'] ?? null);
     assertPaymentSessionSame(
         $first['provider_reference'],
         $stored['provider_reference'] ?? null
@@ -192,7 +194,7 @@ try {
     assertPaymentSessionSame(200, $rest->get_status());
     assertPaymentSessionSame(true, $rest->get_data()['success'] ?? null);
     assertPaymentSessionSame(
-        'dummy',
+        'mock',
         $rest->get_data()['data']['provider'] ?? null
     );
     assertPaymentSessionSame(
