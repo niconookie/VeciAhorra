@@ -72,7 +72,8 @@ foreach ([
     'data-va-checkout-form', 'name="first_name"', 'name="last_name"',
     'name="phone"', 'name="email"', 'data-va-delivery-options',
     'data-va-delivery-fields', 'name="address"', 'name="commune"',
-    'name="reference"', 'name="notes"', 'Continuar al pago',
+    'name="reference"', 'name="notes"', 'Crear pedido',
+    'data-va-checkout-result', 'Pedido creado correctamente.',
     'aria-live="polite"', 'novalidate',
 ] as $contract) {
     assertPublicCheckoutContains($contract, $html);
@@ -113,11 +114,15 @@ foreach ([
     "config.api.get('/cart'", 'normalizedGroups', 'decimalToCents',
     'positiveInteger', 'REQUEST_TIMEOUT',
     "config.api.post(", "'/checkout/validate'", '{}',
-    'normalizedValidation', 'Validando…', 'Compra validada correctamente.',
+    'normalizedValidation', 'normalizedCheckout', 'Validando…',
+    'Compra validada correctamente.', 'Creando pedido…',
     'minimumDeliveryAmount', 'deliveryOption(', "'pickup'",
     "'delivery'", 'summary.totalCents >= minimumCents',
     "['address', 'commune']", 'aria-invalid', 'aria-describedby',
-    'event.preventDefault()', 'El siguiente paso se incorporará en 28.7.3.',
+    'event.preventDefault()', "'/checkout'", 'Resultado pendiente',
+    'Debes iniciar sesión para crear el pedido.',
+    'Recarga la página y revisa tus pedidos',
+    '[400, 401, 403, 409, 422]',
 ] as $contract) {
     assertPublicCheckoutContains($contract, $javascript);
 }
@@ -127,7 +132,7 @@ assertPublicCheckout(
 );
 foreach ([
     'config.api.patch', 'config.api.delete',
-    "'/checkout'", '/orders', '/reservations', '/payments', '/deliveries',
+    '/orders', '/reservations', '/payments', '/deliveries',
     'localStorage', 'sessionStorage',
 ] as $forbidden) {
     assertPublicCheckout(
@@ -138,6 +143,10 @@ foreach ([
 assertPublicCheckout(
     substr_count($javascript, "'/checkout/validate'") === 1,
     'Debe existir una sola llamada al endpoint de validacion.'
+);
+assertPublicCheckout(
+    substr_count($javascript, "'/checkout'") === 1,
+    'Debe existir una sola llamada al endpoint transaccional.'
 );
 foreach ([
     '.veciahorra-frontend .va-checkout',
@@ -166,9 +175,7 @@ preg_match_all(
     $checkoutChanges
 );
 assertPublicCheckout(
-    ($checkoutChanges[1] ?? []) === [
-        'app/Modules/Checkout/Service/CheckoutValidationService.php',
-    ],
+    ($checkoutChanges[1] ?? []) === [],
     'Se modificaron archivos de Checkout fuera de la validacion autorizada.'
 );
 

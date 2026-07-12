@@ -9,6 +9,7 @@
     <div data-va-checkout-content hidden>
         <div data-va-checkout-groups></div><strong data-va-checkout-total></strong>
         <section tabindex="-1" aria-live="assertive" data-va-checkout-validation-errors hidden><h2>Errores</h2><ul data-va-checkout-validation-error-list></ul></section>
+        <section tabindex="-1" aria-live="polite" data-va-checkout-result hidden><h2>Pedido creado correctamente.</h2><div data-va-checkout-result-details></div></section>
         <form data-va-checkout-form novalidate>
             <div class="va-field"><input name="first_name" required data-va-field><p id="first-error" data-va-field-error hidden></p></div>
             <div class="va-field"><input name="last_name" required data-va-field><p id="last-error" data-va-field-error hidden></p></div>
@@ -35,7 +36,7 @@
     function validatedItem(id, subtotal, valid, errors) { return { id: id, product_id: 100 + id, inventory_id: 200 + id, minimarket_id: 1, quantity: 1, unit_price_snapshot: subtotal, subtotal: subtotal, valid: valid, errors: errors || [] }; }
     function response(items, valid, errors, total) { var validCount = items.filter(function (item) { return item.valid; }).length; return { success: true, data: { valid: valid, errors: errors, items: items, summary: { item_count: items.length, valid_item_count: validCount, invalid_item_count: items.length - validCount, total: total } } }; }
     window.VeciAhorra = {
-        locale: 'es-CL', currency: 'CLP', currentUser: { id: 0, loggedIn: false },
+        locale: 'es-CL', currency: 'CLP', currentUser: { id: 1, loggedIn: true },
         cart: { sessionHeader: 'X-Veciahorra-Cart-Session', sessionId: 'guest-session' },
         checkout: { minimumDeliveryAmount: 8000 },
         api: {
@@ -85,10 +86,9 @@
             assert(form.querySelector('input[value="pickup"]').checked, 'retiro seleccionado');
             assert(root.querySelector('[data-va-delivery-fields]').hidden && !form.elements.address.required, 'campos despacho ocultos');
             assert(status.textContent.includes('método de entrega cambió') && status.textContent.includes('Compra validada correctamente'), 'avisos validacion y cambio');
-            assert(submit.textContent === 'Continuar' && !submit.disabled, 'boton recuperado tras exito');
-            var count = calls.length; submitForm(); assert(calls.length === count, 'Continuar no inicia transaccion');
+            assert(submit.textContent === 'Crear pedido' && !submit.disabled, 'boton habilitado para crear tras validar');
             input('first_name', 'Ana María');
-            assert(submit.textContent === 'Continuar al pago' && !status.textContent.includes('Compra validada'), 'cambio invalida validacion');
+            assert(submit.textContent === 'Crear pedido' && !status.textContent.includes('Compra validada'), 'cambio invalida validacion');
 
             postHandler = function () { return Promise.resolve(response([validatedItem(1, '8000.00', true)], true, [], '8000.00')); };
             submitForm(); return wait();
@@ -112,7 +112,7 @@
             assert(errors.querySelectorAll('li').length === 6, 'multiples errores acumulados');
             assert(document.activeElement === errors, 'foco al resumen de errores');
             assert(!status.textContent.includes('Compra validada'), 'error no valida compra');
-            assert(submit.textContent === 'Continuar al pago' && !submit.disabled, 'boton recuperado tras error negocio');
+            assert(submit.textContent === 'Crear pedido' && !submit.disabled, 'boton recuperado tras error negocio');
 
             return [400, 404, 409, 422, 500].reduce(function (promise, code) {
                 return promise.then(function () { return rejection(code, 'Error HTTP ' + code); }).then(function () {
@@ -140,7 +140,24 @@
             return wait();
         }).then(function () {
             assert(root.vaCheckout.getSummary().totalCents !== 900000, 'respuesta obsoleta ignorada');
-            assert(calls.every(function (call) { return (call.method === 'GET' && call.path === '/cart') || (call.method === 'POST' && call.path === '/checkout/validate'); }), 'sin rutas transaccionales');
+            postHandler = function () { return Promise.resolve(response([validatedItem(1, '8100.00', true)], true, [], '8100.00')); };
+            submitForm();
+            return wait();
+        }).then(function () {
+            var before = calls.filter(function (call) { return call.path === '/checkout'; }).length;
+            postHandler = function () { return Promise.reject({ status: 500, code: 'request_error', message: 'Error interno' }); };
+            submitForm(); submitForm();
+            return wait().then(function () {
+                var after = calls.filter(function (call) { return call.path === '/checkout'; }).length;
+                assert(after === before + 1, 'doble clic crea un solo intento transaccional');
+                assert(submit.disabled && submit.textContent === 'Resultado pendiente', 'resultado ambiguo bloquea boton');
+                assert(errors.textContent.includes('pudo haberse procesado'), 'mensaje ambiguo seguro');
+                assert(document.activeElement === errors, 'resultado ambiguo recibe foco');
+                submitForm();
+                assert(calls.filter(function (call) { return call.path === '/checkout'; }).length === after, 'estado ambiguo impide otro POST checkout');
+                assert(calls.every(function (call) { return call.path !== '/payments' && call.path !== '/delivery' && call.path !== '/deliveries'; }), 'sin Payments ni Delivery');
+            });
+        }).then(function () {
             document.body.setAttribute('data-result', 'PASS'); result.textContent = 'PASS public-checkout-browser-test';
         }).catch(function (error) { document.body.setAttribute('data-result', 'FAIL'); result.textContent = 'FAIL ' + error.message; });
     }());

@@ -298,6 +298,30 @@
         };
     }
 
+    function normalizedCheckout(payload) {
+        var data = payload && payload.success === true ? payload.data : null;
+        var totalCents;
+        if (!data || typeof data.valid !== 'boolean') {
+            throw { code: 'invalid_response', message: 'El servidor entregó una respuesta de checkout incompleta.' };
+        }
+        if (!data.valid) {
+            return { valid: false, data: data };
+        }
+        if (data.order_created !== true || data.reservation_created !== true || !Array.isArray(data.orders) || data.orders.length === 0 || !data.summary) {
+            throw { code: 'invalid_response', message: 'El servidor no confirmó la creación completa del pedido.' };
+        }
+        totalCents = decimalToCents(data.summary.total);
+        if (totalCents === null) {
+            throw { code: 'invalid_response', message: 'El total creado está incompleto.' };
+        }
+        data.orders.forEach(function (order) {
+            if (!order || positiveInteger(order.id) === null || typeof order.status !== 'string') {
+                throw { code: 'invalid_response', message: 'El servidor entregó pedidos incompletos.' };
+            }
+        });
+        return { valid: true, data: data, totalCents: totalCents };
+    }
+
     function mount(root) {
         var loading = root.querySelector('[data-va-checkout-loading]');
         var error = root.querySelector('[data-va-checkout-error]');
@@ -315,6 +339,8 @@
         var status = root.querySelector('[data-va-checkout-status]');
         var validationErrors = root.querySelector('[data-va-checkout-validation-errors]');
         var validationErrorList = root.querySelector('[data-va-checkout-validation-error-list]');
+        var checkoutResult = root.querySelector('[data-va-checkout-result]');
+        var checkoutResultDetails = root.querySelector('[data-va-checkout-result-details]');
         var minimum = config.checkout && config.checkout.minimumDeliveryAmount;
         var minimumUnits = typeof minimum === 'number' && Number.isSafeInteger(minimum) && minimum >= 0
             ? minimum
@@ -326,9 +352,13 @@
         var submitted = false;
         var validated = false;
         var validating = false;
+        var creating = false;
+        var created = false;
+        var ambiguousAttempt = false;
         var requestSequence = 0;
         var activeController = null;
-        var defaultSubmitText = 'Continuar al pago';
+        var defaultSubmitText = 'Crear pedido';
+        var authenticated = !!(config.currentUser && config.currentUser.loggedIn);
 
         function showError(message) {
             loading.hidden = true;
@@ -349,6 +379,9 @@
         }
 
         function invalidateValidation() {
+            if (created || ambiguousAttempt) {
+                return;
+            }
             if (validating) {
                 requestSequence += 1;
                 if (activeController) {
@@ -360,6 +393,7 @@
                 root.removeAttribute('aria-busy');
             }
             validated = false;
+            ambiguousAttempt = false;
             submit.textContent = defaultSubmitText;
             clearValidationMessages();
         }
@@ -505,16 +539,116 @@
 
             if (result.valid) {
                 validated = true;
-                submit.textContent = 'Continuar';
+                submit.textContent = 'Crear pedido';
                 status.hidden = false;
                 status.textContent = (status.textContent ? status.textContent + ' ' : '')
                     + 'Compra validada correctamente.';
+                if (!authenticated) {
+                    status.textContent += ' Debes iniciar sesión para crear el pedido.';
+                }
             } else {
                 validated = false;
                 submit.textContent = defaultSubmitText;
                 showValidationErrors(result.errors.length > 0 ? result.errors : [{ message: 'La compra contiene datos no válidos.' }]);
             }
             validateForm(false);
+        }
+
+        function renderCheckoutResult(result) {
+            var data = result.data;
+            checkoutResultDetails.replaceChildren();
+            data.orders.forEach(function (order, index) {
+                checkoutResultDetails.append(element('p', '', 'Pedido ' + String(index + 1) + ' — Estado: ' + order.status));
+            });
+            checkoutResultDetails.append(element('p', '', 'Total: ' + moneyFromCents(result.totalCents)));
+            if (typeof data.expires_at === 'string' && data.expires_at.trim() !== '') {
+                checkoutResultDetails.append(element('p', '', 'Reserva vigente hasta: ' + data.expires_at));
+            }
+            checkoutResult.hidden = false;
+            checkoutResult.focus();
+            created = true;
+            validated = false;
+            ambiguousAttempt = false;
+            submit.textContent = 'Continuar al pago';
+            submit.disabled = true;
+            status.hidden = false;
+            status.textContent = 'Pedido creado correctamente.';
+        }
+
+        function checkoutErrors(data) {
+            var errors = data && Array.isArray(data.errors) ? data.errors : [];
+            return errors.length ? errors.map(function (problem) {
+                return { message: problem && typeof problem.message === 'string' ? problem.message : 'La compra ya no es válida.' };
+            }) : [{ message: 'La compra ya no es válida. Debes validarla nuevamente.' }];
+        }
+
+        function createCheckout() {
+            var controller;
+            var timer;
+            var timedOut = false;
+            if (!validated || creating || created || ambiguousAttempt) {
+                return Promise.resolve(null);
+            }
+            if (!authenticated) {
+                status.hidden = false;
+                status.textContent = 'Debes iniciar sesión para crear el pedido.';
+                submit.disabled = true;
+                return Promise.resolve(null);
+            }
+            if (calculated.totalCents < minimumCents && selectedMethod() !== 'pickup') {
+                invalidateValidation();
+                renderDelivery(calculated, 'pickup');
+                showValidationErrors([{ message: 'El total validado requiere retiro. Valida nuevamente la compra.' }]);
+                return Promise.resolve(null);
+            }
+            creating = true;
+            controller = new AbortController();
+            submit.disabled = true;
+            submit.textContent = ambiguousAttempt ? 'Reintentando creación…' : 'Creando pedido…';
+            submit.setAttribute('aria-busy', 'true');
+            root.setAttribute('aria-busy', 'true');
+            status.hidden = false;
+            status.textContent = 'Creando pedido…';
+            timer = window.setTimeout(function () { timedOut = true; controller.abort(); }, REQUEST_TIMEOUT);
+
+            return config.api.post('/checkout', {}, requestOptions(controller.signal)).then(function (payload) {
+                var result = normalizedCheckout(payload);
+                if (!result.valid) {
+                    validated = false;
+                    ambiguousAttempt = false;
+                    showValidationErrors(checkoutErrors(result.data));
+                    submit.textContent = defaultSubmitText;
+                    return null;
+                }
+                renderCheckoutResult(result);
+                return payload;
+            }).catch(function (requestError) {
+                ambiguousAttempt = timedOut || !requestError
+                    || [400, 401, 403, 409, 422].indexOf(requestError.status) === -1
+                    || requestError.code === 'invalid_response';
+                showValidationErrors([{
+                    message: ambiguousAttempt
+                        ? 'No fue posible confirmar el resultado de la creación. La solicitud pudo haberse procesado. Recarga la página y revisa tus pedidos antes de volver a intentarlo.'
+                        : communicationMessage(requestError)
+                }]);
+                if (!ambiguousAttempt) {
+                    validated = false;
+                }
+                submit.textContent = ambiguousAttempt ? 'Resultado pendiente' : defaultSubmitText;
+                return null;
+            }).finally(function () {
+                window.clearTimeout(timer);
+                creating = false;
+                submit.removeAttribute('aria-busy');
+                root.removeAttribute('aria-busy');
+                if (!created) {
+                    validateForm(false);
+                    if (ambiguousAttempt) {
+                        submit.textContent = 'Resultado pendiente';
+                        submit.disabled = true;
+                    }
+                }
+            });
         }
 
         function fieldError(input, message) {
@@ -559,7 +693,8 @@
                 }
                 valid = fieldValid && valid;
             });
-            submit.disabled = submitted || validating || !valid;
+            submit.disabled = submitted || validating || creating || created
+                || ambiguousAttempt || (validated && !authenticated) || !valid;
             return valid;
         }
 
@@ -642,9 +777,7 @@
                 return Promise.resolve(null);
             }
             if (validated) {
-                status.hidden = false;
-                status.textContent = 'La compra ya está validada. El siguiente paso se incorporará en 28.7.3.';
-                return Promise.resolve(null);
+                return createCheckout();
             }
             if (!validateForm(true)) {
                 firstInvalid = form.querySelector('[aria-invalid="true"]');
@@ -698,7 +831,7 @@
                     activeController = null;
                     submit.removeAttribute('aria-busy');
                     root.removeAttribute('aria-busy');
-                    submit.textContent = validated ? 'Continuar' : defaultSubmitText;
+                    submit.textContent = validated ? 'Crear pedido' : defaultSubmitText;
                     validateForm(false);
                 }
             });
@@ -732,6 +865,7 @@
         decimalToCents: decimalToCents,
         normalizedGroups: normalizedGroups,
         normalizedValidation: normalizedValidation,
+        normalizedCheckout: normalizedCheckout,
         initialize: initialize
     };
     window.VeciAhorra = config;

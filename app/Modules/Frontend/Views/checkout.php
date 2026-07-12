@@ -35,6 +35,11 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
             <ul data-va-checkout-validation-error-list></ul>
         </section>
 
+        <section class="va-alert va-alert--success" tabindex="-1" aria-live="polite" data-va-checkout-result hidden>
+            <h2><?php esc_html_e('Pedido creado correctamente.', 'veciahorra'); ?></h2>
+            <div data-va-checkout-result-details></div>
+        </section>
+
         <form class="va-checkout-form" data-va-checkout-form novalidate>
             <section aria-labelledby="<?php echo esc_attr($instanceId . '-customer-title'); ?>">
                 <h2 id="<?php echo esc_attr($instanceId . '-customer-title'); ?>"><?php esc_html_e('Datos del cliente', 'veciahorra'); ?></h2>
@@ -62,7 +67,7 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
                 </div>
             </section>
 
-            <button class="va-button va-checkout-form__submit" type="submit" data-va-checkout-submit disabled><?php esc_html_e('Continuar al pago', 'veciahorra'); ?></button>
+            <button class="va-button va-checkout-form__submit" type="submit" data-va-checkout-submit disabled><?php esc_html_e('Crear pedido', 'veciahorra'); ?></button>
             <p class="va-alert va-alert--info" role="status" aria-live="polite" data-va-checkout-status hidden></p>
         </form>
     </div>
