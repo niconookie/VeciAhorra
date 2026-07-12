@@ -170,9 +170,14 @@ foreach ($moduleFiles as $file) {
 
 assertCheckoutFoundation(
     ! str_contains($moduleSource, '$wpdb')
-    && ! str_contains($moduleSource, 'START TRANSACTION')
     && ! str_contains($moduleSource, 'InventoryLockService'),
-    'Checkout foundation contiene efectos laterales fuera de alcance.'
+    'Checkout accede a infraestructura fuera de sus repositorios.'
+);
+
+assertCheckoutFoundation(
+    str_contains($moduleSource, 'START TRANSACTION')
+    && str_contains($moduleSource, 'ROLLBACK'),
+    'Checkout persistente no define una frontera transaccional.'
 );
 
 echo "PASS checkout-foundation-test\n";

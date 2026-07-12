@@ -7,6 +7,8 @@ namespace VeciAhorra\Modules\Checkout\Controller;
 use InvalidArgumentException;
 use Throwable;
 use VeciAhorra\Modules\Checkout\Service\CheckoutService;
+use VeciAhorra\Exceptions\ConflictException;
+use VeciAhorra\Exceptions\RecordNotFoundException;
 
 final class CheckoutController
 {
@@ -28,10 +30,33 @@ final class CheckoutController
         );
     }
 
+    public function show(string $publicId, array $owner): array
+    {
+        return $this->execute(
+            fn (): array => $this->service->get($publicId, $owner)
+        );
+    }
+
     private function execute(callable $callback): array
     {
         try {
             return ['success' => true, 'data' => $callback()];
+        } catch (RecordNotFoundException $exception) {
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => 'resource_not_found',
+                    'message' => $exception->getMessage(),
+                ],
+            ];
+        } catch (ConflictException $exception) {
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => $exception->errorCode(),
+                    'message' => $exception->getMessage(),
+                ],
+            ];
         } catch (InvalidArgumentException $exception) {
             return [
                 'success' => false,

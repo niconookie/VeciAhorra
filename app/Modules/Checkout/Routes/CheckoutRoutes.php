@@ -10,6 +10,8 @@ use VeciAhorra\Modules\Checkout\Requests\CheckoutRequest;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
+use VeciAhorra\Modules\Frontend\Support\CartSession;
+use VeciAhorra\Modules\Checkout\Models\Checkout;
 
 final class CheckoutRoutes
 {
@@ -28,6 +30,16 @@ final class CheckoutRoutes
             [
                 'methods' => WP_REST_Server::CREATABLE,
                 'callback' => [$this, 'validate'],
+                'permission_callback' => [$this, 'canAccessCheckout'],
+            ]
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
+            self::RESOURCE . '/(?P<checkout_id>[^/]+)',
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'show'],
                 'permission_callback' => [$this, 'canAccessCheckout'],
             ]
         );
@@ -89,6 +101,29 @@ final class CheckoutRoutes
         return true;
     }
 
+    public function show(WP_REST_Request $request): WP_REST_Response
+    {
+        $owner = $this->ownerOrError($request);
+
+        if ($owner instanceof WP_REST_Response) {
+            return $owner;
+        }
+
+        $publicId = (string) ($request->get_url_params()['checkout_id'] ?? '');
+
+        if (! Checkout::validPublicId($publicId)) {
+            return new WP_REST_Response([
+                'success' => false,
+                'error' => [
+                    'code' => 'invalid_checkout_id',
+                    'message' => 'El checkout_id no es valido.',
+                ],
+            ], 400);
+        }
+
+        return $this->response($this->controller->show($publicId, $owner));
+    }
+
     /** @return array{session_id: ?string, user_id: ?int}|WP_REST_Response */
     private function ownerOrError(
         WP_REST_Request $request
@@ -99,26 +134,10 @@ final class CheckoutRoutes
             return ['session_id' => null, 'user_id' => $userId];
         }
 
-        $sessionId = $request->get_query_params()['session_id'] ?? null;
-
-        if (! is_string($sessionId) || trim($sessionId) === '') {
-            $sessionId = $request->get_header(
-                'X-Veciahorra-Cart-Session'
-            );
-        }
-
-        if (! is_string($sessionId) || trim($sessionId) === '') {
-            return new WP_REST_Response([
-                'success' => false,
-                'error' => [
-                    'code' => 'checkout_identity_required',
-                    'message' => 'El checkout requiere una identidad.',
-                ],
-            ], 400);
-        }
+        $sessionId = (new CartSession())->identifier();
 
         return [
-            'session_id' => sanitize_text_field(trim($sessionId)),
+            'session_id' => $sessionId,
             'user_id' => null,
         ];
     }
@@ -192,9 +211,12 @@ final class CheckoutRoutes
     ): WP_REST_Response {
         $status = ($result['success'] ?? false) === true
             ? $successStatus
-            : (($result['error']['code'] ?? '') === 'validation_error'
-                ? 422
-                : 500);
+            : match ($result['error']['code'] ?? '') {
+                'resource_not_found' => 404,
+                'order_already_attached', 'state_conflict' => 409,
+                'validation_error' => 422,
+                default => 500,
+            };
 
         return new WP_REST_Response($result, $status);
     }

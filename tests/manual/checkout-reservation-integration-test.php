@@ -230,6 +230,7 @@ try {
     assertCheckoutReservation($administratorIds !== [], 'Falta administrador.');
     $customerId = (int) $administratorIds[0];
     $successOwner = ['session_id' => null, 'user_id' => $customerId];
+    $cartService->clearCart($successOwner);
     $cartService->addItem($successOwner, $firstInventoryId, 2);
     $cartService->addItem($successOwner, $secondInventoryId, 1);
     $ordersBefore = (int) $wpdb->get_var(

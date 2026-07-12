@@ -96,6 +96,25 @@ class OrderRepository extends Repository
         return $row === null ? null : $row;
     }
 
+    /** @param list<int> $ids */
+    public function findManyForUpdate(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '%d'));
+
+        return $this->db()->get_results($this->db()->prepare(
+            sprintf(
+                'SELECT * FROM %s WHERE id IN (%s) ORDER BY id ASC FOR UPDATE',
+                $this->table(self::ORDERS_TABLE),
+                $placeholders
+            ),
+            ...$ids
+        ), ARRAY_A);
+    }
+
     public function findForCustomer(int $id, int $customerId): ?array
     {
         $row = $this->db()->get_row(

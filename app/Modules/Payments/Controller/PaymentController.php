@@ -13,6 +13,7 @@ use VeciAhorra\Modules\Payments\Requests\PaymentConfirmationRequest;
 use VeciAhorra\Modules\Payments\Service\PaymentConfirmationService;
 use VeciAhorra\Modules\Payments\Service\PaymentService;
 use VeciAhorra\Modules\Payments\Service\PaymentSessionService;
+use VeciAhorra\Exceptions\ConflictException;
 
 final class PaymentController
 {
@@ -57,6 +58,25 @@ final class PaymentController
         );
     }
 
+    public function startPublicSession(
+        string $checkoutId,
+        string $idempotencyKey,
+        array $owner
+    ): array {
+        return $this->execute(fn (): array => $this->sessionService->start(
+            $checkoutId,
+            $idempotencyKey,
+            $owner
+        ));
+    }
+
+    public function showPublicSession(string $publicId, array $owner): array
+    {
+        return $this->execute(
+            fn (): array => $this->sessionService->get($publicId, $owner)
+        );
+    }
+
     public function confirm(array $payload): array
     {
         return $this->execute(function () use ($payload): array {
@@ -74,7 +94,12 @@ final class PaymentController
         try {
             return ['success' => true, 'data' => $callback()];
         } catch (RecordNotFoundException $exception) {
-            return $this->error('payment_not_found', $exception->getMessage());
+            return $this->error('resource_not_found', $exception->getMessage());
+        } catch (ConflictException $exception) {
+            return $this->error(
+                $exception->errorCode(),
+                $exception->getMessage()
+            );
         } catch (InvalidArgumentException $exception) {
             return $this->error('validation_error', $exception->getMessage());
         } catch (PersistenceException) {
