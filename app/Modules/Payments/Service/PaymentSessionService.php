@@ -8,6 +8,8 @@ use DateTimeImmutable;
 use InvalidArgumentException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
+use VeciAhorra\Modules\Payments\Gateway\GatewaySessionResult;
+use VeciAhorra\Modules\Payments\Gateway\PaymentSessionContext;
 use VeciAhorra\Modules\Payments\Models\Payment;
 use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
 use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
@@ -69,52 +71,47 @@ final class PaymentSessionService
             );
         }
 
-        $session = $this->gateway->createPaymentSession($payment);
-        $provider = $this->gateway->getProviderName();
-        $providerReference = $session['provider_reference'] ?? null;
-        $paymentUrl = $session['payment_url'] ?? null;
-        $expiresAt = $session['expires_at'] ?? null;
+        $maximumExpiration = $payment->expiresAt
+            ?? (new DateTimeImmutable($payment->createdAt, wp_timezone()))
+                ->modify('+15 minutes')
+                ->format('Y-m-d H:i:s');
+        $session = $this->gateway->createSession(new PaymentSessionContext(
+            $payment->paymentReference,
+            $payment->paymentReference,
+            $payment->amount,
+            $payment->currency,
+            $maximumExpiration,
+            $payment->paymentReference
+        ));
 
         if (
-            ($session['provider'] ?? null) !== $provider
-            || ! is_string($providerReference)
-            || trim($providerReference) === ''
-            || ! is_string($paymentUrl)
-            || filter_var($paymentUrl, FILTER_VALIDATE_URL) === false
-            || ! is_string($expiresAt)
+            $session->status !== GatewaySessionResult::STATUS_READY
+            || $session->redirectUrl === null
+            || filter_var(
+                $session->redirectUrl,
+                FILTER_VALIDATE_URL
+            ) === false
         ) {
             throw new InvalidArgumentException(
                 'El proveedor devolvio una sesion de pago invalida.'
             );
         }
 
-        $expiration = DateTimeImmutable::createFromFormat(
-            'Y-m-d\TH:i:s',
-            $expiresAt,
-            wp_timezone()
-        );
-
-        if ($expiration === false) {
-            throw new InvalidArgumentException(
-                'El proveedor devolvio una expiracion invalida.'
-            );
-        }
-
         $this->repository->updateSessionData(
             $payment->id,
-            $provider,
-            $providerReference,
-            $expiration->format('Y-m-d H:i:s'),
+            $session->provider,
+            $session->providerSessionId,
+            $session->expiresAt,
             current_time('mysql')
         );
 
         return [
             'payment_id' => $payment->id,
             'status' => $payment->status,
-            'provider' => $provider,
-            'provider_reference' => $providerReference,
-            'payment_url' => $paymentUrl,
-            'expires_at' => $expiresAt,
+            'provider' => $session->provider,
+            'provider_reference' => $session->providerSessionId,
+            'payment_url' => $session->redirectUrl,
+            'expires_at' => str_replace(' ', 'T', $session->expiresAt),
         ];
     }
 
@@ -130,7 +127,7 @@ final class PaymentSessionService
         $key = $this->idempotencyService->key($idempotencyKey);
         $owner = $this->idempotencyService->owner($ownerInput);
 
-        return $this->checkoutRepository->transaction(function () use (
+        $outcome = $this->checkoutRepository->transaction(function () use (
             $checkoutPublicId,
             $key,
             $owner
@@ -173,7 +170,11 @@ final class PaymentSessionService
                     );
                 }
 
-                return $this->publicData($byKey, $checkoutPublicId, true);
+                return $this->prepareGatewaySession(
+                    $byKey,
+                    $checkoutPublicId,
+                    true
+                );
             }
 
             $now = current_time('mysql');
@@ -199,7 +200,11 @@ final class PaymentSessionService
             $active = $this->sessionRepository->findActive($checkoutId, $now);
 
             if ($active !== null) {
-                return $this->publicData($active, $checkoutPublicId, true);
+                return $this->prepareGatewaySession(
+                    $active,
+                    $checkoutPublicId,
+                    true
+                );
             }
 
             $sessionId = $this->sessionRepository->create([
@@ -233,8 +238,20 @@ final class PaymentSessionService
                     'No fue posible recuperar la sesion de pago.'
                 );
 
-            return $this->publicData($session, $checkoutPublicId, false);
+            return $this->prepareGatewaySession(
+                $session,
+                $checkoutPublicId,
+                false
+            );
         });
+
+        if (($outcome['rejected'] ?? false) === true) {
+            throw new InvalidArgumentException(
+                'El gateway rechazo la creacion de la sesion de pago.'
+            );
+        }
+
+        return $outcome['data'];
     }
 
     public function get(string $publicId, array $ownerInput): array
@@ -335,5 +352,73 @@ final class PaymentSessionService
         }
 
         return $data;
+    }
+
+    /** @return array{rejected: bool, data: array<string, mixed>} */
+    private function prepareGatewaySession(
+        array $session,
+        string $checkoutPublicId,
+        bool $reused
+    ): array {
+        if (($session['status'] ?? null) !== PaymentSession::STATUS_PENDING) {
+            return [
+                'rejected' => false,
+                'data' => $this->publicData(
+                    $session,
+                    $checkoutPublicId,
+                    $reused
+                ),
+            ];
+        }
+
+        $result = $this->gateway->createSession(new PaymentSessionContext(
+            (string) $session['public_id'],
+            $checkoutPublicId,
+            (string) $session['amount'],
+            (string) $session['currency'],
+            (string) $session['expires_at'],
+            (string) $session['idempotency_key']
+        ));
+
+        if ($result->expiresAt > (string) $session['expires_at']) {
+            throw new InvalidArgumentException(
+                'El gateway devolvio una expiracion fuera del Checkout.'
+            );
+        }
+
+        $status = match ($result->status) {
+            GatewaySessionResult::STATUS_READY => PaymentSession::STATUS_READY,
+            GatewaySessionResult::STATUS_EXPIRED => PaymentSession::STATUS_EXPIRED,
+            GatewaySessionResult::STATUS_REJECTED => PaymentSession::STATUS_PENDING,
+            default => throw new InvalidArgumentException(
+                'El gateway devolvio un estado desconocido.'
+            ),
+        };
+        $this->sessionRepository->updateGatewayResult(
+            (int) $session['id'],
+            PaymentSession::STATUS_PENDING,
+            $status,
+            $result->provider,
+            $result->providerSessionId,
+            $result->redirectUrl,
+            $result->status === GatewaySessionResult::STATUS_REJECTED
+                ? (string) $session['expires_at']
+                : $result->expiresAt,
+            current_time('mysql')
+        );
+        $stored = $this->sessionRepository->find((int) $session['id'])
+            ?? throw new \RuntimeException(
+                'No fue posible recuperar el resultado del gateway.'
+            );
+
+        return [
+            'rejected' => $result->status
+                === GatewaySessionResult::STATUS_REJECTED,
+            'data' => $this->publicData(
+                $stored,
+                $checkoutPublicId,
+                $reused
+            ),
+        ];
     }
 }

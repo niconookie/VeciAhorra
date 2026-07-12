@@ -17,6 +17,8 @@ use VeciAhorra\Modules\Delivery\Routes\DeliveryRoutes;
 use VeciAhorra\Modules\Orders\Routes\OrderRoutes;
 use VeciAhorra\Modules\Payments\Routes\PaymentRoutes;
 use VeciAhorra\Modules\Payments\Gateway\DummyPaymentGateway;
+use VeciAhorra\Modules\Payments\Gateway\MockPaymentGateway;
+use VeciAhorra\Modules\Payments\Gateway\PaymentConfirmationGatewayInterface;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
 use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Products\Admin\ProductsPage;
@@ -44,6 +46,10 @@ final class Application
         $this->container = new Container();
         $this->container->bind(
             PaymentGatewayInterface::class,
+            static fn (): MockPaymentGateway => new MockPaymentGateway()
+        );
+        $this->container->bind(
+            PaymentConfirmationGatewayInterface::class,
             static fn (): DummyPaymentGateway => new DummyPaymentGateway()
         );
     }

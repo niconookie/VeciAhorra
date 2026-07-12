@@ -88,4 +88,66 @@ final class PaymentSessionRepository extends Repository
 
         return $row === null ? null : $row;
     }
+
+    public function updateGatewayResult(
+        int $id,
+        string $expectedStatus,
+        string $status,
+        string $provider,
+        string $providerSessionId,
+        ?string $redirectUrl,
+        string $expiresAt,
+        string $updatedAt
+    ): void {
+        $redirectAssignment = $redirectUrl === null ? 'NULL' : '%s';
+        $parameters = [
+            $status,
+            $provider,
+            $providerSessionId,
+        ];
+
+        if ($redirectUrl !== null) {
+            $parameters[] = $redirectUrl;
+        }
+
+        array_push(
+            $parameters,
+            $expiresAt,
+            $updatedAt,
+            $id,
+            $expectedStatus
+        );
+        $result = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s SET status = %%s, provider = %%s,'
+                . ' provider_session_id = %%s, redirect_url = %s,'
+                . ' expires_at = %%s, updated_at = %%s'
+                . ' WHERE id = %%d AND status = %%s',
+                $this->table(self::TABLE),
+                $redirectAssignment
+            ),
+            ...$parameters
+        ));
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible guardar el resultado del gateway.'
+            );
+        }
+
+        if ($result === 0) {
+            $stored = $this->find($id);
+
+            if (
+                $stored === null
+                || ($stored['status'] ?? null) !== $status
+                || ($stored['provider_session_id'] ?? null)
+                    !== $providerSessionId
+            ) {
+                throw new PersistenceException(
+                    'La sesion cambio durante la respuesta del gateway.'
+                );
+            }
+        }
+    }
 }

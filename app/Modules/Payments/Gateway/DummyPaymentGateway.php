@@ -7,7 +7,7 @@ namespace VeciAhorra\Modules\Payments\Gateway;
 use VeciAhorra\Modules\Payments\Models\Payment;
 use VeciAhorra\Modules\Payments\Models\PaymentConfirmationResult;
 
-final class DummyPaymentGateway implements PaymentGatewayInterface
+final class DummyPaymentGateway implements PaymentConfirmationGatewayInterface
 {
     public function createPaymentSession(Payment $payment): array
     {

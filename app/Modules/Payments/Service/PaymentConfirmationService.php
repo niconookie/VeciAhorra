@@ -7,7 +7,7 @@ namespace VeciAhorra\Modules\Payments\Service;
 use InvalidArgumentException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Orders\Services\OrderService;
-use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
+use VeciAhorra\Modules\Payments\Gateway\PaymentConfirmationGatewayInterface;
 use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
 use VeciAhorra\Modules\Reservations\Service\ReservationService;
 
@@ -15,7 +15,7 @@ final class PaymentConfirmationService
 {
     public function __construct(
         private PaymentRepository $repository,
-        private PaymentGatewayInterface $gateway,
+        private PaymentConfirmationGatewayInterface $gateway,
         private OrderService $orderService,
         private ReservationService $reservationService
     ) {
@@ -121,8 +121,7 @@ final class PaymentConfirmationService
     private function assertProvider(array $payment, string $provider): void
     {
         if (
-            $provider !== $this->gateway->getProviderName()
-            || ($payment['provider'] ?? null) !== $provider
+            ($payment['provider'] ?? null) !== $provider
         ) {
             throw new InvalidArgumentException(
                 'El proveedor no corresponde al pago.'
