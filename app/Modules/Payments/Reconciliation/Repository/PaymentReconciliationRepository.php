@@ -157,7 +157,15 @@ final class PaymentReconciliationRepository extends Repository
             (string) $row['created_at'],
             isset($row['last_attempt_at']) ? (string) $row['last_attempt_at'] : null,
             isset($row['reconciled_at']) ? (string) $row['reconciled_at'] : null,
-            (string) $row['updated_at']
+            (string) $row['updated_at'],
+            isset($row['lease_owner']) ? (string) $row['lease_owner'] : null,
+            isset($row['lease_acquired_at'])
+                ? (string) $row['lease_acquired_at']
+                : null,
+            isset($row['lease_expires_at'])
+                ? (string) $row['lease_expires_at']
+                : null,
+            (int) ($row['lease_version'] ?? 0)
         );
     }
 }

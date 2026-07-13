@@ -27,6 +27,10 @@ final class PaymentReconciliation
     private readonly string $status;
     private readonly ?string $businessResultCode;
     private readonly int $attemptCount;
+    private readonly ?string $leaseOwner;
+    private readonly ?string $leaseAcquiredAt;
+    private readonly ?string $leaseExpiresAt;
+    private readonly int $leaseVersion;
     private readonly ?string $lastErrorCode;
     private readonly ?string $lastErrorAt;
     private readonly string $createdAt;
@@ -49,13 +53,27 @@ final class PaymentReconciliation
         string $createdAt,
         ?string $lastAttemptAt,
         ?string $reconciledAt,
-        string $updatedAt
+        string $updatedAt,
+        ?string $leaseOwner = null,
+        ?string $leaseAcquiredAt = null,
+        ?string $leaseExpiresAt = null,
+        int $leaseVersion = 0
     ) {
         if ($id <= 0 || $webpayReturnId <= 0 || $originContextId <= 0) {
             throw new InvalidArgumentException('Identidad de conciliacion no valida.');
         }
 
-        if (! self::validStatus($status) || $attemptCount < 0) {
+        if (
+            ! self::validStatus($status)
+            || $attemptCount < 0
+            || $leaseVersion < 0
+            || (($leaseOwner === null) !== ($leaseAcquiredAt === null))
+            || (($leaseOwner === null) !== ($leaseExpiresAt === null))
+            || ($leaseOwner !== null
+                && preg_match('/^worker_[a-f0-9]{32}$/D', $leaseOwner) !== 1)
+            || ($leaseOwner !== null && $status !== self::STATUS_PROCESSING)
+            || ($leaseOwner !== null && $leaseVersion <= 0)
+        ) {
             throw new InvalidArgumentException('Estado de conciliacion no valido.');
         }
 
@@ -68,6 +86,10 @@ final class PaymentReconciliation
         $this->status = $status;
         $this->businessResultCode = $businessResultCode;
         $this->attemptCount = $attemptCount;
+        $this->leaseOwner = $leaseOwner;
+        $this->leaseAcquiredAt = $leaseAcquiredAt;
+        $this->leaseExpiresAt = $leaseExpiresAt;
+        $this->leaseVersion = $leaseVersion;
         $this->lastErrorCode = $lastErrorCode;
         $this->lastErrorAt = $lastErrorAt;
         $this->createdAt = $createdAt;
@@ -97,6 +119,10 @@ final class PaymentReconciliation
     public function status(): string { return $this->status; }
     public function businessResultCode(): ?string { return $this->businessResultCode; }
     public function attemptCount(): int { return $this->attemptCount; }
+    public function leaseOwner(): ?string { return $this->leaseOwner; }
+    public function leaseAcquiredAt(): ?string { return $this->leaseAcquiredAt; }
+    public function leaseExpiresAt(): ?string { return $this->leaseExpiresAt; }
+    public function leaseVersion(): int { return $this->leaseVersion; }
     public function lastErrorCode(): ?string { return $this->lastErrorCode; }
     public function lastErrorAt(): ?string { return $this->lastErrorAt; }
     public function createdAt(): string { return $this->createdAt; }

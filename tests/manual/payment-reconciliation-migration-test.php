@@ -46,6 +46,62 @@ try {
         'created_at' => '2026-07-01 12:00:00',
         'updated_at' => '2026-07-01 12:00:00',
     ]);
+    $legacyFingerprint = hash('sha256', 'legacy-reconciliation-fixture');
+    $wpdb->query(sprintf(
+        'CREATE TABLE %s ('
+        . 'id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,'
+        . 'public_id VARCHAR(64) NOT NULL,'
+        . 'webpay_return_id BIGINT UNSIGNED NOT NULL,'
+        . 'origin_context_id BIGINT UNSIGNED NOT NULL,'
+        . 'provider VARCHAR(30) NOT NULL,'
+        . 'fingerprint_version INT UNSIGNED NOT NULL,'
+        . 'financial_fingerprint VARCHAR(64) NOT NULL,'
+        . 'site_scope VARCHAR(64) NOT NULL,'
+        . 'origin VARCHAR(30) NOT NULL,'
+        . 'origin_resource_id VARCHAR(64) NOT NULL,'
+        . 'gateway_id VARCHAR(64) NOT NULL,'
+        . 'payment_attempt_id VARCHAR(64) NOT NULL,'
+        . 'origin_key VARCHAR(64) NOT NULL,'
+        . 'reconciliation_status VARCHAR(30) NOT NULL,'
+        . 'business_result_code VARCHAR(50) NULL,'
+        . 'attempt_count INT UNSIGNED NOT NULL DEFAULT 0,'
+        . 'last_error_code VARCHAR(50) NULL,'
+        . 'last_error_at DATETIME NULL,'
+        . 'created_at DATETIME NOT NULL,'
+        . 'last_attempt_at DATETIME NULL,'
+        . 'reconciled_at DATETIME NULL,'
+        . 'updated_at DATETIME NOT NULL,'
+        . 'PRIMARY KEY (id),'
+        . 'UNIQUE KEY payment_reconciliations_public_unique (public_id),'
+        . 'UNIQUE KEY payment_reconciliations_return_unique (webpay_return_id),'
+        . 'UNIQUE KEY payment_reconciliations_origin_key_unique (origin_key),'
+        . 'UNIQUE KEY payment_reconciliations_fingerprint_unique '
+        . '(provider, fingerprint_version, financial_fingerprint),'
+        . 'KEY payment_reconciliations_origin_index '
+        . '(site_scope, origin, origin_resource_id),'
+        . 'KEY payment_reconciliations_status_index (reconciliation_status)'
+        . ') ENGINE=InnoDB %s',
+        $reconciliationTable,
+        $wpdb->get_charset_collate()
+    ));
+    $wpdb->insert($reconciliationTable, [
+        'public_id' => 'pr_' . str_repeat('b', 40),
+        'webpay_return_id' => 991001,
+        'origin_context_id' => 991002,
+        'provider' => 'webpay_plus',
+        'fingerprint_version' => 1,
+        'financial_fingerprint' => $legacyFingerprint,
+        'site_scope' => 'site-legacy',
+        'origin' => 'woocommerce',
+        'origin_resource_id' => '991003',
+        'gateway_id' => 'veciahorra_webpay_plus',
+        'payment_attempt_id' => 'attempt-legacy-0001',
+        'origin_key' => hash('sha256', 'legacy-origin-fixture'),
+        'reconciliation_status' => 'pending',
+        'attempt_count' => 0,
+        'created_at' => '2026-07-01 12:00:00',
+        'updated_at' => '2026-07-01 12:00:00',
+    ]);
 
     foreach ([
         new CreatePaymentOriginContextsTable($originTable),
@@ -84,6 +140,23 @@ try {
             );
         }
     }
+    $legacyReconciliation = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$reconciliationTable}"
+        . ' WHERE financial_fingerprint = %s LIMIT 1',
+        $legacyFingerprint
+    ), ARRAY_A);
+    if (
+        ! is_array($legacyReconciliation)
+        || $legacyReconciliation['lease_owner'] !== null
+        || $legacyReconciliation['lease_acquired_at'] !== null
+        || $legacyReconciliation['lease_expires_at'] !== null
+        || (int) $legacyReconciliation['lease_version'] !== 0
+        || $legacyReconciliation['reconciliation_status'] !== 'pending'
+    ) {
+        throw new RuntimeException(
+            'La migracion de lease altero una conciliacion historica.'
+        );
+    }
 
     $required = [
         $originTable => [
@@ -100,7 +173,8 @@ try {
         $reconciliationTable => [
             'webpay_return_id', 'origin_context_id', 'financial_fingerprint',
             'origin_key', 'reconciliation_status', 'attempt_count',
-            'last_error_code', 'reconciled_at',
+            'lease_owner', 'lease_acquired_at', 'lease_expires_at',
+            'lease_version', 'last_error_code', 'reconciled_at',
         ],
     ];
 
@@ -158,7 +232,7 @@ try {
             $item instanceof CreatePaymentOriginContextsTable)) !== 1
         || count(array_filter($registered, fn (object $item): bool =>
             $item instanceof CreatePaymentReconciliationsTable)) !== 1
-        || version_compare(Config::SCHEMA_VERSION, '0.17.0', '<')
+        || version_compare(Config::SCHEMA_VERSION, '0.18.0', '<')
     ) {
         throw new RuntimeException('Las migraciones no estan registradas.');
     }
