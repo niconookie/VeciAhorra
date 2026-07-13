@@ -198,12 +198,14 @@ final class PaymentReconciliationClaimRepository extends Repository
                 'UPDATE %s SET lease_owner = NULL, lease_acquired_at = NULL,'
                 . ' lease_expires_at = NULL, updated_at = UTC_TIMESTAMP()'
                 . ' WHERE id = %%d AND lease_owner = %%s'
-                . ' AND lease_version = %%d',
+                . ' AND lease_version = %%d AND reconciliation_status = %%s'
+                . ' AND lease_expires_at > UTC_TIMESTAMP()',
                 $this->table(self::TABLE)
             ),
             $reconciliationId,
             $owner,
-            $leaseVersion
+            $leaseVersion,
+            PaymentReconciliation::STATUS_PROCESSING
         ));
 
         if ($updated === false) {
@@ -228,8 +230,16 @@ final class PaymentReconciliationClaimRepository extends Repository
             );
         }
 
+        if ($lease->reconciliationStatus() !== PaymentReconciliation::STATUS_PROCESSING) {
+            return new LeaseReleaseResult(LeaseReleaseResult::INVALID_STATE);
+        }
+
         if ($lease->owner() !== $owner) {
             return new LeaseReleaseResult(LeaseReleaseResult::NOT_OWNER);
+        }
+
+        if (! $lease->active()) {
+            return new LeaseReleaseResult(LeaseReleaseResult::EXPIRED);
         }
 
         return new LeaseReleaseResult(LeaseReleaseResult::VERSION_MISMATCH);

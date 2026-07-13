@@ -55,3 +55,23 @@ que exceda la expiracion pierde autoridad aunque siga ejecutandose. Una etapa
 futura debe inspeccionar evidencia durable antes de repetir efectos luego de
 recuperar un lease expirado. La infraestructura no se conecta todavia al retorno
 Webpay ni a workers automaticos.
+
+## Procesamiento tecnico exclusivo (28.7.4.6.3)
+
+`PaymentReconciliationProcessor` recibe una `ReconciliationLease` adquirida por
+el claim repository; nunca acepta solo el ID. Antes de leer y evaluar evidencia
+comprueba que ID, owner, version, expiracion y estado `processing` coincidan con
+la fila vigente. Si el trabajo supera el umbral configurado (o se acerca al
+vencimiento), renueva con la misma autoridad versionada. Una renovacion rechazada
+detiene el flujo antes del CAS.
+
+El cierre usa el CAS existente `processing -> completed`, condicionado por ID,
+owner, version y lease vigente. Cero filas afectadas no es exito del procesador.
+Los errores previos al cierre intentan `processing -> retryable` mediante el mismo
+CAS; esta transicion limpia el lease solo cuando el worker aun conserva autoridad.
+No existe una liberacion posterior al cierre ni una liberacion por ID aislado.
+
+En este hito `completed` significa solamente que la evidencia financiera durable
+y su origen fueron conciliados tecnicamente bajo autoridad exclusiva. No significa
+pedido pagado, aplicacion a WooCommerce, creacion de entidades de negocio,
+fulfillment, cambios de stock ni cualquier otro efecto externo.

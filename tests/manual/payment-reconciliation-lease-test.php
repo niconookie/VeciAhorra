@@ -289,6 +289,11 @@ try {
     assertReconciliationLease(
         $repository->renewLease($expiredId, $ownerA, $expiringVersion, 5)->status()
             === LeaseRenewResult::EXPIRED
+        && $repository->releaseLease(
+            $expiredId,
+            $ownerA,
+            $expiringVersion
+        )->status() === LeaseReleaseResult::EXPIRED
         && $repository->compareAndSetStatus(
             $expiredId,
             $ownerA,

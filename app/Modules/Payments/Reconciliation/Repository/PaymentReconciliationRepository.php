@@ -7,6 +7,7 @@ namespace VeciAhorra\Modules\Payments\Reconciliation\Repository;
 use VeciAhorra\Database\Repository;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Modules\Payments\Reconciliation\DTO\CreatePaymentReconciliation;
+use VeciAhorra\Modules\Payments\Reconciliation\DTO\ReconciliationReferences;
 use VeciAhorra\Modules\Payments\Reconciliation\Exception\DuplicateReconciliation;
 use VeciAhorra\Modules\Payments\Reconciliation\Model\PaymentReconciliation;
 use VeciAhorra\Modules\Payments\Reconciliation\Support\FinancialFingerprint;
@@ -91,6 +92,44 @@ final class PaymentReconciliationRepository extends Repository
         ), ARRAY_A);
 
         return $row === null ? null : $this->hydrate($row);
+    }
+
+    public function findReferences(int $id): ?ReconciliationReferences
+    {
+        if ($id <= 0) {
+            throw new \InvalidArgumentException('reconciliation_id no es valido.');
+        }
+
+        $row = $this->db()->get_row($this->db()->prepare(
+            sprintf(
+                'SELECT id, webpay_return_id, origin_context_id, provider,'
+                . ' fingerprint_version, financial_fingerprint, origin_key,'
+                . ' reconciliation_status FROM %s WHERE id = %%d LIMIT 1',
+                $this->table(self::TABLE)
+            ),
+            $id
+        ), ARRAY_A);
+
+        if ($this->db()->last_error !== '') {
+            throw new PersistenceException(
+                'No fue posible leer las referencias de conciliacion.'
+            );
+        }
+
+        if ($row === null) {
+            return null;
+        }
+
+        return new ReconciliationReferences(
+            (int) $row['id'],
+            (int) $row['webpay_return_id'],
+            (int) $row['origin_context_id'],
+            (string) $row['provider'],
+            (int) $row['fingerprint_version'],
+            (string) $row['financial_fingerprint'],
+            (string) $row['origin_key'],
+            (string) $row['reconciliation_status']
+        );
     }
 
     /** @return list<PaymentReconciliation> */
