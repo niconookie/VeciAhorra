@@ -7,6 +7,7 @@ namespace VeciAhorra\Modules\Payments\Reconciliation\DTO;
 use InvalidArgumentException;
 use VeciAhorra\Modules\Payments\Reconciliation\Support\PaymentOriginKey;
 use VeciAhorra\Modules\Payments\Reconciliation\Support\ReconciliationValidation;
+use VeciAhorra\Modules\Payments\Reconciliation\Support\WordPressSiteScope;
 
 final class DurablePaymentOrigin
 {
@@ -74,6 +75,8 @@ final class DurablePaymentOrigin
         if (
             preg_match('/^poc_[a-f0-9]{32,56}$/D', $publicId) !== 1
             || preg_match('/^[A-Za-z0-9_-]{16,64}$/D', $paymentAttemptId) !== 1
+            || ($origin === self::ORIGIN_WOOCOMMERCE
+                && ! WordPressSiteScope::isValid($siteScope))
             || ($origin === self::ORIGIN_WOOCOMMERCE
                 && (preg_match('/^[1-9]\d*$/D', $originResourceId) !== 1))
             || preg_match('/^VA[A-F0-9]{24}$/D', $buyOrder) !== 1

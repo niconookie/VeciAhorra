@@ -96,7 +96,7 @@ try {
         $tokenHash = hash('sha256', 'fixture-financial-reference-' . $attempt);
         $origin = new DurablePaymentOrigin(
             'poc_' . substr(hash('sha256', $attempt), 0, 40),
-            'site-1',
+            'wp-blog:1',
             DurablePaymentOrigin::ORIGIN_WOOCOMMERCE,
             (string) (990000 + $index),
             'veciahorra_webpay_plus',
@@ -181,7 +181,7 @@ try {
             $reconciliations->findByFingerprint($financial->fingerprint())?->id()
                 === $id
             && count($reconciliations->findByOrigin(
-                'site-1',
+                'wp-blog:1',
                 DurablePaymentOrigin::ORIGIN_WOOCOMMERCE,
                 (string) (990000 + $index)
             )) === 1,

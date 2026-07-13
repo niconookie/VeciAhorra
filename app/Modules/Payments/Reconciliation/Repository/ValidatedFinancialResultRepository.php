@@ -96,6 +96,88 @@ final class ValidatedFinancialResultRepository extends Repository
         return $row === null ? null : $this->hydrate($row);
     }
 
+    public function findByTokenHash(string $tokenHash): ?ValidatedFinancialResult
+    {
+        $row = $this->db()->get_row($this->db()->prepare(
+            sprintf('SELECT * FROM %s WHERE token_hash = %%s LIMIT 1', $this->table(self::TABLE)),
+            $tokenHash
+        ), ARRAY_A);
+
+        if ($row === null || ! isset($row['public_result_id'])) {
+            return null;
+        }
+
+        return $this->hydrate($row);
+    }
+
+    public function materializeExisting(
+        string $tokenHash,
+        ValidatedFinancialResult $result
+    ): int {
+        $components = $result->components();
+        $database = $this->db();
+        $updated = $database->update(
+            $this->table(self::TABLE),
+            [
+                'public_result_id' => $result->publicResultId(),
+                'provider' => FinancialFingerprintComponents::PROVIDER,
+                'environment' => $components->environment(),
+                'merchant_identity_hash' => $components->merchantIdentityHash(),
+                'financial_status' => $result->financialStatus(),
+                'financial_operation' => $result->operation(),
+                'financial_fingerprint' => $result->fingerprint(),
+                'fingerprint_version' => FinancialFingerprint::VERSION,
+                'provider_status' => $components->providerStatus(),
+                'response_code' => $components->responseCode(),
+                'amount_clp' => $components->amountClp(),
+                'currency' => 'CLP',
+                'buy_order' => $components->buyOrder(),
+                'financial_session_id' => $components->financialSessionId(),
+                'authorization_code_hash' => $components->authorizationHashValue(),
+                'payment_type_code' => $components->paymentTypeCode(),
+                'installments_number' => $components->installmentsNumber(),
+                'accounting_date' => $components->accountingDate(),
+                'transaction_date' => $components->transactionDate(),
+                'safe_financial_reference' => $result->safeFinancialReference(),
+                'payload_version' => FinancialFingerprint::VERSION,
+                'normalized_payload_json' => FinancialFingerprint::canonicalJson($components),
+                'financial_obtained_at' => $result->obtainedAt(),
+                'financial_validated_at' => $result->validatedAt(),
+                'updated_at' => $result->validatedAt(),
+            ],
+            ['token_hash' => $tokenHash, 'public_result_id' => null]
+        );
+
+        if ($updated === false && DatabaseErrorClassifier::isDuplicateKey($database)) {
+            throw new DuplicateValidatedFinancialResult(
+                'El resultado financiero entra en conflicto con otro retorno.'
+            );
+        }
+
+        if ($updated === false) {
+            throw new PersistenceException('No fue posible materializar el resultado.');
+        }
+
+        $row = $database->get_row($database->prepare(
+            sprintf('SELECT * FROM %s WHERE token_hash = %%s LIMIT 1', $this->table(self::TABLE)),
+            $tokenHash
+        ), ARRAY_A);
+
+        if ($row === null) {
+            throw new PersistenceException('El retorno Webpay no existe.');
+        }
+
+        $stored = $this->hydrate($row);
+
+        if (! hash_equals($stored->fingerprint(), $result->fingerprint())) {
+            throw new DuplicateValidatedFinancialResult(
+                'El token posee evidencia financiera incompatible.'
+            );
+        }
+
+        return (int) $row['id'];
+    }
+
     /** @param array<string, mixed> $row */
     private function hydrate(array $row): ValidatedFinancialResult
     {

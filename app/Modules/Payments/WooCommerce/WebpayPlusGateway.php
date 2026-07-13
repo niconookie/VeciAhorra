@@ -16,6 +16,7 @@ use VeciAhorra\Modules\Payments\Gateway\WebpayReturnContextRepositoryInterface;
 use VeciAhorra\Modules\Payments\Gateway\WebpayTransactionReference;
 use VeciAhorra\Modules\Payments\Repository\TransientWebpayReturnContextRepository;
 use VeciAhorra\Modules\Payments\Support\WebpayTokenReference;
+use VeciAhorra\Modules\Payments\WooCommerce\Contracts\WooCommercePaymentAttemptServiceInterface;
 
 class WebpayPlusGateway extends \WC_Payment_Gateway
 {
@@ -173,6 +174,7 @@ class WebpayPlusGateway extends \WC_Payment_Gateway
             if (
                 $currency !== 'CLP'
                 || $amount === null
+                || (string) $order->get_payment_method() !== self::GATEWAY_ID
                 || ! $order->needs_payment()
                 || ! WebpayPaymentGateway::supportsEnvironment(
                     $configuration->environment
@@ -188,8 +190,11 @@ class WebpayPlusGateway extends \WC_Payment_Gateway
                 return ['result' => 'success', 'redirect' => $existing];
             }
 
+            $attemptService = $this->paymentAttempts();
+            $paymentAttemptId = $attemptService->newAttemptId();
             $idempotencyKey = hash('sha256', implode('|', [
                 'woocommerce', (string) $orderId, $orderKey, $amount, $currency,
+                $paymentAttemptId,
             ]));
             $context = new PaymentSessionContext(
                 'wc-payment-' . hash('sha256', (string) $orderId . '|' . $orderKey),
@@ -199,9 +204,16 @@ class WebpayPlusGateway extends \WC_Payment_Gateway
                 gmdate('Y-m-d H:i:s', time() + self::FLOW_TTL),
                 $idempotencyKey
             );
+            $attempt = $attemptService->create(
+                $order,
+                $configuration,
+                $context,
+                $paymentAttemptId
+            );
             $result = $this->paymentGateway($configuration)->createSession($context);
 
             $this->assertGatewayResult($configuration, $result);
+            $attemptService->bindToken($attempt, $result->providerSessionId);
             $this->storeReturnContext($configuration, $context, $result);
 
             return [
@@ -429,6 +441,11 @@ class WebpayPlusGateway extends \WC_Payment_Gateway
     protected function returnContexts(): WebpayReturnContextRepositoryInterface
     {
         return new TransientWebpayReturnContextRepository();
+    }
+
+    protected function paymentAttempts(): WooCommercePaymentAttemptServiceInterface
+    {
+        return new WooCommercePaymentAttemptService();
     }
 
     private function integerAmount(string $amount): int

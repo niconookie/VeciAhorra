@@ -7,8 +7,10 @@ namespace VeciAhorra\Modules\Payments\Reconciliation\Repository;
 use VeciAhorra\Database\Repository;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Modules\Payments\Reconciliation\DTO\DurablePaymentOrigin;
+use VeciAhorra\Modules\Payments\Reconciliation\DTO\PaymentOriginTokenBindResult;
 use VeciAhorra\Modules\Payments\Reconciliation\Exception\DuplicatePaymentOriginContext;
 use VeciAhorra\Modules\Payments\Reconciliation\Support\DatabaseErrorClassifier;
+use VeciAhorra\Modules\Payments\Reconciliation\Support\ReconciliationValidation;
 
 final class PaymentOriginContextRepository extends Repository
 {
@@ -94,6 +96,113 @@ final class PaymentOriginContextRepository extends Repository
         ), ARRAY_A);
 
         return $row === null ? null : $this->hydrate($row);
+    }
+
+    public function findByPaymentAttemptId(
+        string $paymentAttemptId
+    ): ?DurablePaymentOrigin {
+        $row = $this->db()->get_row($this->db()->prepare(
+            sprintf(
+                'SELECT * FROM %s WHERE payment_attempt_id = %%s LIMIT 1',
+                $this->table(self::TABLE)
+            ),
+            $paymentAttemptId
+        ), ARRAY_A);
+
+        return $row === null ? null : $this->hydrate($row);
+    }
+
+    public function findByTokenHash(string $tokenHash): ?DurablePaymentOrigin
+    {
+        ReconciliationValidation::hash($tokenHash, 'token_hash');
+        $row = $this->db()->get_row($this->db()->prepare(
+            sprintf(
+                'SELECT * FROM %s WHERE token_hash = %%s LIMIT 1',
+                $this->table(self::TABLE)
+            ),
+            $tokenHash
+        ), ARRAY_A);
+
+        return $row === null ? null : $this->hydrate($row);
+    }
+
+    public function bindTokenHash(
+        int $originContextId,
+        string $paymentAttemptId,
+        string $tokenHash,
+        string $updatedAt
+    ): PaymentOriginTokenBindResult {
+        if ($originContextId <= 0) {
+            throw new \InvalidArgumentException('origin_context_id no es valido.');
+        }
+
+        ReconciliationValidation::identifier(
+            $paymentAttemptId,
+            'payment_attempt_id'
+        );
+        ReconciliationValidation::hash($tokenHash, 'token_hash');
+        ReconciliationValidation::mysqlDate($updatedAt, 'updated_at');
+        $database = $this->db();
+        $previousSuppression = $database->suppress_errors(true);
+
+        try {
+            $updated = $database->query($database->prepare(
+                sprintf(
+                    'UPDATE %s SET token_hash = %%s, updated_at = %%s'
+                    . ' WHERE id = %%d AND payment_attempt_id = %%s'
+                    . ' AND token_hash IS NULL AND expires_at > UTC_TIMESTAMP()',
+                    $this->table(self::TABLE)
+                ),
+                $tokenHash,
+                $updatedAt,
+                $originContextId,
+                $paymentAttemptId
+            ));
+        } finally {
+            $database->suppress_errors($previousSuppression);
+        }
+
+        if ($updated === false) {
+            if (DatabaseErrorClassifier::isDuplicateKey($database)) {
+                return new PaymentOriginTokenBindResult(
+                    PaymentOriginTokenBindResult::TOKEN_CONFLICT
+                );
+            }
+
+            throw new PersistenceException('No fue posible vincular el token seguro.');
+        }
+
+        if ($updated === 1) {
+            return new PaymentOriginTokenBindResult(
+                PaymentOriginTokenBindResult::BOUND
+            );
+        }
+
+        $origin = $this->find($originContextId);
+
+        if ($origin === null) {
+            return new PaymentOriginTokenBindResult(
+                PaymentOriginTokenBindResult::NOT_FOUND
+            );
+        }
+
+        if (! hash_equals($origin->paymentAttemptId(), $paymentAttemptId)) {
+            return new PaymentOriginTokenBindResult(
+                PaymentOriginTokenBindResult::ATTEMPT_MISMATCH
+            );
+        }
+
+        if ($origin->tokenHash() !== null) {
+            return new PaymentOriginTokenBindResult(
+                hash_equals($origin->tokenHash(), $tokenHash)
+                    ? PaymentOriginTokenBindResult::ALREADY_BOUND
+                    : PaymentOriginTokenBindResult::TOKEN_CONFLICT
+            );
+        }
+
+        return new PaymentOriginTokenBindResult(
+            PaymentOriginTokenBindResult::EXPIRED
+        );
     }
 
     /** @param array<string, mixed> $row */

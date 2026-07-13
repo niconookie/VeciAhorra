@@ -135,7 +135,7 @@ foreach ([1500.0, '1500.00', '1500', NAN, INF, true, [], new stdClass()] as $inv
 }
 
 $originA = new DurablePaymentOrigin(
-    'poc_' . str_repeat('a', 32), 'site-1', 'woocommerce', '100',
+    'poc_' . str_repeat('a', 32), 'wp-blog:1', 'woocommerce', '100',
     'veciahorra_webpay_plus', 'attempt-aaaaaaaa', 15990, 'integration',
     hash('sha256', 'commerce-code-test'), 'VA1234567890ABCDEF12345678',
     'VA-1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890',
@@ -143,7 +143,7 @@ $originA = new DurablePaymentOrigin(
     '2026-07-13 16:00:00', '2026-07-13 16:00:00', '2026-07-13 17:00:00'
 );
 $originB = new DurablePaymentOrigin(
-    'poc_' . str_repeat('b', 32), 'site-1', 'woocommerce', '100',
+    'poc_' . str_repeat('b', 32), 'wp-blog:1', 'woocommerce', '100',
     'veciahorra_webpay_plus', 'attempt-bbbbbbbb', 15990, 'integration',
     hash('sha256', 'commerce-code-test'), 'VA1234567890ABCDEF12345678',
     'VA-1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890',
@@ -175,7 +175,7 @@ assertReconciliationFingerprint(
     && $fingerprint ===
         'c5b5be2b6f8cb7469613cf0111901e3de15e1d0078706290d743080352e5567f'
     && $originA->originKey() ===
-        'b78fff3818fdb148359df0587e487f3be61a63054f5b31a29562c6d84603d6a8',
+        '2f755ac73042ec92f189c08894b610f0decbdad01a24f041962bdfd0cb8eb7a2',
     'Los vectores absolutos V1 cambiaron.'
 );
 

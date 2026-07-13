@@ -6,6 +6,7 @@ namespace VeciAhorra\Modules\Payments\Service;
 
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayException;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnGatewayInterface;
+use VeciAhorra\Modules\Payments\Gateway\WebpayCommitResult;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnContext;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnContextRepositoryInterface;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnGatewayResolverInterface;
@@ -13,6 +14,9 @@ use VeciAhorra\Modules\Payments\Gateway\WebpayTransactionReference;
 use VeciAhorra\Modules\Payments\Models\WebpayReturnResult;
 use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
 use VeciAhorra\Modules\Payments\Repository\WebpayReturnRepository;
+use VeciAhorra\Modules\Payments\Reconciliation\DTO\DurablePaymentOrigin;
+use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentOriginContextRepository;
+use VeciAhorra\Modules\Payments\Reconciliation\Service\WebpayReconciliationMaterializer;
 use VeciAhorra\Modules\Payments\Requests\WebpayReturnRequest;
 use VeciAhorra\Modules\Payments\Support\WebpayTokenReference;
 
@@ -23,7 +27,9 @@ final class WebpayReturnService
         private PaymentSessionRepository $sessions,
         private WebpayReturnRepository $returns,
         private ?WebpayReturnContextRepositoryInterface $contexts = null,
-        private ?WebpayReturnGatewayResolverInterface $gatewayResolver = null
+        private ?WebpayReturnGatewayResolverInterface $gatewayResolver = null,
+        private ?PaymentOriginContextRepository $durableOrigins = null,
+        private ?WebpayReconciliationMaterializer $materializer = null
     ) {
     }
 
@@ -33,6 +39,10 @@ final class WebpayReturnService
         $session = $this->sessions->findByProviderSessionId($request->token);
         $externalContext = $session === null
             ? $this->contexts?->find($tokenHash)
+            : null;
+        $durableOrigin = $session === null
+            ? ($this->durableOrigins ?? new PaymentOriginContextRepository())
+                ->findByTokenHash($tokenHash)
             : null;
         $reference = WebpayTokenReference::masked($request->token);
         $now = current_time('mysql');
@@ -48,10 +58,20 @@ final class WebpayReturnService
 
             if (($row['processing_status'] ?? null) === 'retryable') {
                 if (! $this->returns->retry($tokenHash, $now)) {
-                    return $this->repeated($row, $reference);
+                    return $this->repeated(
+                        $row,
+                        $reference,
+                        $tokenHash,
+                        $durableOrigin
+                    );
                 }
             } else {
-                return $this->repeated($row, $reference);
+                return $this->repeated(
+                    $row,
+                    $reference,
+                    $tokenHash,
+                    $durableOrigin
+                );
             }
         }
 
@@ -121,7 +141,7 @@ final class WebpayReturnService
             isset($session['id']) ? (int) $session['id'] : null,
             $reference,
             $financial->toArray()
-        ), $tokenHash, $externalContext);
+        ), $tokenHash, $externalContext, $durableOrigin, $financial);
     }
 
     private function abort(
@@ -162,11 +182,40 @@ final class WebpayReturnService
         ), $tokenHash, $externalContext);
     }
 
-    private function repeated(array $row, string $reference): WebpayReturnResult
-    {
+    private function repeated(
+        array $row,
+        string $reference,
+        string $tokenHash,
+        ?DurablePaymentOrigin $durableOrigin
+    ): WebpayReturnResult {
         $stored = isset($row['result_json']) && is_string($row['result_json'])
             ? json_decode($row['result_json'], true)
             : null;
+        $storedFinancial = is_array($stored['financial'] ?? null)
+            ? $stored['financial']
+            : null;
+
+        if ($durableOrigin !== null) {
+            $materializer = $this->materializer
+                ?? new WebpayReconciliationMaterializer();
+            $resumed = $materializer->resume($tokenHash, $durableOrigin);
+            $resultStatus = is_string($row['result_status'] ?? null)
+                ? $row['result_status']
+                : null;
+
+            if (
+                $resumed === null
+                && $storedFinancial !== null
+                && in_array($resultStatus, ['approved', 'rejected'], true)
+            ) {
+                $materializer->materialize(
+                    $tokenHash,
+                    $durableOrigin,
+                    $this->storedCommit($storedFinancial),
+                    $resultStatus
+                );
+            }
+        }
 
         return new WebpayReturnResult(
             'already_processed',
@@ -175,9 +224,7 @@ final class WebpayReturnService
                     ? (int) $row['payment_session_id']
                     : null,
             $reference,
-            is_array($stored['financial'] ?? null)
-                ? $stored['financial']
-                : null,
+            $storedFinancial,
             is_string($row['result_status'] ?? null)
                 ? $row['result_status']
                 : (string) ($row['processing_status'] ?? 'processing')
@@ -187,7 +234,9 @@ final class WebpayReturnService
     private function finalize(
         WebpayReturnResult $result,
         string $tokenHash,
-        ?WebpayReturnContext $externalContext = null
+        ?WebpayReturnContext $externalContext = null,
+        ?DurablePaymentOrigin $durableOrigin = null,
+        ?\VeciAhorra\Modules\Payments\Gateway\WebpayCommitResult $financial = null
     ): WebpayReturnResult {
         $this->returns->complete(
             $tokenHash,
@@ -195,6 +244,20 @@ final class WebpayReturnService
             $result->toArray(),
             current_time('mysql')
         );
+
+        if (
+            $durableOrigin !== null
+            && $financial !== null
+            && in_array($result->result, ['approved', 'rejected'], true)
+        ) {
+            ($this->materializer ?? new WebpayReconciliationMaterializer())
+                ->materialize(
+                    $tokenHash,
+                    $durableOrigin,
+                    $financial,
+                    $result->result
+                );
+        }
 
         if ($externalContext !== null) {
             $this->contexts?->forget($tokenHash);
@@ -212,5 +275,38 @@ final class WebpayReturnService
         $value = filter_var($matches[1], FILTER_VALIDATE_INT);
 
         return $value === false || $value <= 0 ? -1 : $value;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function storedCommit(array $data): WebpayCommitResult
+    {
+        return new WebpayCommitResult(
+            (string) ($data['status'] ?? ''),
+            (int) ($data['response_code'] ?? PHP_INT_MIN),
+            (int) ($data['amount'] ?? 0),
+            (string) ($data['buy_order'] ?? ''),
+            (string) ($data['session_id'] ?? ''),
+            is_string($data['authorization_code'] ?? null)
+                ? $data['authorization_code']
+                : null,
+            is_string($data['payment_type_code'] ?? null)
+                ? $data['payment_type_code']
+                : null,
+            is_int($data['installments_number'] ?? null)
+                ? $data['installments_number']
+                : null,
+            is_string($data['accounting_date'] ?? null)
+                ? $data['accounting_date']
+                : null,
+            is_string($data['transaction_date'] ?? null)
+                ? $data['transaction_date']
+                : null,
+            is_string($data['card_last_four'] ?? null)
+                ? $data['card_last_four']
+                : null,
+            is_int($data['balance'] ?? null) || is_float($data['balance'] ?? null)
+                ? $data['balance']
+                : null
+        );
     }
 }

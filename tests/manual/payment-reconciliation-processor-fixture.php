@@ -34,7 +34,7 @@ function createProcessorFixture(string $suffix = ''): array
     $merchantHash = hash('sha256', 'merchant-processor-test');
     $origin = new DurablePaymentOrigin(
         'poc_' . substr(hash('sha256', 'origin-' . $nonce), 0, 40),
-        'site-processor-test',
+        'wp-blog:1',
         DurablePaymentOrigin::ORIGIN_WOOCOMMERCE,
         (string) random_int(100000, 999999999),
         'veciahorra_webpay_plus',

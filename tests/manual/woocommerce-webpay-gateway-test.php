@@ -12,6 +12,8 @@ use VeciAhorra\Modules\Payments\Gateway\WebpayReturnContext;
 use VeciAhorra\Modules\Payments\Gateway\WebpayTransactionReference;
 use VeciAhorra\Modules\Payments\WooCommerce\WebpayGatewayRegistration;
 use VeciAhorra\Modules\Payments\WooCommerce\WooCommerceWebpayReturnGatewayResolver;
+use VeciAhorra\Modules\Payments\WooCommerce\Contracts\WooCommercePaymentAttemptServiceInterface;
+use VeciAhorra\Modules\Payments\WooCommerce\DTO\WooCommercePaymentAttempt;
 
 require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
 
@@ -27,6 +29,7 @@ $GLOBALS['wc_filters'] = [];
 $GLOBALS['wc_notices'] = [];
 $GLOBALS['wc_transients'] = [];
 $GLOBALS['wc_order_total'] = '15000.00';
+$GLOBALS['wc_order_gateway'] = 'veciahorra_webpay_plus';
 $GLOBALS['wc_settings'] = [
     'enabled' => 'yes',
     'title' => 'Webpay Plus',
@@ -213,8 +216,18 @@ class WC_Payment_Gateway
 class WC_Order
 {
     public array $calls = [];
+    public array $meta = [];
 
     public function __construct(private int $id) {}
+
+    public function get_id(): int { return $this->id; }
+
+    public function update_meta_data(string $key, mixed $value): void
+    {
+        $this->meta[$key] = $value;
+    }
+
+    public function save(): int { return $this->id; }
 
     public function get_total(): string
     {
@@ -231,6 +244,11 @@ class WC_Order
     public function get_order_key(): string
     {
         return 'wc_order_backend_key';
+    }
+
+    public function get_payment_method(): string
+    {
+        return $GLOBALS['wc_order_gateway'];
     }
 
     public function needs_payment(): bool
@@ -279,10 +297,44 @@ final class FakeVeciAhorraGateway implements PaymentGatewayInterface
     }
 }
 
+final class FakeWooPaymentAttempts implements WooCommercePaymentAttemptServiceInterface
+{
+    public int $creates = 0;
+    public int $binds = 0;
+    public bool $failBind = false;
+    private string $attemptId = 'attempt_' . 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+
+    public function newAttemptId(): string { return $this->attemptId; }
+
+    public function create(
+        WC_Order $order,
+        WebpayGatewayConfiguration $configuration,
+        PaymentSessionContext $paymentContext,
+        string $paymentAttemptId
+    ): WooCommercePaymentAttempt {
+        $this->creates++;
+        return new WooCommercePaymentAttempt(99, $paymentAttemptId);
+    }
+
+    public function bindToken(
+        WooCommercePaymentAttempt $attempt,
+        string $providerSessionId
+    ): void {
+        $this->binds++;
+
+        if ($this->failBind) {
+            throw new RuntimeException('controlled-bind-failure');
+        }
+    }
+}
+
 class TestableWcWebpayGateway extends \VeciAhorra\Modules\Payments\WooCommerce\WebpayPlusGateway
 {
+    public FakeWooPaymentAttempts $attempts;
+
     public function __construct(public FakeVeciAhorraGateway $fake)
     {
+        $this->attempts = new FakeWooPaymentAttempts();
         parent::__construct();
     }
 
@@ -290,6 +342,11 @@ class TestableWcWebpayGateway extends \VeciAhorra\Modules\Payments\WooCommerce\W
         WebpayGatewayConfiguration $configuration
     ): PaymentGatewayInterface {
         return $this->fake;
+    }
+
+    protected function paymentAttempts(): WooCommercePaymentAttemptServiceInterface
+    {
+        return $this->attempts;
     }
 
     public function form(string $url, string $token): string
@@ -357,6 +414,10 @@ $GLOBALS['wc_settings']['mode'] = ' INTEGRATION ';
 $result = $gateway->process_payment(41);
 assertWcWebpay($result['result'] === 'success', 'process_payment fallo.');
 assertWcWebpay($fake->creates === 1, 'No se invoco una vez el gateway VeciAhorra.');
+assertWcWebpay(
+    $gateway->attempts->creates === 1 && $gateway->attempts->binds === 1,
+    'El intento durable no fue creado y vinculado exactamente una vez.'
+);
 assertWcWebpay($fake->context?->amount === '15000.00', 'No uso el total de WC_Order.');
 assertWcWebpay($fake->context?->currency === 'CLP', 'Moneda incorrecta.');
 assertWcWebpay(! str_contains($result['redirect'], str_repeat('T', 32)), 'Token expuesto en redirect.');
@@ -431,13 +492,39 @@ assertWcWebpay($zero['result'] === 'failure', 'Monto cero aceptado.');
 $GLOBALS['wc_order_total'] = '15000.00';
 
 $GLOBALS['wc_runtime']->session = new WcWebpaySession();
+$GLOBALS['wc_order_gateway'] = 'cod';
+$wrongGateway = $gateway->process_payment(41);
+assertWcWebpay(
+    $wrongGateway['result'] === 'failure',
+    'Pedido de otro gateway creo un intento Webpay.'
+);
+$GLOBALS['wc_order_gateway'] = 'veciahorra_webpay_plus';
+
+$GLOBALS['wc_runtime']->session = new WcWebpaySession();
 $incompleteFake = new FakeVeciAhorraGateway();
 $incompleteFake->url = null;
-$incomplete = (new TestableWcWebpayGateway($incompleteFake))->process_payment(41);
+$incompleteGateway = new TestableWcWebpayGateway($incompleteFake);
+$incomplete = $incompleteGateway->process_payment(41);
 assertWcWebpay($incomplete['result'] === 'failure', 'Resultado incompleto aceptado.');
+assertWcWebpay(
+    $incompleteGateway->attempts->creates === 1
+    && $incompleteGateway->attempts->binds === 0,
+    'Un create fallido fingio vinculacion durable.'
+);
 assertWcWebpay(
     ! str_contains(json_encode($GLOBALS['wc_notices']), str_repeat('T', 32)),
     'Token completo expuesto en errores.'
+);
+
+$GLOBALS['wc_runtime']->session = new WcWebpaySession();
+$bindFailureGateway = new TestableWcWebpayGateway(new FakeVeciAhorraGateway());
+$bindFailureGateway->attempts->failBind = true;
+$bindFailure = $bindFailureGateway->process_payment(41);
+assertWcWebpay(
+    $bindFailure['result'] === 'failure'
+    && $bindFailureGateway->attempts->creates === 1
+    && $bindFailureGateway->attempts->binds === 1,
+    'El fallo de bind entrego una transaccion sin asociacion durable.'
 );
 
 $source = (string) file_get_contents(
