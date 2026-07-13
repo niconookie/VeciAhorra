@@ -100,6 +100,95 @@ class PaymentRepository extends Repository
         return $this->findByProviderReferenceInternal($reference, false);
     }
 
+    public function findByPaymentSessionId(int $paymentSessionId): ?array
+    {
+        return $this->findByPaymentSessionIdInternal(
+            $paymentSessionId,
+            false
+        );
+    }
+
+    public function findByPaymentSessionIdForUpdate(
+        int $paymentSessionId
+    ): ?array {
+        if ((int) $this->db()->get_var('SELECT @@in_transaction') !== 1) {
+            throw new PersistenceException(
+                'El lock de Payment requiere una transaccion activa.'
+            );
+        }
+
+        return $this->findByPaymentSessionIdInternal(
+            $paymentSessionId,
+            true
+        );
+    }
+
+    public function orderIdsMatchCheckout(
+        int $paymentId,
+        int $checkoutId
+    ): bool {
+        if ($paymentId <= 0 || $checkoutId <= 0) {
+            throw new \InvalidArgumentException(
+                'Los IDs del agregado de pago no son validos.'
+            );
+        }
+
+        $paymentOrderIds = array_map('intval', $this->db()->get_col(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT order_id FROM %s WHERE payment_id = %%d'
+                    . ' ORDER BY order_id ASC',
+                    $this->table(self::ORDERS_TABLE)
+                ),
+                $paymentId
+            )
+        ));
+        $checkoutOrderIds = array_map('intval', $this->db()->get_col(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT order_id FROM %s WHERE checkout_id = %%d'
+                    . ' ORDER BY order_id ASC',
+                    $this->table('checkout_orders')
+                ),
+                $checkoutId
+            )
+        ));
+
+        return $paymentOrderIds !== []
+            && $paymentOrderIds === $checkoutOrderIds;
+    }
+
+    public function findOrderIdsForUpdate(int $paymentId): array
+    {
+        if ($paymentId <= 0) {
+            throw new \InvalidArgumentException('payment_id no es valido.');
+        }
+
+        if ((int) $this->db()->get_var('SELECT @@in_transaction') !== 1) {
+            throw new PersistenceException(
+                'El lock de PaymentOrders requiere una transaccion activa.'
+            );
+        }
+
+        $database = $this->db();
+        $ids = $database->get_col($database->prepare(
+            sprintf(
+                'SELECT order_id FROM %s WHERE payment_id = %%d'
+                . ' ORDER BY order_id ASC FOR UPDATE',
+                $this->table(self::ORDERS_TABLE)
+            ),
+            $paymentId
+        ));
+
+        if ($database->last_error !== '') {
+            throw new PersistenceException(
+                'No fue posible bloquear PaymentOrders.'
+            );
+        }
+
+        return array_map('intval', $ids);
+    }
+
     public function findByProviderReferenceForUpdate(
         string $reference
     ): ?array {
@@ -336,6 +425,35 @@ class PaymentRepository extends Repository
             ),
             ARRAY_A
         );
+
+        return $payment === null ? null : $this->withOrders($payment);
+    }
+
+    private function findByPaymentSessionIdInternal(
+        int $paymentSessionId,
+        bool $forUpdate
+    ): ?array {
+        if ($paymentSessionId <= 0) {
+            throw new \InvalidArgumentException(
+                'payment_session_id no es valido.'
+            );
+        }
+
+        $database = $this->db();
+        $payment = $database->get_row($database->prepare(
+            sprintf(
+                'SELECT p.* FROM %s p INNER JOIN %s ps ON ps.payment_id = p.id'
+                . ' WHERE ps.id = %%d LIMIT 1%s',
+                $this->table(self::PAYMENTS_TABLE),
+                $this->table('payment_sessions'),
+                $forUpdate ? ' FOR UPDATE' : ''
+            ),
+            $paymentSessionId
+        ), ARRAY_A);
+
+        if ($forUpdate && $database->last_error !== '') {
+            throw new PersistenceException('No fue posible bloquear Payment.');
+        }
 
         return $payment === null ? null : $this->withOrders($payment);
     }

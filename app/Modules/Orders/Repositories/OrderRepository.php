@@ -105,9 +105,34 @@ class OrderRepository extends Repository
 
         $placeholders = implode(', ', array_fill(0, count($ids), '%d'));
 
-        return $this->db()->get_results($this->db()->prepare(
+        $database = $this->db();
+        $rows = $database->get_results($database->prepare(
             sprintf(
                 'SELECT * FROM %s WHERE id IN (%s) ORDER BY id ASC FOR UPDATE',
+                $this->table(self::ORDERS_TABLE),
+                $placeholders
+            ),
+            ...$ids
+        ), ARRAY_A);
+
+        if ($database->last_error !== '') {
+            throw new PersistenceException('No fue posible bloquear las Orders.');
+        }
+
+        return $rows;
+    }
+
+    public function findMany(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '%d'));
+
+        return $this->db()->get_results($this->db()->prepare(
+            sprintf(
+                'SELECT * FROM %s WHERE id IN (%s) ORDER BY id ASC',
                 $this->table(self::ORDERS_TABLE),
                 $placeholders
             ),

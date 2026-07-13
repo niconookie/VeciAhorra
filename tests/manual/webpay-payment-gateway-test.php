@@ -40,11 +40,11 @@ final class FakeWebpayResponse
     public function __construct(
         private ?string $token = null,
         private ?string $url = null,
-        private ?string $status = null,
-        private ?int $responseCode = null,
-        private ?string $buyOrder = 'VA012345678901234567890123',
-        private ?string $sessionId = 'VA-session',
-        private int|float|null $amount = 15000
+        private mixed $status = null,
+        private mixed $responseCode = null,
+        private mixed $buyOrder = 'VAAAAAAAAAAAAAAAAAAAAAAAAA',
+        private mixed $sessionId = 'VA-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+        private mixed $amount = 15000
     ) {
     }
 
@@ -58,27 +58,27 @@ final class FakeWebpayResponse
         return $this->url;
     }
 
-    public function getStatus(): ?string
+    public function getStatus(): mixed
     {
         return $this->status;
     }
 
-    public function getResponseCode(): ?int
+    public function getResponseCode(): mixed
     {
         return $this->responseCode;
     }
 
-    public function getBuyOrder(): ?string
+    public function getBuyOrder(): mixed
     {
         return $this->buyOrder;
     }
 
-    public function getSessionId(): ?string
+    public function getSessionId(): mixed
     {
         return $this->sessionId;
     }
 
-    public function getAmount(): int|float|null
+    public function getAmount(): mixed
     {
         return $this->amount;
     }
@@ -196,6 +196,53 @@ assertWebpayGatewaySame(
     $configuration->returnUrl,
     $transaction->createArguments[3]
 );
+
+$financial = $gateway->commit($token);
+assertWebpayGatewaySame('AUTHORIZED', $financial->status);
+assertWebpayGatewaySame(15000, $financial->amount);
+
+foreach ([
+    ['status' => null],
+    ['status' => 'UNKNOWN'],
+    ['responseCode' => '0partial'],
+    ['responseCode' => 0.0],
+    ['responseCode' => true],
+    ['responseCode' => []],
+    ['amount' => 15000.5],
+    ['amount' => 0],
+    ['amount' => -1],
+    ['amount' => '15000'],
+    ['buyOrder' => ''],
+    ['buyOrder' => 'OTHER'],
+    ['sessionId' => ''],
+    ['sessionId' => 'OTHER'],
+] as $invalidFinancial) {
+    $invalidTransaction = new FakeWebpayTransaction();
+    $invalidTransaction->commitResponse = new FakeWebpayResponse(
+        status: array_key_exists('status', $invalidFinancial)
+            ? $invalidFinancial['status'] : 'AUTHORIZED',
+        responseCode: array_key_exists('responseCode', $invalidFinancial)
+            ? $invalidFinancial['responseCode'] : 0,
+        buyOrder: array_key_exists('buyOrder', $invalidFinancial)
+            ? $invalidFinancial['buyOrder'] : 'VAAAAAAAAAAAAAAAAAAAAAAAAA',
+        sessionId: array_key_exists('sessionId', $invalidFinancial)
+            ? $invalidFinancial['sessionId']
+            : 'VA-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+        amount: array_key_exists('amount', $invalidFinancial)
+            ? $invalidFinancial['amount'] : 15000
+    );
+
+    try {
+        (new WebpayPaymentGateway($configuration, $invalidTransaction))
+            ->commit($token);
+        throw new RuntimeException('Respuesta financiera invalida aceptada.');
+    } catch (PaymentGatewayException $exception) {
+        assertWebpayGatewaySame(
+            'webpay_incomplete_response',
+            $exception->errorCode()
+        );
+    }
+}
 
 $sameLogicalRequest = new PaymentSessionContext(
     'ps_different_local_row',

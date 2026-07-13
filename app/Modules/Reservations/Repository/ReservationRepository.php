@@ -84,6 +84,76 @@ class ReservationRepository extends Repository
         );
     }
 
+    public function findByOrderIdsForUpdate(array $orderIds): array
+    {
+        if ($orderIds === []) {
+            return [];
+        }
+
+        if ((int) $this->db()->get_var('SELECT @@in_transaction') !== 1) {
+            throw new PersistenceException(
+                'El lock de Reservations requiere una transaccion activa.'
+            );
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($orderIds), '%d'));
+
+        $database = $this->db();
+        $rows = $database->get_results($database->prepare(
+            sprintf(
+                'SELECT * FROM %s WHERE order_id IN (%s)'
+                . ' ORDER BY id ASC FOR UPDATE',
+                $this->table(self::TABLE),
+                $placeholders
+            ),
+            ...$orderIds
+        ), ARRAY_A);
+
+        if ($database->last_error !== '') {
+            throw new PersistenceException(
+                'No fue posible bloquear las Reservations.'
+            );
+        }
+
+        return $rows;
+    }
+
+    public function matchOrderItems(array $reservations, array $orderIds): bool
+    {
+        if ($reservations === [] || $orderIds === []) {
+            return false;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($orderIds), '%d'));
+        $items = $this->db()->get_results($this->db()->prepare(
+            sprintf(
+                'SELECT order_id, inventory_id, product_id, quantity'
+                . ' FROM %s WHERE order_id IN (%s)'
+                . ' ORDER BY order_id ASC, id ASC',
+                $this->table('order_items'),
+                $placeholders
+            ),
+            ...$orderIds
+        ), ARRAY_A);
+        $normalize = static function (array $rows): array {
+            $values = array_map(
+                static fn (array $row): string => implode(':', [
+                    (int) $row['order_id'],
+                    (int) $row['inventory_id'],
+                    (int) $row['product_id'],
+                    (int) $row['quantity'],
+                ]),
+                $rows
+            );
+            sort($values, SORT_STRING);
+
+            return $values;
+        };
+
+        return $items !== []
+            && $normalize($items) === $normalize($reservations);
+    }
+
     /** @param list<int> $ids */
     public function markConsumed(array $ids, string $updatedAt): int
     {

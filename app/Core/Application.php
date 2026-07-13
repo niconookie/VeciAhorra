@@ -22,6 +22,14 @@ use VeciAhorra\Modules\Payments\Gateway\PaymentConfirmationGatewayInterface;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration;
 use VeciAhorra\Modules\Payments\Gateway\WebpayPaymentGateway;
+use VeciAhorra\Modules\Payments\Gateway\WebpayReturnGatewayInterface;
+use VeciAhorra\Modules\Payments\Gateway\WebpayReturnContextRepositoryInterface;
+use VeciAhorra\Modules\Payments\Gateway\WebpayReturnGatewayResolverInterface;
+use VeciAhorra\Modules\Payments\Contracts\OrderPaymentConfirmationInterface;
+use VeciAhorra\Modules\Payments\Repository\TransientWebpayReturnContextRepository;
+use VeciAhorra\Modules\Payments\Service\OrderPaymentConfirmationAdapter;
+use VeciAhorra\Modules\Payments\WooCommerce\WebpayGatewayRegistration;
+use VeciAhorra\Modules\Payments\WooCommerce\WooCommerceWebpayReturnGatewayResolver;
 use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Products\Admin\ProductsPage;
 use VeciAhorra\Modules\Products\Routes\ProductRoutes;
@@ -47,6 +55,24 @@ final class Application
     {
         $this->container = new Container();
         $this->registerPaymentGateway();
+        $this->container->singleton(
+            WebpayReturnContextRepositoryInterface::class,
+            static fn (): TransientWebpayReturnContextRepository =>
+                new TransientWebpayReturnContextRepository()
+        );
+        $this->container->bind(
+            WebpayReturnGatewayResolverInterface::class,
+            fn (): WooCommerceWebpayReturnGatewayResolver =>
+                new WooCommerceWebpayReturnGatewayResolver(
+                    $this->container->make(WebpayReturnGatewayInterface::class)
+                )
+        );
+        $this->container->bind(
+            OrderPaymentConfirmationInterface::class,
+            fn (): OrderPaymentConfirmationAdapter => $this->container->make(
+                OrderPaymentConfirmationAdapter::class
+            )
+        );
     }
 
     private function registerPaymentGateway(): void
@@ -74,6 +100,12 @@ final class Application
                     WebpayPaymentGateway::class
                 )
             );
+            $this->container->bind(
+                WebpayReturnGatewayInterface::class,
+                fn (): WebpayPaymentGateway => $this->container->make(
+                    WebpayPaymentGateway::class
+                )
+            );
 
             return;
         }
@@ -86,6 +118,10 @@ final class Application
             PaymentConfirmationGatewayInterface::class,
             static fn (): DummyPaymentGateway => new DummyPaymentGateway()
         );
+        $this->container->bind(
+            WebpayReturnGatewayInterface::class,
+            static fn (): DummyPaymentGateway => new DummyPaymentGateway()
+        );
     }
 
     /**
@@ -93,6 +129,8 @@ final class Application
      */
     public function run(): void
     {
+        $this->container->make(WebpayGatewayRegistration::class)->register();
+
         $frontendModule = $this->container->make(
             FrontendModule::class
         );

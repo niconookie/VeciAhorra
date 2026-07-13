@@ -7,7 +7,9 @@ namespace VeciAhorra\Modules\Payments\Gateway;
 use VeciAhorra\Modules\Payments\Models\Payment;
 use VeciAhorra\Modules\Payments\Models\PaymentConfirmationResult;
 
-final class DummyPaymentGateway implements PaymentConfirmationGatewayInterface
+final class DummyPaymentGateway implements
+    PaymentConfirmationGatewayInterface,
+    WebpayReturnGatewayInterface
 {
     public function createPaymentSession(Payment $payment): array
     {
@@ -41,5 +43,13 @@ final class DummyPaymentGateway implements PaymentConfirmationGatewayInterface
         return str_starts_with($providerReference, 'DUMMY-FAIL-')
             ? PaymentConfirmationResult::failed()
             : PaymentConfirmationResult::paid();
+    }
+
+    public function commit(string $token): WebpayCommitResult
+    {
+        throw new PaymentGatewayException(
+            'El gateway Webpay no esta configurado.',
+            'webpay_not_configured'
+        );
     }
 }

@@ -13,10 +13,14 @@ use VeciAhorra\Modules\Payments\Models\PaymentConfirmationResult;
 
 final class WebpayPaymentGateway implements
     PaymentGatewayInterface,
-    PaymentConfirmationGatewayInterface
+    PaymentConfirmationGatewayInterface,
+    WebpayReturnGatewayInterface
 {
     private const PROVIDER = 'webpay_plus';
-    private const INTEGRATION_HOST = 'webpay3gint.transbank.cl';
+    private const PAYMENT_HOSTS = [
+        'integration' => 'webpay3gint.transbank.cl',
+        'production' => 'webpay3g.transbank.cl',
+    ];
 
     private object $transaction;
 
@@ -42,11 +46,13 @@ final class WebpayPaymentGateway implements
         PaymentSessionContext $context
     ): GatewaySessionResult {
         $amount = $this->amount($context->amount);
-        $buyOrder = $this->buyOrder(
+        $buyOrder = WebpayTransactionReference::buyOrder(
             $context->checkoutId,
             $context->idempotencyKey
         );
-        $sessionId = $this->sessionId($context->checkoutId);
+        $sessionId = WebpayTransactionReference::sessionId(
+            $context->checkoutId
+        );
 
         try {
             $response = $this->transaction->create(
@@ -73,6 +79,33 @@ final class WebpayPaymentGateway implements
         );
     }
 
+    public static function supportsEnvironment(string $environment): bool
+    {
+        return strtolower(trim($environment)) === 'integration';
+    }
+
+    public static function isAllowedPaymentUrl(
+        string $environment,
+        mixed $url
+    ): bool {
+        $environment = strtolower(trim($environment));
+
+        if (! is_string($url) || ! isset(self::PAYMENT_HOSTS[$environment])) {
+            return false;
+        }
+
+        $parts = parse_url($url);
+
+        return filter_var($url, FILTER_VALIDATE_URL) !== false
+            && is_array($parts)
+            && strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+            && strtolower((string) ($parts['host'] ?? ''))
+                === self::PAYMENT_HOSTS[$environment]
+            && ! isset($parts['user'])
+            && ! isset($parts['pass'])
+            && (! isset($parts['port']) || $parts['port'] === 443);
+    }
+
     public function recoverSession(
         string $providerSessionId
     ): GatewaySessionResult {
@@ -92,23 +125,34 @@ final class WebpayPaymentGateway implements
     public function confirmPayment(
         string $providerReference
     ): PaymentConfirmationResult {
-        $this->assertToken($providerReference);
-
         try {
-            $response = $this->transaction->commit($providerReference);
+            $result = $this->commit($providerReference);
 
-            return $this->confirmationResult($response);
+            return $result->isApproved()
+                ? PaymentConfirmationResult::paid()
+                : PaymentConfirmationResult::failed();
         } catch (PaymentGatewayException $exception) {
-            throw $exception;
-        } catch (Throwable) {
             try {
                 $status = $this->transaction->status($providerReference);
 
                 return $this->confirmationResult($status);
-            } catch (Throwable $statusException) {
-                throw $this->sdkFailure('commit', $statusException);
+            } catch (Throwable) {
+                throw $exception;
             }
         }
+    }
+
+    public function commit(string $token): WebpayCommitResult
+    {
+        $this->assertToken($token);
+
+        try {
+            $response = $this->transaction->commit($token);
+        } catch (Throwable $exception) {
+            throw $this->sdkFailure('commit', $exception);
+        }
+
+        return $this->commitResult($response);
     }
 
     private function statusResult(
@@ -217,17 +261,87 @@ final class WebpayPaymentGateway implements
         return $value;
     }
 
-    private function buyOrder(string $checkoutId, string $idempotencyKey): string
+    private function commitResult(object $response): WebpayCommitResult
     {
-        return 'VA' . strtoupper(substr(hash(
-            'sha256',
-            $checkoutId . '|' . $idempotencyKey
-        ), 0, 24));
+        $status = $response->getStatus();
+        $responseCode = $response->getResponseCode();
+        $amount = $response->getAmount();
+        $buyOrder = $response->getBuyOrder();
+        $sessionId = $response->getSessionId();
+        $recognized = [
+            'AUTHORIZED', 'FAILED', 'REVERSED', 'NULLIFIED',
+            'PARTIALLY_NULLIFIED', 'CAPTURED',
+        ];
+
+        if (
+            ! is_string($status)
+            || ! in_array(strtoupper(trim($status)), $recognized, true)
+            || ! is_int($responseCode)
+            || (! is_int($amount) && ! is_float($amount))
+            || ! is_finite((float) $amount)
+            || $amount <= 0
+            || floor((float) $amount) !== (float) $amount
+            || ! is_string($buyOrder)
+            || preg_match('/^VA[A-F0-9]{24}$/D', $buyOrder) !== 1
+            || ! is_string($sessionId)
+            || preg_match('/^VA-[A-F0-9]{58}$/D', $sessionId) !== 1
+        ) {
+            throw $this->failure(
+                'Webpay devolvio una respuesta financiera invalida.',
+                'webpay_incomplete_response'
+            );
+        }
+
+        $cardDetail = method_exists($response, 'getCardDetail')
+            ? $response->getCardDetail()
+            : null;
+        $cardLastFour = is_array($cardDetail)
+            && isset($cardDetail['card_number'])
+            && is_string($cardDetail['card_number'])
+            && preg_match('/^\d{4}$/D', $cardDetail['card_number']) === 1
+                ? $cardDetail['card_number']
+                : null;
+
+        return new WebpayCommitResult(
+            strtoupper(trim($status)),
+            $responseCode,
+            (int) $amount,
+            $buyOrder,
+            $sessionId,
+            $this->optionalString($response, 'getAuthorizationCode'),
+            $this->optionalString($response, 'getPaymentTypeCode'),
+            $this->optionalInt($response, 'getInstallmentsNumber'),
+            $this->optionalString($response, 'getAccountingDate'),
+            $this->optionalString($response, 'getTransactionDate'),
+            $cardLastFour,
+            method_exists($response, 'getBalance')
+                && (is_int($response->getBalance())
+                    || is_float($response->getBalance()))
+                    ? $response->getBalance()
+                    : null
+        );
     }
 
-    private function sessionId(string $checkoutId): string
+    private function optionalString(object $response, string $method): ?string
     {
-        return 'VA-' . strtoupper(substr(hash('sha256', $checkoutId), 0, 58));
+        if (! method_exists($response, $method)) {
+            return null;
+        }
+
+        $value = $response->{$method}();
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    private function optionalInt(object $response, string $method): ?int
+    {
+        if (! method_exists($response, $method)) {
+            return null;
+        }
+
+        $value = $response->{$method}();
+
+        return is_int($value) ? $value : null;
     }
 
     private function assertToken(mixed $token): void
@@ -245,13 +359,7 @@ final class WebpayPaymentGateway implements
 
     private function assertPaymentUrl(mixed $url): void
     {
-        if (
-            ! is_string($url)
-            || filter_var($url, FILTER_VALIDATE_URL) === false
-            || strtolower((string) parse_url($url, PHP_URL_SCHEME)) !== 'https'
-            || strtolower((string) parse_url($url, PHP_URL_HOST))
-                !== self::INTEGRATION_HOST
-        ) {
+        if (! self::isAllowedPaymentUrl($this->configuration->environment, $url)) {
             throw $this->failure(
                 'Webpay devolvio una URL de pago invalida.',
                 'webpay_invalid_url'

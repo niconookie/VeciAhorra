@@ -36,6 +36,13 @@ $reservationRepository = new ReservationRepository();
 $lockService = new InventoryLockService();
 $expirationService = new ReservationExpirationService();
 $inventoryTable = $wpdb->prefix . Config::TABLE_PREFIX . 'inventory';
+$reservationsTable = $wpdb->prefix . Config::TABLE_PREFIX . 'reservations';
+$preexistingExpired = (int) $wpdb->get_var($wpdb->prepare(
+    "SELECT COUNT(*) FROM {$reservationsTable}"
+    . ' WHERE status = %s AND expires_at <= %s',
+    'active',
+    current_time('mysql')
+));
 $transaction = $wpdb->query('START TRANSACTION');
 assertExpiration($transaction !== false, 'No se inicio la transaccion.');
 
@@ -111,7 +118,7 @@ try {
     assertExpirationSame(9, $stock());
 
     assertExpirationSame(
-        2,
+        $preexistingExpired + 2,
         $expirationService->processExpiredReservations()
     );
     assertExpirationSame(14, $stock());

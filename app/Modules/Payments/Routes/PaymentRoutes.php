@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Payments\Routes;
 
 use VeciAhorra\Modules\Payments\Controller\PaymentController;
+use VeciAhorra\Modules\Payments\Controller\WebpayReturnController;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -18,13 +19,34 @@ final class PaymentRoutes
 {
     private const NAMESPACE = 'veciahorra/v1';
     private const RESOURCE = '/payments';
+    private const WEBPAY_RETURN_FIELDS = [
+        'token_ws' => true,
+        'TBK_TOKEN' => true,
+        'TBK_ORDEN_COMPRA' => true,
+        'TBK_ID_SESION' => true,
+    ];
 
-    public function __construct(private PaymentController $controller)
-    {
+    public function __construct(
+        private PaymentController $controller,
+        private WebpayReturnController $webpayReturnController
+    ) {
     }
 
     public function register(): void
     {
+        register_rest_route(
+            self::NAMESPACE,
+            self::RESOURCE . '/webpay/return',
+            [
+                'methods' => [
+                    WP_REST_Server::CREATABLE,
+                    WP_REST_Server::READABLE,
+                ],
+                'callback' => [$this, 'webpayReturn'],
+                'permission_callback' => '__return_true',
+            ]
+        );
+
         register_rest_route(
             self::NAMESPACE,
             self::RESOURCE . '/session',
@@ -194,6 +216,43 @@ final class PaymentRoutes
     public function canAccessPublicSession(WP_REST_Request $request): bool
     {
         return true;
+    }
+
+    public function webpayReturn(WP_REST_Request $request): WP_REST_Response
+    {
+        $payload = match (strtoupper($request->get_method())) {
+            'POST' => $request->get_body_params(),
+            'GET' => $request->get_query_params(),
+            default => null,
+        };
+
+        if (! is_array($payload)) {
+            return new WP_REST_Response([
+                'success' => false,
+                'error' => [
+                    'code' => 'invalid_webpay_return_method',
+                    'message' => 'El metodo del retorno Webpay no es valido.',
+                ],
+            ], 405);
+        }
+
+        $result = $this->webpayReturnController->process(
+            array_intersect_key($payload, self::WEBPAY_RETURN_FIELDS)
+        );
+
+        if (($result['success'] ?? false) !== true) {
+            return new WP_REST_Response($result, 400);
+        }
+
+        $status = $result['data']['result'] ?? 'invalid';
+        $httpStatus = match ($status) {
+            'inconsistent' => 409,
+            'gateway_error' => 502,
+            'invalid' => 400,
+            default => 200,
+        };
+
+        return new WP_REST_Response($result, $httpStatus);
     }
 
     public function confirm(WP_REST_Request $request): WP_REST_Response

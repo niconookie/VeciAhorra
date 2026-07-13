@@ -15,6 +15,8 @@ use VeciAhorra\Database\Migrations\CreatePaymentsTables;
 use VeciAhorra\Database\Migrations\CreateCheckoutsTable;
 use VeciAhorra\Database\Migrations\CreateCheckoutOrdersTable;
 use VeciAhorra\Database\Migrations\CreatePaymentSessionsTable;
+use VeciAhorra\Database\Migrations\CreateWebpayReturnsTable;
+use VeciAhorra\Database\Migrations\CreatePaymentConfirmationAuditsTable;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -75,7 +77,8 @@ final class MigrationManager
      *     CreateInventoryTable|CreateOrdersTables|CreateReservationsTable|
      *     CreateCartItemsTable|CreatePaymentsTables|CreateDeliveriesTable|
      *     CreateDeliveryTrackingTable|CreateCheckoutsTable|
-     *     CreateCheckoutOrdersTable|CreatePaymentSessionsTable
+     *     CreateCheckoutOrdersTable|CreatePaymentSessionsTable|
+     *     CreateWebpayReturnsTable|CreatePaymentConfirmationAuditsTable
      * >
      */
     private static function migrations(): array
@@ -88,7 +91,9 @@ final class MigrationManager
             new CreateCheckoutsTable(),
             new CreateCheckoutOrdersTable(),
             new CreatePaymentSessionsTable(),
+            new CreateWebpayReturnsTable(),
             new CreatePaymentsTables(),
+            new CreatePaymentConfirmationAuditsTable(),
             new CreateDeliveriesTable(),
             new CreateDeliveryTrackingTable(),
         ];

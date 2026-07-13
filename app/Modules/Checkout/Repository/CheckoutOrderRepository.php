@@ -30,7 +30,8 @@ final class CheckoutOrderRepository extends Repository
 
     public function findOrderIds(int $checkoutId, bool $forUpdate = false): array
     {
-        return array_map('intval', $this->db()->get_col($this->db()->prepare(
+        $database = $this->db();
+        $ids = $database->get_col($database->prepare(
             sprintf(
                 'SELECT order_id FROM %s WHERE checkout_id = %%d'
                 . ' ORDER BY order_id ASC%s',
@@ -38,7 +39,15 @@ final class CheckoutOrderRepository extends Repository
                 $forUpdate ? ' FOR UPDATE' : ''
             ),
             $checkoutId
-        )));
+        ));
+
+        if ($forUpdate && $database->last_error !== '') {
+            throw new PersistenceException(
+                'No fue posible bloquear CheckoutOrders.'
+            );
+        }
+
+        return array_map('intval', $ids);
     }
 
     public function findAttachedOrderIds(array $orderIds): array
