@@ -147,10 +147,18 @@ final class FakeWebpayTransaction
 $token = str_repeat('A', 64);
 $paymentUrl = 'https://webpay3gint.transbank.cl/webpayserver/initTransaction';
 $configuration = new WebpayGatewayConfiguration(
-    'integration',
-    '597055555555',
-    str_repeat('B', 64),
-    'https://example.test/webpay/return'
+    ' integration ',
+    ' 597055555555 ',
+    ' ' . str_repeat('B', 64) . ' ',
+    ' https://example.test/webpay/return '
+);
+$configurationSecret = str_repeat('B', 64);
+assertWebpayGatewaySame('integration', $configuration->environment);
+assertWebpayGatewaySame('597055555555', $configuration->commerceCode);
+assertWebpayGatewaySame($configurationSecret, $configuration->apiKey());
+assertWebpayGatewaySame(
+    'https://example.test/webpay/return',
+    $configuration->returnUrl
 );
 $transaction = new FakeWebpayTransaction();
 $transaction->createResponse = new FakeWebpayResponse($token, $paymentUrl);
@@ -384,13 +392,51 @@ try {
 
 try {
     new WebpayGatewayConfiguration(
-        'production',
-        'invalid-code',
-        'short-key',
-        'http://insecure.test/return'
+        'invalid',
+        '597055555555',
+        str_repeat('S', 64),
+        'https://example.test/webpay/return'
     );
-    throw new RuntimeException('Se esperaba rechazo de Produccion.');
+    throw new RuntimeException('Se esperaba rechazo de ambiente invalido.');
 } catch (InvalidArgumentException) {
+}
+
+foreach ([
+    ['', str_repeat('S', 64), 'codigo de comercio'],
+    ['597055555555', '', 'API Key'],
+] as [$commerceCode, $apiKey, $field]) {
+    try {
+        new WebpayGatewayConfiguration(
+            'integration',
+            $commerceCode,
+            $apiKey,
+            'https://example.test/webpay/return'
+        );
+        throw new RuntimeException("Se esperaba rechazo de {$field} vacio.");
+    } catch (InvalidArgumentException $exception) {
+        assertWebpayGateway(
+            ! str_contains($exception->getMessage(), str_repeat('S', 64)),
+            'Una excepcion expuso la API Key.'
+        );
+    }
+}
+
+$productionConfiguration = new WebpayGatewayConfiguration(
+    ' PrOdUcTiOn ',
+    ' 597055555555 ',
+    ' ' . str_repeat('S', 64) . ' ',
+    ' https://example.test/webpay/return '
+);
+assertWebpayGatewaySame('production', $productionConfiguration->environment);
+
+try {
+    new WebpayPaymentGateway($productionConfiguration);
+    throw new RuntimeException('Produccion se activo accidentalmente.');
+} catch (InvalidArgumentException $exception) {
+    assertWebpayGateway(
+        ! str_contains($exception->getMessage(), str_repeat('S', 64)),
+        'El rechazo de Produccion expuso la API Key.'
+    );
 }
 
 putenv('payment_gateway=webpay');

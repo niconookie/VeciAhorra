@@ -8,24 +8,37 @@ use InvalidArgumentException;
 
 final class WebpayGatewayConfiguration
 {
+    public readonly string $environment;
+    public readonly string $commerceCode;
+    private readonly string $apiKey;
+    public readonly string $returnUrl;
+
     public function __construct(
-        public readonly string $environment,
-        public readonly string $commerceCode,
-        private readonly string $apiKey,
-        public readonly string $returnUrl
+        string $environment,
+        string $commerceCode,
+        string $apiKey,
+        string $returnUrl
     ) {
-        if ($environment !== 'integration') {
+        $environment = strtolower(trim($environment));
+        $commerceCode = trim($commerceCode);
+        $apiKey = trim($apiKey);
+        $returnUrl = trim($returnUrl);
+
+        if (! in_array($environment, ['integration', 'production'], true)) {
             throw new InvalidArgumentException(
-                'Webpay solo admite el ambiente integration en este hito.'
+                'El ambiente Webpay configurado no es valido.'
             );
         }
 
-        if (
-            preg_match('/^\d{6,32}$/D', $commerceCode) !== 1
-            || preg_match('/^[A-Za-z0-9]{32,256}$/D', $apiKey) !== 1
-        ) {
+        if (preg_match('/^\d{6,32}$/D', $commerceCode) !== 1) {
             throw new InvalidArgumentException(
-                'Las credenciales Webpay no son validas.'
+                'El codigo de comercio Webpay no es valido.'
+            );
+        }
+
+        if (preg_match('/^[A-Za-z0-9]{32,256}$/D', $apiKey) !== 1) {
+            throw new InvalidArgumentException(
+                'La API Key Webpay no es valida.'
             );
         }
 
@@ -40,6 +53,11 @@ final class WebpayGatewayConfiguration
                 'La webpay_return_url debe ser una URL HTTPS valida.'
             );
         }
+
+        $this->environment = $environment;
+        $this->commerceCode = $commerceCode;
+        $this->apiKey = $apiKey;
+        $this->returnUrl = $returnUrl;
     }
 
     public function apiKey(): string

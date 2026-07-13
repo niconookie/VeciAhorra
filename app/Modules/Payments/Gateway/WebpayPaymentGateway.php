@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Payments\Gateway;
 
+use InvalidArgumentException;
 use Throwable;
 use GuzzleHttp\Exception\ConnectException;
 use Transbank\Webpay\Options;
@@ -23,6 +24,12 @@ final class WebpayPaymentGateway implements
         private WebpayGatewayConfiguration $configuration,
         ?object $transaction = null
     ) {
+        if ($configuration->environment !== 'integration') {
+            throw new InvalidArgumentException(
+                'Webpay solo admite el ambiente integration en este hito.'
+            );
+        }
+
         $this->transaction = $transaction ?? new Transaction(new Options(
             $configuration->apiKey(),
             $configuration->commerceCode,
