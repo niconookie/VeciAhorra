@@ -23,7 +23,10 @@ final class PaymentCompletionHandlerRegistry implements
     /** @param list<PaymentCompletionHandlerInterface>|null $handlers */
     public function __construct(?array $handlers = null)
     {
-        $handlers ??= [new WooCommercePaymentCompletionHandler()];
+        $handlers ??= [
+            new WooCommercePaymentCompletionHandler(),
+            new VeciAhorraPaymentCompletionHandler(),
+        ];
 
         foreach ($handlers as $handler) {
             if (! $handler instanceof PaymentCompletionHandlerInterface) {
