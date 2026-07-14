@@ -57,6 +57,16 @@ class PaymentSessionRepository extends Repository
         return $row === null ? null : $row;
     }
 
+    public function findByPublicIdForUpdate(string $publicId): ?array
+    {
+        $this->assertActiveTransaction();
+        $row = $this->db()->get_row($this->db()->prepare(
+            sprintf('SELECT * FROM %s WHERE public_id = %%s LIMIT 1 FOR UPDATE', $this->table(self::TABLE)),
+            $publicId
+        ), ARRAY_A);
+        return $row === null ? null : $row;
+    }
+
     public function findByCheckoutId(int $checkoutId): array
     {
         $this->assertPositive($checkoutId, 'checkout_id');

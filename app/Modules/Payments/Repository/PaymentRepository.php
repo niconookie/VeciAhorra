@@ -16,6 +16,8 @@ class PaymentRepository extends Repository
     private const PAYMENT_FIELDS = [
         'payment_reference', 'customer_id', 'amount', 'currency', 'status',
         'provider', 'provider_reference', 'expires_at', 'paid_at',
+        'checkout_id', 'payment_session_id', 'reconciliation_id',
+        'payment_attempt_id', 'financial_fingerprint', 'idempotency_key',
         'created_at', 'updated_at',
     ];
 
@@ -93,6 +95,35 @@ class PaymentRepository extends Repository
         );
 
         return $payment === null ? null : $this->withOrders($payment);
+    }
+
+    public function findByReconciliationIdForUpdate(int $id): ?array
+    {
+        if ((int) $this->db()->get_var('SELECT @@in_transaction') !== 1) {
+            throw new PersistenceException('El lock de Payment requiere una transaccion activa.');
+        }
+        $row = $this->db()->get_row($this->db()->prepare(
+            sprintf('SELECT * FROM %s WHERE reconciliation_id = %%d LIMIT 1 FOR UPDATE', $this->table(self::PAYMENTS_TABLE)),
+            $id
+        ), ARRAY_A);
+        return $row === null ? null : $this->withOrders($row);
+    }
+
+    public function attachOrderIdempotently(int $paymentId, int $orderId, string $createdAt): void
+    {
+        $existing = $this->findByOrderId($orderId);
+        if ($existing !== null) {
+            if ((int) $existing['id'] !== $paymentId) {
+                throw new PersistenceException('La Order ya pertenece a otro Payment.');
+            }
+            return;
+        }
+        $result = $this->db()->insert($this->table(self::ORDERS_TABLE), [
+            'payment_id' => $paymentId, 'order_id' => $orderId, 'created_at' => $createdAt,
+        ]);
+        if ($result === false) {
+            throw new PersistenceException('No fue posible asociar la Order al Payment.');
+        }
     }
 
     public function findByProviderReference(string $reference): ?array

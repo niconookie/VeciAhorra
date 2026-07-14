@@ -19,6 +19,12 @@ final class PaymentSchema implements TableInterface
         $table
             ->id()
             ->string('payment_reference', 64)
+            ->bigIntegerUnsigned('checkout_id')->nullable()
+            ->bigIntegerUnsigned('payment_session_id')->nullable()
+            ->bigIntegerUnsigned('reconciliation_id')->nullable()
+            ->string('payment_attempt_id', 64)->nullable()
+            ->string('financial_fingerprint', 64)->nullable()
+            ->string('idempotency_key', 64)->nullable()
             ->bigIntegerUnsigned('customer_id')
             ->decimal('amount', 10, 2)
             ->string('currency', 3)->default('CLP')
@@ -33,6 +39,9 @@ final class PaymentSchema implements TableInterface
                 'payment_reference',
                 'payments_reference_unique'
             )
+            ->unique('payment_session_id', 'payments_session_unique')
+            ->unique('reconciliation_id', 'payments_reconciliation_unique')
+            ->unique('idempotency_key', 'payments_idempotency_unique')
             ->index('customer_id', 'payments_customer_id_index')
             ->index('status', 'payments_status_index')
             ->index('provider_reference', 'payments_provider_reference_index')

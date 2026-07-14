@@ -19,6 +19,7 @@ use VeciAhorra\Database\Migrations\CreateWebpayReturnsTable;
 use VeciAhorra\Database\Migrations\CreatePaymentConfirmationAuditsTable;
 use VeciAhorra\Database\Migrations\CreatePaymentOriginContextsTable;
 use VeciAhorra\Database\Migrations\CreatePaymentReconciliationsTable;
+use VeciAhorra\Database\Migrations\CreateBusinessCompletionsTable;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -97,6 +98,7 @@ final class MigrationManager
             new CreatePaymentOriginContextsTable(),
             new CreateWebpayReturnsTable(),
             new CreatePaymentReconciliationsTable(),
+            new CreateBusinessCompletionsTable(),
             new CreatePaymentsTables(),
             new CreatePaymentConfirmationAuditsTable(),
             new CreateDeliveriesTable(),
