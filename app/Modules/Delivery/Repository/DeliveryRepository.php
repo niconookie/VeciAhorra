@@ -59,6 +59,26 @@ final class DeliveryRepository extends Repository
         return $row === null ? null : $row;
     }
 
+    public function findByOrderIdForUpdate(int $orderId): ?array
+    {
+        $row = $this->db()->get_row($this->db()->prepare(
+            sprintf('SELECT * FROM %s WHERE order_id = %%d LIMIT 1 FOR UPDATE', $this->table(self::TABLE)),
+            $orderId
+        ), ARRAY_A);
+        return $row === null ? null : $row;
+    }
+
+    /** @param list<int> $orderIds */
+    public function findByOrderIds(array $orderIds): array
+    {
+        if ($orderIds === []) { return []; }
+        $placeholders = implode(', ', array_fill(0, count($orderIds), '%d'));
+        return $this->db()->get_results($this->db()->prepare(sprintf(
+            'SELECT * FROM %s WHERE order_id IN (%s) ORDER BY order_id ASC',
+            $this->table(self::TABLE), $placeholders
+        ), ...$orderIds), ARRAY_A);
+    }
+
     /**
      * @return array{
      *     data: list<array<string, mixed>>,

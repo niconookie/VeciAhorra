@@ -20,6 +20,8 @@ use VeciAhorra\Database\Migrations\CreatePaymentConfirmationAuditsTable;
 use VeciAhorra\Database\Migrations\CreatePaymentOriginContextsTable;
 use VeciAhorra\Database\Migrations\CreatePaymentReconciliationsTable;
 use VeciAhorra\Database\Migrations\CreateBusinessCompletionsTable;
+use VeciAhorra\Database\Migrations\CreateDeliveryCompletionsTable;
+use VeciAhorra\Database\Migrations\EnsureUniqueDeliveryOrder;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -102,6 +104,8 @@ final class MigrationManager
             new CreatePaymentsTables(),
             new CreatePaymentConfirmationAuditsTable(),
             new CreateDeliveriesTable(),
+            new EnsureUniqueDeliveryOrder(),
+            new CreateDeliveryCompletionsTable(),
             new CreateDeliveryTrackingTable(),
         ];
     }
