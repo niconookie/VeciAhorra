@@ -23,12 +23,20 @@ final class CheckoutSchema implements TableInterface
             ->bigIntegerUnsigned('user_id')->nullable()
             ->string('session_id', 64)->nullable()
             ->string('status', 30)->default('pending')
+            ->string('fulfillment_method', 20)->nullable()
+            ->string('idempotency_owner_key', 64)->nullable()
+            ->string('idempotency_key', 128)->nullable()
+            ->string('request_fingerprint', 64)->nullable()
             ->string('currency', 3)->default('CLP')
             ->decimal('total_amount', 10, 2)
             ->datetime('created_at')
             ->datetime('updated_at')
             ->datetime('expires_at')
             ->unique('public_id', 'checkouts_public_id_unique')
+            ->unique(
+                ['idempotency_owner_key', 'idempotency_key'],
+                'checkouts_owner_idempotency_unique'
+            )
             ->index(
                 ['owner_type', 'user_id', 'status'],
                 'checkouts_user_owner_index'

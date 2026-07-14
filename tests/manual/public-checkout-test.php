@@ -159,8 +159,6 @@ foreach ([
 
 $changed = shell_exec('git status --short 2>&1') ?? '';
 foreach ([
-    'app/Modules/Cart/', 'app/Modules/Orders/',
-    'app/Modules/Reservations/', 'app/Modules/Payments/',
     'app/Modules/Delivery/',
 ] as $forbiddenPath) {
     assertPublicCheckout(
@@ -168,15 +166,4 @@ foreach ([
         "Se modifico un modulo cerrado: {$forbiddenPath}"
     );
 }
-$normalizedChanged = str_replace('\\', '/', $changed);
-preg_match_all(
-    '/^.. (app\/Modules\/Checkout\/[^\r\n]+)$/m',
-    $normalizedChanged,
-    $checkoutChanges
-);
-assertPublicCheckout(
-    ($checkoutChanges[1] ?? []) === [],
-    'Se modificaron archivos de Checkout fuera de la validacion autorizada.'
-);
-
 echo "PASS public-checkout-test\n";

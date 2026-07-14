@@ -11,6 +11,9 @@ use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_save_path(sys_get_temp_dir());
+}
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
 function assertPublicCheckoutValidation(bool $condition, string $message): void
@@ -68,7 +71,10 @@ try {
         2
     );
 
-    assertPublicCheckoutValidationSame([], (new CheckoutRequest([]))->validated());
+    assertPublicCheckoutValidationSame(
+        ['fulfillment_method' => 'pickup'],
+        (new CheckoutRequest(['fulfillment_method' => 'pickup']))->validated()
+    );
     try {
         (new CheckoutRequest(['first_name' => 'Manipulado']))->validated();
         throw new RuntimeException('CheckoutRequest acepto campos.');
@@ -98,10 +104,11 @@ try {
     ];
 
     wp_set_current_user(0);
+    \VeciAhorra\Core\Session::put('veciahorra_cart_session', $session);
     $request = new WP_REST_Request('POST', '/veciahorra/v1/checkout/validate');
     $request->set_header('content-type', 'application/json');
     $request->set_header('X-Veciahorra-Cart-Session', $session);
-    $request->set_body('{}');
+    $request->set_body('{"fulfillment_method":"pickup"}');
     $response = rest_do_request($request);
     $payload = $response->get_data();
 
@@ -132,7 +139,7 @@ try {
         'X-Veciahorra-Cart-Session',
         $session
     );
-    $inactiveStoreRequest->set_body('{}');
+    $inactiveStoreRequest->set_body('{"fulfillment_method":"pickup"}');
     $inactiveStorePayload = rest_do_request(
         $inactiveStoreRequest
     )->get_data();

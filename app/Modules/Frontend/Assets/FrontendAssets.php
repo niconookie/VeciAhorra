@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Frontend\Assets;
 
+use VeciAhorra\Modules\Checkout\Service\FulfillmentPolicy;
+
 use VeciAhorra\Core\Config;
 use VeciAhorra\Modules\Frontend\Support\CartSession;
 
@@ -130,13 +132,7 @@ final class FrontendAssets
     public function configuration(): array
     {
         $userId = get_current_user_id();
-        $configuredMinimum = apply_filters(
-            'veciahorra_minimum_delivery_amount',
-            8000
-        );
-        $minimumDeliveryAmount = $this->minimumDeliveryAmount(
-            $configuredMinimum
-        );
+        $minimumDeliveryAmount = (new FulfillmentPolicy())->minimumDeliveryAmount();
 
         return [
             'restUrl' => esc_url_raw(rest_url(self::REST_NAMESPACE . '/')),
@@ -179,33 +175,4 @@ final class FrontendAssets
         return is_string($url) ? $url : '';
     }
 
-    private function minimumDeliveryAmount(mixed $value): int
-    {
-        if (is_int($value) && $value >= 0) {
-            return $value;
-        }
-
-        if (
-            is_float($value)
-            && is_finite($value)
-            && $value >= 0
-            && floor($value) === $value
-            && $value <= PHP_INT_MAX
-        ) {
-            return (int) $value;
-        }
-
-        if (
-            is_string($value)
-            && preg_match('/^(?:0|[1-9]\d*)$/D', $value) === 1
-        ) {
-            $validated = filter_var($value, FILTER_VALIDATE_INT);
-
-            return $validated !== false && $validated >= 0
-                ? $validated
-                : 8000;
-        }
-
-        return 8000;
-    }
 }

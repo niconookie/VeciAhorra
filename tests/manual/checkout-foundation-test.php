@@ -36,6 +36,7 @@ function checkoutFoundationRequest(
     $request = new WP_REST_Request('POST', $route);
     $request->set_query_params(['session_id' => $sessionId]);
     $request->set_header('content-type', 'application/json');
+    $request->set_header('Idempotency-Key', 'checkout-foundation-key-0001');
     $request->set_body(wp_json_encode((object) $body));
 
     return rest_do_request($request);
@@ -56,7 +57,10 @@ function checkoutPostMethodCount(array $routes, string $route): int
 
 global $wpdb;
 
-assertCheckoutFoundationSame([], (new CheckoutRequest([]))->validated());
+assertCheckoutFoundationSame(
+    ['fulfillment_method' => 'pickup'],
+    (new CheckoutRequest(['fulfillment_method' => 'pickup']))->validated()
+);
 
 try {
     (new CheckoutRequest(['items' => []]))->validated();
@@ -94,7 +98,7 @@ $stockBefore = (string) $wpdb->get_var(
     "SELECT COALESCE(SUM(stock), 0) FROM {$inventoryTable}"
 );
 
-$validated = checkoutFoundationRequest($validateRoute, []);
+$validated = checkoutFoundationRequest($validateRoute, ['fulfillment_method' => 'pickup']);
 assertCheckoutFoundationSame(200, $validated->get_status());
 assertCheckoutFoundationSame(true, $validated->get_data()['success'] ?? null);
 assertCheckoutFoundationSame(
@@ -106,7 +110,7 @@ assertCheckoutFoundationSame(
     $validated->get_data()['data']['errors'][0]['code'] ?? null
 );
 
-$initialized = checkoutFoundationRequest($checkoutRoute, []);
+$initialized = checkoutFoundationRequest($checkoutRoute, ['fulfillment_method' => 'pickup']);
 assertCheckoutFoundationSame(200, $initialized->get_status());
 assertCheckoutFoundationSame(
     false,

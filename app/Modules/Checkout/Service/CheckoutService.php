@@ -33,7 +33,8 @@ final class CheckoutService
         ?CheckoutOrderRepository $checkoutOrderRepository = null,
         ?OrderRepository $orderRepository = null,
         ?IdempotencyService $idempotencyService = null,
-        ?PaymentSessionRepository $paymentSessionRepository = null
+        ?PaymentSessionRepository $paymentSessionRepository = null,
+        ?FulfillmentPolicy $fulfillmentPolicy = null
     ) {
         $this->cartService = $cartService ?? new CartService(
             new \VeciAhorra\Modules\Cart\Repository\CartRepository()
@@ -47,6 +48,7 @@ final class CheckoutService
             ?? new IdempotencyService();
         $this->paymentSessionRepository = $paymentSessionRepository
             ?? new PaymentSessionRepository();
+        $this->fulfillmentPolicy = $fulfillmentPolicy ?? new FulfillmentPolicy();
     }
 
     private CheckoutRepository $checkoutRepository;
@@ -54,10 +56,18 @@ final class CheckoutService
     private OrderRepository $orderRepository;
     private IdempotencyService $idempotencyService;
     private PaymentSessionRepository $paymentSessionRepository;
+    private FulfillmentPolicy $fulfillmentPolicy;
 
     public function validate(array $payload): array
     {
-        return $this->validationService->validate($payload);
+        $validation = $this->validationService->validate($payload);
+        if ($validation['valid']) {
+            $this->fulfillmentPolicy->authorize(
+                $this->method($payload),
+                (string) $validation['summary']['total']
+            );
+        }
+        return $validation;
     }
 
     public function initialize(array $payload): array
@@ -69,11 +79,33 @@ final class CheckoutService
 
     private function initializeTransaction(array $payload): array
     {
+        $owner = $this->idempotencyService->owner($payload);
+        $key = isset($payload['idempotency_key'])
+            ? $this->idempotencyService->key((string) $payload['idempotency_key'])
+            : null;
+        $method = $this->method($payload);
+        $ownerKey = $this->ownerKey($owner);
+        if ($key !== null) {
+            $existing = $this->checkoutRepository->findByIdempotency($ownerKey, $key);
+            if ($existing !== null) {
+                if (($existing['fulfillment_method'] ?? null) !== $method) {
+                    throw new ConflictException(
+                        'La clave de idempotencia fue usada con otro fulfillment_method.',
+                        'idempotency_conflict'
+                    );
+                }
+                return $this->replayedResult($existing);
+            }
+        }
         $validation = $this->validationService->validate($payload);
 
         if (! $validation['valid']) {
             return $this->invalidResult($validation);
         }
+        $this->fulfillmentPolicy->authorize(
+            $method,
+            (string) $validation['summary']['total']
+        );
 
         $customerId = $payload['user_id'] ?? null;
 
@@ -151,7 +183,7 @@ final class CheckoutService
         }
 
         $checkout = $this->createPersistent(
-            $payload,
+            [...$payload, 'fulfillment_method' => $method],
             array_map(
                 static fn (array $order): int => (int) $order['id'],
                 $orders
@@ -178,6 +210,7 @@ final class CheckoutService
     ): array {
         $callback = function () use ($ownerInput, $orderIds): array {
             $owner = $this->idempotencyService->owner($ownerInput);
+            $method = $this->method($ownerInput);
             $orderIds = array_values(array_unique(array_map('intval', $orderIds)));
 
             if ($orderIds === [] || in_array(0, $orderIds, true)) {
@@ -248,12 +281,28 @@ final class CheckoutService
             }
 
             $now = current_time('mysql');
+            $key = isset($ownerInput['idempotency_key'])
+                ? $this->idempotencyService->key((string) $ownerInput['idempotency_key'])
+                : 'internal:' . hash('sha256', implode(',', $orderIds));
+            $ownerKey = $this->ownerKey($owner);
+            $fingerprint = hash('sha256', (string) wp_json_encode([
+                'operation' => 'checkout.create.v1',
+                'owner_key' => $ownerKey,
+                'fulfillment_method' => $method,
+                'currency' => 'CLP',
+                'total_amount' => $this->formatCents($totalCents),
+                'orders' => $orderIds,
+            ], JSON_UNESCAPED_SLASHES));
             $id = $this->checkoutRepository->create([
                 'public_id' => Checkout::publicId(),
                 'owner_type' => $owner['owner_type'],
                 'user_id' => $owner['user_id'],
                 'session_id' => $owner['session_id'],
                 'status' => Checkout::STATUS_PENDING,
+                'fulfillment_method' => $method,
+                'idempotency_owner_key' => $ownerKey,
+                'idempotency_key' => $key,
+                'request_fingerprint' => $fingerprint,
                 'currency' => 'CLP',
                 'total_amount' => $this->formatCents($totalCents),
                 'created_at' => $now,
@@ -307,6 +356,7 @@ final class CheckoutService
         return [
             'checkout_id' => (string) $checkout['public_id'],
             'status' => (string) $checkout['status'],
+            'fulfillment_method' => $checkout['fulfillment_method'] ?? null,
             'currency' => (string) $checkout['currency'],
             'total_amount' => (string) $checkout['total_amount'],
             'order_count' => $orderCount,
@@ -377,5 +427,40 @@ final class CheckoutService
 
         return ((int) $whole * 100)
             + (int) str_pad($decimal, 2, '0');
+    }
+
+    private function method(array $payload): string
+    {
+        $method = $payload['fulfillment_method'] ?? null;
+        if ($method === null && ! isset($payload['idempotency_key'])) {
+            return FulfillmentPolicy::PICKUP;
+        }
+        if (! is_string($method)) {
+            throw new \InvalidArgumentException('fulfillment_method es obligatorio.');
+        }
+        return $method;
+    }
+
+    private function ownerKey(array $owner): string
+    {
+        return hash('sha256', $owner['owner_type'] . '|' . (
+            $owner['owner_type'] === 'user' ? (string) $owner['user_id'] : (string) $owner['session_id']
+        ));
+    }
+
+    private function replayedResult(array $checkout): array
+    {
+        $orderIds = $this->checkoutOrderRepository->findOrderIds((int) $checkout['id']);
+        return [
+            'valid' => true,
+            'reservation_created' => true,
+            'order_created' => true,
+            'reused' => true,
+            'expires_at' => $checkout['expires_at'],
+            'orders' => $this->orderRepository->findMany($orderIds),
+            'reservations' => [],
+            'summary' => ['total' => $checkout['total_amount']],
+            'checkout' => $this->publicData($checkout, count($orderIds)),
+        ];
     }
 }

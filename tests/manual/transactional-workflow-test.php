@@ -56,7 +56,12 @@ $administrators = get_users([
 ]);
 assertTransactionalWorkflow($administrators !== [], 'Falta administrador.');
 $customerId = (int) $administrators[0];
-$owner = ['session_id' => null, 'user_id' => $customerId];
+$owner = [
+    'session_id' => null,
+    'user_id' => $customerId,
+    'fulfillment_method' => 'pickup',
+    'idempotency_key' => 'checkout-workflow-' . bin2hex(random_bytes(12)),
+];
 $application = new Application();
 $container = $application->container();
 $cartService = new CartService(new CartRepository());
@@ -130,7 +135,17 @@ try {
     );
 
     $checkoutRetry = $checkoutService->initialize($owner);
-    assertTransactionalWorkflowSame(false, $checkoutRetry['valid']);
+    assertTransactionalWorkflowSame(true, $checkoutRetry['valid']);
+    assertTransactionalWorkflowSame(true, $checkoutRetry['reused']);
+    assertTransactionalWorkflowSame(
+        $checkout['checkout']['checkout_id'],
+        $checkoutRetry['checkout']['checkout_id']
+    );
+    try {
+        $checkoutService->initialize([...$owner, 'fulfillment_method' => 'delivery']);
+        throw new RuntimeException('La misma clave acepto otro fulfillment_method.');
+    } catch (\VeciAhorra\Exceptions\ConflictException) {
+    }
     assertTransactionalWorkflowSame(
         1,
         (int) $wpdb->get_var($wpdb->prepare(

@@ -354,6 +354,8 @@
         var validating = false;
         var creating = false;
         var created = false;
+        var checkoutIdempotencyKey = 'checkout:' + String(Date.now()) + ':'
+            + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
         var ambiguousAttempt = false;
         var requestSequence = 0;
         var activeController = null;
@@ -611,7 +613,13 @@
             status.textContent = 'Creando pedido…';
             timer = window.setTimeout(function () { timedOut = true; controller.abort(); }, REQUEST_TIMEOUT);
 
-            return config.api.post('/checkout', {}, requestOptions(controller.signal)).then(function (payload) {
+            var creationOptions = requestOptions(controller.signal);
+            creationOptions.headers = Object.assign({}, creationOptions.headers || {}, {
+                'Idempotency-Key': checkoutIdempotencyKey
+            });
+            return config.api.post('/checkout', {
+                fulfillment_method: selectedMethod()
+            }, creationOptions).then(function (payload) {
                 var result = normalizedCheckout(payload);
                 if (!result.valid) {
                     validated = false;
@@ -804,7 +812,7 @@
 
             return config.api.post(
                 '/checkout/validate',
-                {},
+                { fulfillment_method: selectedMethod() },
                 requestOptions(activeController.signal)
             ).then(function (payload) {
                 if (requestId !== requestSequence) {

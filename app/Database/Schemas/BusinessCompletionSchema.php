@@ -18,6 +18,7 @@ final class BusinessCompletionSchema implements TableInterface
             ->bigIntegerUnsigned('reconciliation_id')
             ->string('idempotency_key', 64)
             ->string('status', 30)->default('pending')
+            ->string('fulfillment_method', 20)->nullable()
             ->bigIntegerUnsigned('payment_id')->nullable()
             ->string('lease_owner', 64)->nullable()
             ->datetime('lease_acquired_at')->nullable()

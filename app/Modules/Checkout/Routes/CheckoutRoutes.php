@@ -87,7 +87,18 @@ final class CheckoutRoutes
             return $payload;
         }
 
-        $result = $this->controller->initialize([...$payload, ...$owner]);
+        try {
+            $key = (new \VeciAhorra\Modules\Payments\Service\IdempotencyService())->key(
+                (string) $request->get_header('Idempotency-Key')
+            );
+        } catch (InvalidArgumentException $exception) {
+            return new WP_REST_Response(['success' => false, 'error' => [
+                'code' => 'validation_error', 'message' => $exception->getMessage(),
+            ]], 422);
+        }
+        $result = $this->controller->initialize([
+            ...$payload, ...$owner, 'idempotency_key' => $key,
+        ]);
         $status = ($result['success'] ?? false) === true
             && ($result['data']['reservation_created'] ?? false) === true
                 ? 201
@@ -134,7 +145,12 @@ final class CheckoutRoutes
             return ['session_id' => null, 'user_id' => $userId];
         }
 
-        $sessionId = (new CartSession())->identifier();
+        $headerSession = trim((string) $request->get_header(
+            'X-Veciahorra-Cart-Session'
+        ));
+        $sessionId = preg_match('/^[A-Za-z0-9._:-]{16,128}$/D', $headerSession) === 1
+            ? $headerSession
+            : (new CartSession())->identifier();
 
         return [
             'session_id' => $sessionId,
@@ -142,7 +158,7 @@ final class CheckoutRoutes
         ];
     }
 
-    /** @return array<string, never>|WP_REST_Response */
+    /** @return array{fulfillment_method: string}|WP_REST_Response */
     private function validatedPayload(
         WP_REST_Request $request
     ): array|WP_REST_Response {

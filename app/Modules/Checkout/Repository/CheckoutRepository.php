@@ -92,6 +92,16 @@ final class CheckoutRepository extends Repository
         return $row === null ? null : $row;
     }
 
+    public function findByIdempotency(string $ownerKey, string $key): ?array
+    {
+        $row = $this->db()->get_row($this->db()->prepare(
+            sprintf('SELECT * FROM %s WHERE idempotency_owner_key = %%s AND idempotency_key = %%s LIMIT 1', $this->table(self::TABLE)),
+            $ownerKey,
+            $key
+        ), ARRAY_A);
+        return $row === null ? null : $row;
+    }
+
     public function findByPublicIdForUpdate(string $publicId): ?array
     {
         $row = $this->db()->get_row($this->db()->prepare(

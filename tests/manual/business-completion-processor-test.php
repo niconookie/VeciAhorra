@@ -40,7 +40,8 @@ try {
     $sessionPublic = 'ps_' . substr(hash('sha256', 'session-' . $nonce), 0, 43);
     $wpdb->insert($prefix . 'checkouts', [
         'public_id' => $checkoutPublic, 'owner_type' => 'user', 'user_id' => 980001,
-        'session_id' => null, 'status' => 'payment_started', 'currency' => 'CLP',
+        'session_id' => null, 'status' => 'payment_started',
+        'fulfillment_method' => 'delivery', 'currency' => 'CLP',
         'total_amount' => '3000.00', 'created_at' => $now, 'updated_at' => $now,
         'expires_at' => gmdate('Y-m-d H:i:s', time() + 3600),
     ]);
@@ -114,6 +115,9 @@ try {
     $payment = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$prefix}payments WHERE id = %d", $result->paymentId), ARRAY_A);
     bcAssert($payment['status'] === 'paid' && $payment['financial_fingerprint'] === $financial->fingerprint(), 'Payment no quedo aprobado con evidencia durable.');
     bcAssert((int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$prefix}payment_orders WHERE payment_id = %d", $result->paymentId)) === 2, 'No vinculo multiples Orders.');
+    $completionRow = $completionRepository->findByReconciliation($reconciliationId);
+    bcAssert(($completionRow['fulfillment_method'] ?? null) === 'delivery', 'BusinessCompletion no sello fulfillment.');
+    bcAssert((int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$prefix}business_completion_orders WHERE business_completion_id = %d", (int) $completionRow['id'])) === 2, 'BusinessCompletion no sello todas las Orders.');
     bcAssert((int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$prefix}orders WHERE id IN (%d,%d) AND status = 'paid'", ...$orderIds)) === 2, 'Orders no quedaron paid.');
     $replay = $processor->process($reconciliationId, 'business_' . str_repeat('d', 32));
     bcAssert($replay->status === BusinessCompletionResult::ALREADY_COMPLETED && $replay->paymentId === $result->paymentId, 'Replay no fue idempotente.');
@@ -124,7 +128,11 @@ try {
     echo "OK: business completion materializa Payment y multiples Orders de forma idempotente.\n";
 } finally {
     if (isset($created['payment'])) { $wpdb->delete($prefix . 'payment_orders', ['payment_id' => $created['payment']]); }
-    if (isset($created['reconciliation'])) { $wpdb->delete($prefix . 'business_completions', ['reconciliation_id' => $created['reconciliation']]); }
+    if (isset($created['reconciliation'])) {
+        $completionId = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM {$prefix}business_completions WHERE reconciliation_id = %d", $created['reconciliation']));
+        if ($completionId > 0) { $wpdb->delete($prefix . 'business_completion_orders', ['business_completion_id' => $completionId]); }
+        $wpdb->delete($prefix . 'business_completions', ['reconciliation_id' => $created['reconciliation']]);
+    }
     if (isset($created['session'])) { $wpdb->delete($prefix . 'payment_sessions', ['id' => $created['session']]); }
     if (isset($created['payment'])) { $wpdb->delete($prefix . 'payments', ['id' => $created['payment']]); }
     if (isset($created['checkout'])) { $wpdb->delete($prefix . 'checkout_orders', ['checkout_id' => $created['checkout']]); }

@@ -91,6 +91,10 @@ final class BusinessCompletionProcessor
                     throw new BusinessCompletionFailure('checkout_or_session_missing', BusinessCompletionResult::PERMANENT_FAILURE);
                 }
                 $this->validateAuthorities($reconciliation, $checkout, $session);
+                $fulfillmentMethod = $checkout['fulfillment_method'] ?? null;
+                if (! is_string($fulfillmentMethod) || ! in_array($fulfillmentMethod, ['pickup', 'delivery'], true)) {
+                    throw new BusinessCompletionFailure('legacy_fulfillment_missing', BusinessCompletionResult::MANUAL_REVIEW);
+                }
                 $orderIds = $this->checkoutOrders->findOrderIds((int) $checkout['id'], true);
                 if ($orderIds === []) {
                     throw new BusinessCompletionFailure('empty_order_set', BusinessCompletionResult::PERMANENT_FAILURE);
@@ -115,6 +119,12 @@ final class BusinessCompletionProcessor
                 foreach ($orderIds as $orderId) {
                     $this->payments->attachOrderIdempotently($paymentId, $orderId, $now);
                 }
+                $this->completions->sealFulfillmentSnapshot(
+                    $completionId,
+                    $fulfillmentMethod,
+                    $orderIds,
+                    $now
+                );
                 $reserved = array_map('intval', array_column(array_filter($orders, static fn (array $order): bool => ($order['status'] ?? null) === 'reserved'), 'id'));
                 if ($reserved !== []) {
                     $this->orders->markPaid($reserved, $now);

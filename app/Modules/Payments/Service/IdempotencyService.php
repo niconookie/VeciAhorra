@@ -59,7 +59,8 @@ final class IdempotencyService
         array $owner,
         string $currency,
         string $amount,
-        array $orderIds
+        array $orderIds,
+        ?string $fulfillmentMethod = null
     ): string {
         sort($orderIds, SORT_NUMERIC);
         $stableOwner = $owner['owner_type'] === 'user'
@@ -75,6 +76,7 @@ final class IdempotencyService
             'currency' => $currency,
             'total_amount' => $amount,
             'orders' => array_values($orderIds),
+            'fulfillment_method' => $fulfillmentMethod,
         ];
 
         return hash('sha256', (string) wp_json_encode(

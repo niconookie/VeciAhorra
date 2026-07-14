@@ -97,13 +97,65 @@ final class BusinessCompletionRepository extends Repository
             . ' lease_acquired_at = NULL, lease_expires_at = NULL,'
             . ' last_result_code = %%s, last_error_at = NULL, completed_at = %%s,'
             . ' updated_at = %%s WHERE id = %%d AND status = %%s'
-            . ' AND lease_owner = %%s AND lease_version = %%d AND lease_expires_at >= %%s',
+            . ' AND lease_owner = %%s AND lease_version = %%d AND lease_expires_at >= %%s'
+            . ' AND fulfillment_method IS NOT NULL',
             $this->table(self::TABLE)
         ), 'completed', $paymentId, 'completed', $now, $now, $id, 'processing', $owner, $version, $now));
         if ($result === false) {
             throw new PersistenceException('No fue posible cerrar la finalizacion.');
         }
         return $result === 1;
+    }
+
+    /** @param list<int> $orderIds */
+    public function sealFulfillmentSnapshot(int $id, string $method, array $orderIds, string $now): void
+    {
+        if (! in_array($method, ['pickup', 'delivery'], true) || $orderIds === []) {
+            throw new \InvalidArgumentException('El snapshot de fulfillment no es valido.');
+        }
+        $result = $this->db()->query($this->db()->prepare(sprintf(
+            'UPDATE %s SET fulfillment_method = %%s, updated_at = %%s'
+            . ' WHERE id = %%d AND (fulfillment_method IS NULL OR fulfillment_method = %%s)',
+            $this->table(self::TABLE)
+        ), $method, $now, $id, $method));
+        if ($result === false) {
+            throw new PersistenceException('No fue posible sellar fulfillment.');
+        }
+        $storedMethod = $this->db()->get_var($this->db()->prepare(sprintf(
+            'SELECT fulfillment_method FROM %s WHERE id = %%d LIMIT 1 FOR UPDATE',
+            $this->table(self::TABLE)
+        ), $id));
+        if (! is_string($storedMethod) || ! hash_equals($storedMethod, $method)) {
+            throw new PersistenceException(
+                'BusinessCompletion posee otro fulfillment_method.'
+            );
+        }
+        foreach ($orderIds as $orderId) {
+            $existing = $this->db()->get_var($this->db()->prepare(sprintf(
+                'SELECT business_completion_id FROM %s WHERE order_id = %%d LIMIT 1 FOR UPDATE',
+                $this->table('business_completion_orders')
+            ), $orderId));
+            if ($existing !== null) {
+                if ((int) $existing !== $id) {
+                    throw new PersistenceException('La Order pertenece a otro BusinessCompletion.');
+                }
+                continue;
+            }
+            if ($this->db()->insert($this->table('business_completion_orders'), [
+                'business_completion_id' => $id, 'order_id' => $orderId, 'created_at' => $now,
+            ]) === false) {
+                throw new PersistenceException('No fue posible sellar una Order de fulfillment.');
+            }
+        }
+        $stored = array_map('intval', $this->db()->get_col($this->db()->prepare(sprintf(
+            'SELECT order_id FROM %s WHERE business_completion_id = %%d ORDER BY order_id ASC',
+            $this->table('business_completion_orders')
+        ), $id)));
+        $expected = array_values(array_unique(array_map('intval', $orderIds)));
+        sort($expected, SORT_NUMERIC);
+        if ($stored !== $expected) {
+            throw new PersistenceException('El snapshot de Orders quedo incompleto.');
+        }
     }
 
     public function fail(int $id, string $owner, int $version, string $status, string $reason, string $now): void

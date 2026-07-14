@@ -240,7 +240,8 @@ try {
     wp_set_current_user($customerId);
     $request = new WP_REST_Request('POST', '/veciahorra/v1/checkout');
     $request->set_header('content-type', 'application/json');
-    $request->set_body('{}');
+    $request->set_header('Idempotency-Key', 'checkout-reservation-key-0001');
+    $request->set_body('{"fulfillment_method":"pickup"}');
     $response = rest_do_request($request);
     $success = $response->get_data()['data'] ?? [];
 

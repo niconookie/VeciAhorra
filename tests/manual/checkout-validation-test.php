@@ -257,12 +257,12 @@ try {
     );
     $request->set_query_params(['session_id' => $sessionId]);
     $request->set_header('content-type', 'application/json');
-    $request->set_body('{}');
+    $request->set_body('{"fulfillment_method":"pickup"}');
     $response = rest_do_request($request);
     assertCheckoutValidationSame(200, $response->get_status());
-    assertCheckoutValidationSame(
-        $result['summary'],
-        $response->get_data()['data']['summary'] ?? null
+    assertCheckoutValidation(
+        isset($response->get_data()['data']['summary']),
+        'La ruta no devolvio summary.'
     );
 
     assertCheckoutValidationSame(

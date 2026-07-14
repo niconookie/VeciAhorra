@@ -155,7 +155,10 @@ final class PaymentSessionService
                 $owner,
                 (string) $checkout['currency'],
                 $amount,
-                $orderIds
+                $orderIds,
+                isset($checkout['fulfillment_method'])
+                    ? (string) $checkout['fulfillment_method']
+                    : null
             );
             $byKey = $this->sessionRepository->findByKey($checkoutId, $key);
 

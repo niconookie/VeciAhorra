@@ -15,15 +15,18 @@ final class CheckoutRequest
     {
     }
 
-    /** @return array<string, never> */
+    /** @return array{fulfillment_method: string} */
     public function validated(): array
     {
-        if ($this->input !== []) {
+        if (array_keys($this->input) !== ['fulfillment_method']) {
             throw new InvalidArgumentException(
-                'El request de checkout no admite campos en esta fase.'
+                'El request solo admite fulfillment_method.'
             );
         }
-
-        return [];
+        $method = $this->input['fulfillment_method'] ?? null;
+        if (! is_string($method) || ! in_array($method, ['pickup', 'delivery'], true)) {
+            throw new InvalidArgumentException('fulfillment_method no es valido.');
+        }
+        return ['fulfillment_method' => $method];
     }
 }
