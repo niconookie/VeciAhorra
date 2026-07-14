@@ -19,7 +19,7 @@ final class Config
     /**
      * Versión actual del esquema de base de datos.
      */
-    public const SCHEMA_VERSION = '0.21.0';
+    public const SCHEMA_VERSION = '0.22.0';
 
     /**
      * Alias temporal para compatibilidad con consumidores existentes.

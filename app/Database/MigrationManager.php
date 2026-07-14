@@ -22,6 +22,8 @@ use VeciAhorra\Database\Migrations\CreatePaymentReconciliationsTable;
 use VeciAhorra\Database\Migrations\CreateBusinessCompletionsTable;
 use VeciAhorra\Database\Migrations\CreateDeliveryCompletionsTable;
 use VeciAhorra\Database\Migrations\EnsureUniqueDeliveryOrder;
+use VeciAhorra\Database\Migrations\CreateFulfillmentCompletionsTable;
+use VeciAhorra\Database\Migrations\EnsureUniqueFulfillmentCompletion;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -106,6 +108,8 @@ final class MigrationManager
             new CreateDeliveriesTable(),
             new EnsureUniqueDeliveryOrder(),
             new CreateDeliveryCompletionsTable(),
+            new CreateFulfillmentCompletionsTable(),
+            new EnsureUniqueFulfillmentCompletion(),
             new CreateDeliveryTrackingTable(),
         ];
     }
