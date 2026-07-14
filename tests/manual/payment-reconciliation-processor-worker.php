@@ -12,6 +12,7 @@ use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentReconciliationProc
 use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentReconciliationTechnicalEvaluator;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+require_once __DIR__ . '/payment-reconciliation-test-completion-handler.php';
 
 final class ObservableProcessorEvaluator implements
     PaymentReconciliationTechnicalEvaluatorInterface
@@ -100,7 +101,8 @@ try {
                 $owner,
                 $entryFile,
                 $continueFile
-            )
+            ),
+            completionHandler: new TechnicalOnlyCompletionHandler()
         ))->process($lease)->status();
     }
 

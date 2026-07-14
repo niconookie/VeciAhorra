@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Payments\Reconciliation\DTO;
 
 use InvalidArgumentException;
+use VeciAhorra\Modules\Payments\Reconciliation\Contracts\PaymentCompletionOutcomeInterface;
 
 final class PaymentReconciliationProcessingResult
 {
@@ -19,11 +20,13 @@ final class PaymentReconciliationProcessingResult
     public const AUTHORITY_LOST = 'authority_lost';
     public const CAS_REJECTED = 'cas_rejected';
     public const RECOVERABLE_ERROR = 'recoverable_error';
+    public const COMPLETION_REJECTED = 'completion_rejected';
 
     public function __construct(
         private readonly string $status,
         private readonly ?TechnicalReconciliationResult $technicalResult = null,
-        private readonly bool $heartbeatPerformed = false
+        private readonly bool $heartbeatPerformed = false,
+        private readonly ?PaymentCompletionOutcomeInterface $completionOutcome = null
     ) {
         if (! in_array($status, [
             self::PROCESSED,
@@ -37,13 +40,28 @@ final class PaymentReconciliationProcessingResult
             self::AUTHORITY_LOST,
             self::CAS_REJECTED,
             self::RECOVERABLE_ERROR,
+            self::COMPLETION_REJECTED,
         ], true)) {
             throw new InvalidArgumentException('Resultado de procesamiento no valido.');
         }
 
-        if (($status === self::PROCESSED) !== ($technicalResult !== null)) {
+        $handled = in_array($status, [
+            self::PROCESSED,
+            self::COMPLETION_REJECTED,
+        ], true);
+
+        if (
+            $handled !== ($technicalResult !== null)
+            || (! $handled && $completionOutcome !== null)
+            || ($status === self::PROCESSED
+                && $completionOutcome !== null
+                && ! $completionOutcome->successful())
+            || ($status === self::COMPLETION_REJECTED
+                && ($completionOutcome === null
+                    || $completionOutcome->successful()))
+        ) {
             throw new InvalidArgumentException(
-                'El resultado tecnico procesado no es coherente.'
+                'El resultado procesado no es coherente.'
             );
         }
     }
@@ -55,4 +73,8 @@ final class PaymentReconciliationProcessingResult
         return $this->technicalResult;
     }
     public function heartbeatPerformed(): bool { return $this->heartbeatPerformed; }
+    public function completionOutcome(): ?PaymentCompletionOutcomeInterface
+    {
+        return $this->completionOutcome;
+    }
 }

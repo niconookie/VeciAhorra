@@ -6,6 +6,7 @@ namespace VeciAhorra\Modules\Payments\Reconciliation\Service;
 
 use InvalidArgumentException;
 use Throwable;
+use VeciAhorra\Modules\Payments\Reconciliation\Contracts\PaymentCompletionHandlerInterface;
 use VeciAhorra\Modules\Payments\Reconciliation\Contracts\PaymentReconciliationTechnicalEvaluatorInterface;
 use VeciAhorra\Modules\Payments\Reconciliation\Contracts\ReconciliationClockInterface;
 use VeciAhorra\Modules\Payments\Reconciliation\DTO\PaymentReconciliationProcessingResult;
@@ -19,10 +20,7 @@ use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentReconciliationR
 use VeciAhorra\Modules\Payments\Reconciliation\Repository\ValidatedFinancialResultRepository;
 use VeciAhorra\Modules\Payments\Reconciliation\Support\SystemReconciliationClock;
 
-/**
- * Reconciles durable evidence only. A completed reconciliation does not mean
- * that an order was paid or that any business-side effect was performed.
- */
+/** Coordinates durable validation, an injected completion effect and final CAS. */
 final class PaymentReconciliationProcessor
 {
     public function __construct(
@@ -33,7 +31,8 @@ final class PaymentReconciliationProcessor
         private readonly PaymentReconciliationTechnicalEvaluatorInterface $evaluator = new PaymentReconciliationTechnicalEvaluator(),
         private readonly ReconciliationClockInterface $clock = new SystemReconciliationClock(),
         private readonly int $heartbeatThresholdSeconds = 30,
-        private readonly int $heartbeatLeaseSeconds = PaymentReconciliationClaimRepository::DEFAULT_LEASE_SECONDS
+        private readonly int $heartbeatLeaseSeconds = PaymentReconciliationClaimRepository::DEFAULT_LEASE_SECONDS,
+        private readonly PaymentCompletionHandlerInterface $completionHandler = new PaymentCompletionHandlerRegistry()
     ) {
         if (
             $heartbeatThresholdSeconds < 0
@@ -122,7 +121,58 @@ final class PaymentReconciliationProcessor
                 );
             }
 
-            $elapsed = $this->clock->now() - $startedAt;
+            $heartbeatCheckedAt = $this->clock->now();
+            $elapsed = $heartbeatCheckedAt - $startedAt;
+            $remaining = strtotime((string) $state->expiresAt())
+                - strtotime($state->databaseNow());
+
+            if (
+                $elapsed >= $this->heartbeatThresholdSeconds
+                || $remaining <= $this->heartbeatThresholdSeconds
+            ) {
+                $renewal = $this->claims->renewLease(
+                    $lease->reconciliationId(),
+                    $lease->owner(),
+                    $lease->version(),
+                    $this->heartbeatLeaseSeconds
+                );
+
+                if (! $renewal->renewed()) {
+                    return new PaymentReconciliationProcessingResult(
+                        PaymentReconciliationProcessingResult::HEARTBEAT_REJECTED
+                    );
+                }
+
+                $heartbeatPerformed = true;
+            }
+
+            $lastHeartbeatAt = $heartbeatPerformed
+                ? $heartbeatCheckedAt
+                : $startedAt;
+
+            $authority = $this->authorityStatus($lease, false);
+
+            if ($authority !== null) {
+                return new PaymentReconciliationProcessingResult($authority);
+            }
+
+            $completionOutcome = $this->completionHandler->complete(
+                $references,
+                $origin,
+                $financialResult,
+                $technicalResult
+            );
+
+            $state = $this->claims->findLease($lease->reconciliationId());
+
+            if ($state === null) {
+                return new PaymentReconciliationProcessingResult(
+                    PaymentReconciliationProcessingResult::NOT_FOUND
+                );
+            }
+
+            $heartbeatCheckedAt = $this->clock->now();
+            $elapsed = $heartbeatCheckedAt - $lastHeartbeatAt;
             $remaining = strtotime((string) $state->expiresAt())
                 - strtotime($state->databaseNow());
 
@@ -157,8 +207,9 @@ final class PaymentReconciliationProcessor
                 $lease->owner(),
                 $lease->version(),
                 PaymentReconciliation::STATUS_PROCESSING,
-                PaymentReconciliation::STATUS_COMPLETED,
-                $technicalResult->resultCode()
+                $completionOutcome->targetReconciliationStatus(),
+                $completionOutcome->resultCode(),
+                $completionOutcome->lastErrorCode()
             );
 
             if (! $transition->applied()) {
@@ -168,9 +219,12 @@ final class PaymentReconciliationProcessor
             }
 
             return new PaymentReconciliationProcessingResult(
-                PaymentReconciliationProcessingResult::PROCESSED,
+                $completionOutcome->successful()
+                    ? PaymentReconciliationProcessingResult::PROCESSED
+                    : PaymentReconciliationProcessingResult::COMPLETION_REJECTED,
                 $technicalResult,
-                $heartbeatPerformed
+                $heartbeatPerformed,
+                $completionOutcome
             );
         } catch (Throwable) {
             return $this->recover(

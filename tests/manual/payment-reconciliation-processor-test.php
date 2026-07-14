@@ -19,6 +19,7 @@ use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentReconciliationProc
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 require_once __DIR__ . '/payment-reconciliation-processor-fixture.php';
+require_once __DIR__ . '/payment-reconciliation-test-completion-handler.php';
 
 final class ThrowingProcessorEvaluator implements PaymentReconciliationTechnicalEvaluatorInterface
 {
@@ -115,11 +116,15 @@ try {
         gmdate('Y-m-d H:i:s', strtotime($lease->expiresAt()) + 1)
     );
     assertProcessor(
-        (new PaymentReconciliationProcessor())->process($invalidExpiryLease)->status()
+        (new PaymentReconciliationProcessor(
+            completionHandler: new TechnicalOnlyCompletionHandler()
+        ))->process($invalidExpiryLease)->status()
             === PaymentReconciliationProcessingResult::INVALID_LEASE,
         'Se acepto una capacidad cuyo vencimiento no coincide con la fila.'
     );
-    $processed = (new PaymentReconciliationProcessor())->process($lease);
+    $processed = (new PaymentReconciliationProcessor(
+        completionHandler: new TechnicalOnlyCompletionHandler()
+    ))->process($lease);
     $completed = $claims->findLease($success['id']);
     assertProcessor(
         $processed->status() === PaymentReconciliationProcessingResult::PROCESSED
@@ -129,7 +134,9 @@ try {
         && $completed->owner() === null,
         'El cierre tecnico exitoso no quedo consistente.'
     );
-    $second = (new PaymentReconciliationProcessor())->process($lease);
+    $second = (new PaymentReconciliationProcessor(
+        completionHandler: new TechnicalOnlyCompletionHandler()
+    ))->process($lease);
     assertProcessor(
         $second->status() === PaymentReconciliationProcessingResult::NOT_PROCESSABLE
         && $claims->acquireLease($success['id'], $owner, 10)->status()
@@ -147,6 +154,7 @@ try {
     )->lease();
     assertProcessor($heartbeatLease !== null, 'No se preparo heartbeat exitoso.');
     $heartbeatResult = (new PaymentReconciliationProcessor(
+        completionHandler: new TechnicalOnlyCompletionHandler(),
         clock: new SequenceProcessorClock([100, 106]),
         heartbeatThresholdSeconds: 5,
         heartbeatLeaseSeconds: 60
@@ -165,7 +173,8 @@ try {
     $failureLease = $claims->acquireLease($failure['id'], $failureOwner, 60)->lease();
     assertProcessor($failureLease !== null, 'No se preparo el fallo controlado.');
     $failed = (new PaymentReconciliationProcessor(
-        evaluator: new ThrowingProcessorEvaluator()
+        evaluator: new ThrowingProcessorEvaluator(),
+        completionHandler: new TechnicalOnlyCompletionHandler()
     ))->process($failureLease);
     $failedState = $claims->findLease($failure['id']);
     assertProcessor(
@@ -200,7 +209,9 @@ try {
             $wpdb->delete($returnTable, ['id' => $missing['return_id']], ['%d']);
         }
 
-        $missingResult = (new PaymentReconciliationProcessor())->process($missingLease);
+        $missingResult = (new PaymentReconciliationProcessor(
+            completionHandler: new TechnicalOnlyCompletionHandler()
+        ))->process($missingLease);
         assertProcessor(
             $missingResult->status() === $missingCase['status']
             && $claims->findLease($missing['id'])?->reconciliationStatus()
@@ -224,7 +235,9 @@ try {
         ['%s'],
         ['%d']
     );
-    $inconsistentResult = (new PaymentReconciliationProcessor())->process(
+    $inconsistentResult = (new PaymentReconciliationProcessor(
+        completionHandler: new TechnicalOnlyCompletionHandler()
+    ))->process(
         $inconsistentLease
     );
     assertProcessor(
@@ -247,6 +260,7 @@ try {
             $defaultEvaluator,
             $expiry['id']
         ),
+        completionHandler: new TechnicalOnlyCompletionHandler(),
         heartbeatThresholdSeconds: 30,
         heartbeatLeaseSeconds: 30
     ))->process($expiryLease);
@@ -275,7 +289,9 @@ try {
         && $replacement->version() === 2,
         'No se produjo la nueva generacion ABA.'
     );
-    $stale = (new PaymentReconciliationProcessor())->process($expiryLease);
+    $stale = (new PaymentReconciliationProcessor(
+        completionHandler: new TechnicalOnlyCompletionHandler()
+    ))->process($expiryLease);
     $afterStale = $claims->findLease($expiry['id']);
     assertProcessor(
         $stale->status() === PaymentReconciliationProcessingResult::AUTHORITY_LOST
