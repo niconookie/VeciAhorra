@@ -252,6 +252,13 @@ final class PaymentRoutes
             default => 200,
         };
 
+        $redirectUrl = $result['data']['redirect_url'] ?? null;
+        if (is_string($redirectUrl) && wp_http_validate_url($redirectUrl)) {
+            $response = new WP_REST_Response($result, 303);
+            $response->header('Location', $redirectUrl);
+            return $response;
+        }
+
         return new WP_REST_Response($result, $httpStatus);
     }
 

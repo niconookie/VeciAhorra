@@ -11,7 +11,8 @@ final class WebpayReturnResult
         public readonly ?int $paymentSessionId,
         public readonly string $tokenReference,
         public readonly ?array $financial = null,
-        public readonly ?string $previousResult = null
+        public readonly ?string $previousResult = null,
+        public readonly ?string $publicCheckoutId = null
     ) {
     }
 

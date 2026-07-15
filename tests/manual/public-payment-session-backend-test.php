@@ -19,9 +19,15 @@ use VeciAhorra\Modules\Payments\Service\PaymentSessionService;
 use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
 use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
 use VeciAhorra\Modules\Payments\Orchestration\WebpayCreateRecovery;
+use VeciAhorra\Modules\Payments\Orchestration\WebpayReturnRecovery;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
 use VeciAhorra\Modules\Payments\Gateway\PaymentSessionContext;
 use VeciAhorra\Modules\Payments\Gateway\GatewaySessionResult;
+use VeciAhorra\Modules\Payments\Gateway\WebpayReturnGatewayInterface;
+use VeciAhorra\Modules\Payments\Gateway\WebpayCommitResult;
+use VeciAhorra\Modules\Payments\Repository\WebpayReturnRepository;
+use VeciAhorra\Modules\Payments\Service\WebpayReturnService;
+use VeciAhorra\Modules\Payments\Requests\WebpayReturnRequest;
 
 putenv('webpay_environment=integration');
 putenv('webpay_commerce_code=597055555532');
@@ -76,6 +82,14 @@ final class AmbiguousPublicAttemptGateway implements PaymentGatewayInterface
     { $this->calls++; throw new RuntimeException('simulated timeout'); }
     public function recoverSession(string $providerSessionId): GatewaySessionResult
     { throw new RuntimeException('Recovery remoto inesperado.'); }
+}
+
+final class PublicReturnGatewayFake implements WebpayReturnGatewayInterface
+{
+    public int $commits = 0;
+    public function __construct(private WebpayCommitResult $result) {}
+    public function commit(string $token): WebpayCommitResult
+    { $this->commits++; return $this->result; }
 }
 
 global $wpdb;
@@ -583,6 +597,59 @@ try {
             $expiresAt, current_time('mysql')
         )
     ));
+
+    $publicToken = substr(hash('sha256', $firstSession['payment_session_id']), 0, 40);
+    $returnGateway = new PublicReturnGatewayFake(new WebpayCommitResult(
+        'AUTHORIZED', 0, (int) $origin['amount_clp'],
+        (string) $origin['buy_order'], (string) $origin['financial_session_id'],
+        'AUTH123', 'VD', 0, '0715', '2026-07-15T16:00:00Z', '1234', 0
+    ));
+    $returnService = new WebpayReturnService(
+        $returnGateway, new PaymentSessionRepository(), new WebpayReturnRepository()
+    );
+    $publicReturn = $returnService->process(WebpayReturnRequest::fromArray([
+        'token_ws' => $publicToken,
+    ]));
+    assertPublicPaymentBackendSame('approved', $publicReturn->result);
+    $publicReplay = $returnService->process(WebpayReturnRequest::fromArray([
+        'token_ws' => $publicToken,
+    ]));
+    assertPublicPaymentBackendSame('already_processed', $publicReplay->result);
+    assertPublicPaymentBackendSame(1, $returnGateway->commits);
+    $publicTokenHash = hash('sha256', $publicToken);
+    assertPublicPaymentBackendSame(1, (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}" . Config::TABLE_PREFIX
+            . 'webpay_returns WHERE token_hash=%s', $publicTokenHash
+    )));
+    assertPublicPaymentBackendSame(1, (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}" . Config::TABLE_PREFIX
+            . 'payment_reconciliations r JOIN ' . $originsTable
+            . ' o ON o.id=r.origin_context_id WHERE o.payment_attempt_id=%s',
+        $firstSession['payment_session_id']
+    )));
+    $wpdb->query($wpdb->prepare(
+        "DELETE r FROM {$wpdb->prefix}" . Config::TABLE_PREFIX
+            . 'payment_reconciliations r JOIN ' . $originsTable
+            . ' o ON o.id=r.origin_context_id WHERE o.payment_attempt_id=%s',
+        $firstSession['payment_session_id']
+    ));
+    (new WebpayReturnRecovery())->recover();
+    assertPublicPaymentBackendSame(1, (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}" . Config::TABLE_PREFIX
+            . 'payment_reconciliations r JOIN ' . $originsTable
+            . ' o ON o.id=r.origin_context_id WHERE o.payment_attempt_id=%s',
+        $firstSession['payment_session_id']
+    )));
+    $wpdb->query($wpdb->prepare(
+        "DELETE r FROM {$wpdb->prefix}" . Config::TABLE_PREFIX
+            . 'payment_reconciliations r JOIN ' . $originsTable
+            . ' o ON o.id=r.origin_context_id WHERE o.payment_attempt_id=%s',
+        $firstSession['payment_session_id']
+    ));
+    $wpdb->delete(
+        $wpdb->prefix . Config::TABLE_PREFIX . 'webpay_returns',
+        ['token_hash' => $publicTokenHash]
+    );
 
     echo "PASS public-payment-session-backend-test\n";
 } finally {

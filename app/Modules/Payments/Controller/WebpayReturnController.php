@@ -32,7 +32,20 @@ final class WebpayReturnController
                 WebpayReturnRequest::fromArray($payload)
             );
 
-            return ['success' => true, 'data' => $result->toArray()];
+            $data = $result->toArray();
+            unset(
+                $data['payment_session_id'],
+                $data['token_reference'],
+                $data['financial']
+            );
+            if ($result->publicCheckoutId !== null) {
+                $data['redirect_url'] = add_query_arg(
+                    ['checkout_id' => $result->publicCheckoutId],
+                    home_url('/checkout/')
+                );
+            }
+
+            return ['success' => true, 'data' => $data];
         } catch (InvalidArgumentException $exception) {
             return $this->error('invalid_webpay_return', $exception->getMessage());
         } catch (PersistenceException) {

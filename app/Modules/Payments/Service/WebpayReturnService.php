@@ -19,6 +19,7 @@ use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentOriginContextRe
 use VeciAhorra\Modules\Payments\Reconciliation\Service\WebpayReconciliationMaterializer;
 use VeciAhorra\Modules\Payments\Requests\WebpayReturnRequest;
 use VeciAhorra\Modules\Payments\Support\WebpayTokenReference;
+use VeciAhorra\Modules\Payments\Reconciliation\Support\WordPressSiteScope;
 
 final class WebpayReturnService
 {
@@ -40,10 +41,9 @@ final class WebpayReturnService
         $externalContext = $session === null
             ? $this->contexts?->find($tokenHash)
             : null;
-        $durableOrigin = $session === null
-            ? ($this->durableOrigins ?? new PaymentOriginContextRepository())
-                ->findByTokenHash($tokenHash)
-            : null;
+        $durableOrigin = ($this->durableOrigins
+            ?? new PaymentOriginContextRepository())->findByTokenHash($tokenHash);
+        $this->assertDurablePublicAttempt($durableOrigin, $session, $tokenHash);
         $reference = WebpayTokenReference::masked($request->token);
         $now = current_time('mysql');
         $claim = $this->returns->claim(
@@ -80,6 +80,7 @@ final class WebpayReturnService
                 $request,
                 $session,
                 $externalContext,
+                $durableOrigin,
                 $tokenHash,
                 $reference
             );
@@ -103,19 +104,34 @@ final class WebpayReturnService
                     'inconsistent',
                     isset($session['id']) ? (int) $session['id'] : null,
                     $reference
-                ), $tokenHash, $externalContext);
+                ), $tokenHash, $externalContext, $durableOrigin);
             }
 
-            $this->returns->fail($tokenHash, current_time('mysql'));
+            if ($durableOrigin?->origin()
+                === DurablePaymentOrigin::ORIGIN_VECIAHORRA) {
+                $this->returns->ambiguous($tokenHash, current_time('mysql'));
+            } else {
+                $this->returns->fail($tokenHash, current_time('mysql'));
+            }
 
             return new WebpayReturnResult(
                 'gateway_error',
                 isset($session['id']) ? (int) $session['id'] : null,
-                $reference
+                $reference,
+                null,
+                null,
+                $durableOrigin?->origin()
+                    === DurablePaymentOrigin::ORIGIN_VECIAHORRA
+                        ? $durableOrigin->originResourceId()
+                        : null
             );
         }
 
-        if ($externalContext !== null) {
+        if ($durableOrigin !== null) {
+            $expectedBuyOrder = $durableOrigin->buyOrder();
+            $expectedSessionId = $durableOrigin->financialSessionId();
+            $expectedAmount = $durableOrigin->amountClp();
+        } elseif ($externalContext !== null) {
             $expectedBuyOrder = $externalContext->buyOrder;
             $expectedSessionId = $externalContext->sessionId;
             $expectedAmount = $externalContext->amount;
@@ -144,16 +160,63 @@ final class WebpayReturnService
         ), $tokenHash, $externalContext, $durableOrigin, $financial);
     }
 
+    private function assertDurablePublicAttempt(
+        ?DurablePaymentOrigin $origin,
+        ?array $session,
+        string $tokenHash
+    ): void {
+        if ($origin === null) {
+            return;
+        }
+        if ($origin->tokenHash() === null
+            || ! hash_equals($origin->tokenHash(), $tokenHash)) {
+            throw new \InvalidArgumentException(
+                'El retorno Webpay no corresponde a un intento durable.'
+            );
+        }
+        if ($origin->origin() !== DurablePaymentOrigin::ORIGIN_VECIAHORRA) {
+            return;
+        }
+        if ($session === null
+            || $origin->gatewayId() !== 'webpay_plus'
+            || $origin->siteScope() !== WordPressSiteScope::current()
+            || $origin->currency() !== 'CLP'
+            || ! hash_equals(
+                $origin->paymentAttemptId(),
+                (string) ($session['public_id'] ?? '')
+            )
+            || ! hash_equals(
+                $origin->originResourceId(),
+                (string) ($session['checkout_public_id'] ?? '')
+            )
+            || $origin->amountClp() !== $this->amount(
+                (string) ($session['amount'] ?? '')
+            )) {
+            throw new \InvalidArgumentException(
+                'El retorno Webpay no corresponde a un intento durable.'
+            );
+        }
+    }
+
     private function abort(
         WebpayReturnRequest $request,
         ?array $session,
         ?WebpayReturnContext $externalContext,
+        ?DurablePaymentOrigin $durableOrigin,
         string $tokenHash,
         string $reference
     ): WebpayReturnResult {
         $consistent = true;
 
-        if ($externalContext !== null) {
+        if ($durableOrigin !== null) {
+            $consistent = ($request->buyOrder === null
+                    || hash_equals($durableOrigin->buyOrder(), $request->buyOrder))
+                && ($request->sessionId === null
+                    || hash_equals(
+                        $durableOrigin->financialSessionId(),
+                        $request->sessionId
+                    ));
+        } elseif ($externalContext !== null) {
             $expectedBuyOrder = $externalContext->buyOrder;
             $expectedSessionId = $externalContext->sessionId;
             $consistent = ($request->buyOrder === null
@@ -179,7 +242,7 @@ final class WebpayReturnService
             $consistent ? 'aborted' : 'inconsistent',
             isset($session['id']) ? (int) $session['id'] : null,
             $reference
-        ), $tokenHash, $externalContext);
+        ), $tokenHash, $externalContext, $durableOrigin);
     }
 
     private function repeated(
@@ -227,7 +290,10 @@ final class WebpayReturnService
             $storedFinancial,
             is_string($row['result_status'] ?? null)
                 ? $row['result_status']
-                : (string) ($row['processing_status'] ?? 'processing')
+                : (string) ($row['processing_status'] ?? 'processing'),
+            $durableOrigin?->origin() === DurablePaymentOrigin::ORIGIN_VECIAHORRA
+                ? $durableOrigin->originResourceId()
+                : null
         );
     }
 
@@ -261,6 +327,17 @@ final class WebpayReturnService
 
         if ($externalContext !== null) {
             $this->contexts?->forget($tokenHash);
+        }
+
+        if ($durableOrigin?->origin() === DurablePaymentOrigin::ORIGIN_VECIAHORRA) {
+            return new WebpayReturnResult(
+                $result->result,
+                $result->paymentSessionId,
+                $result->tokenReference,
+                $result->financial,
+                $result->previousResult,
+                $durableOrigin->originResourceId()
+            );
         }
 
         return $result;

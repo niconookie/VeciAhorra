@@ -115,6 +115,24 @@ class WebpayReturnRepository extends Repository
         }
     }
 
+    public function ambiguous(string $tokenHash, string $now): void
+    {
+        $updated = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s SET processing_status = %%s, result_status = %%s,'
+                . ' updated_at = %%s WHERE token_hash = %%s'
+                . ' AND processing_status = %%s',
+                $this->table(self::TABLE)
+            ),
+            'ambiguous', 'manual_review', $now, $tokenHash, 'processing'
+        ));
+        if ($updated !== 1) {
+            throw new PersistenceException(
+                'No fue posible conservar el resultado ambiguo de Webpay.'
+            );
+        }
+    }
+
     public function retry(string $tokenHash, string $now): bool
     {
         return $this->db()->query($this->db()->prepare(
