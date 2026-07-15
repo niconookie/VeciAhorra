@@ -16,6 +16,7 @@ use VeciAhorra\Modules\Payments\Reconciliation\Model\PaymentReconciliation;
 use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentReconciliationRepository;
 use VeciAhorra\Modules\Payments\Reconciliation\Repository\ValidatedFinancialResultRepository;
 use VeciAhorra\Modules\Payments\Reconciliation\Support\WooCommerceTransactionReferenceFactory;
+use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionScheduler;
 
 final class WebpayReconciliationMaterializer
 {
@@ -114,13 +115,15 @@ final class WebpayReconciliationMaterializer
             $reconciliationId = $stored->id();
         }
 
-        return new MaterializedReconciliation(
+        $materialized = new MaterializedReconciliation(
             $returnId,
             $reconciliationId,
             WooCommerceTransactionReferenceFactory::fromFinancialFingerprint(
                 $financial->fingerprint()
             )
         );
+        (new DurableCompletionScheduler())->reconciliation($reconciliationId);
+        return $materialized;
     }
 
     public function resume(
@@ -199,13 +202,15 @@ final class WebpayReconciliationMaterializer
             $reconciliationId = $stored->id();
         }
 
-        return new MaterializedReconciliation(
+        $materialized = new MaterializedReconciliation(
             $returnId,
             $reconciliationId,
             WooCommerceTransactionReferenceFactory::fromFinancialFingerprint(
                 $financial->fingerprint()
             )
         );
+        (new DurableCompletionScheduler())->reconciliation($reconciliationId);
+        return $materialized;
     }
 
     private function originId(DurablePaymentOrigin $origin): int

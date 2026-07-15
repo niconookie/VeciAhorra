@@ -35,6 +35,7 @@ use VeciAhorra\Modules\Products\Admin\ProductsPage;
 use VeciAhorra\Modules\Products\Routes\ProductRoutes;
 use VeciAhorra\Modules\Frontend\FrontendModule;
 use VeciAhorra\Modules\Catalog\CatalogModule;
+use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionOrchestration;
 
 /**
  * Clase principal de la aplicación.
@@ -129,6 +130,7 @@ final class Application
      */
     public function run(): void
     {
+        (new DurableCompletionOrchestration())->register();
         $this->container->make(WebpayGatewayRegistration::class)->register();
 
         $frontendModule = $this->container->make(
