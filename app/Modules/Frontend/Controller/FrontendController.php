@@ -51,7 +51,7 @@ final class FrontendController
                 'productId' => $productId,
                 'cartUrl' => (string) apply_filters(
                     'veciahorra_frontend_cart_url',
-                    home_url('/carrito/')
+                    home_url('/carrito-veciahorra/')
                 ),
             ]);
         } else {

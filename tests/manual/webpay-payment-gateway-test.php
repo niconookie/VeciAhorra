@@ -7,6 +7,7 @@ use VeciAhorra\Modules\Payments\Gateway\GatewaySessionResult;
 use VeciAhorra\Modules\Payments\Gateway\MockPaymentGateway;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayException;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
+use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration;
 use VeciAhorra\Modules\Payments\Gateway\PaymentConfirmationGatewayInterface;
 use VeciAhorra\Modules\Payments\Gateway\PaymentSessionContext;
 use VeciAhorra\Modules\Payments\Gateway\WebpayGatewayConfiguration;
@@ -513,6 +514,29 @@ foreach ([
 ] as $variable) {
     putenv($variable);
 }
+
+$woocommerceFallback = static fn (): array => [
+    'enabled' => 'yes',
+    'mode' => 'integration',
+    'commerce_code' => '597055555555',
+    'api_key' => str_repeat('W', 64),
+];
+add_filter(
+    'pre_option_woocommerce_veciahorra_webpay_plus_settings',
+    $woocommerceFallback
+);
+$fallbackConfiguration = PaymentGatewayConfiguration::webpay();
+assertWebpayGatewaySame(
+    PaymentGatewayConfiguration::GATEWAY_WEBPAY,
+    PaymentGatewayConfiguration::gateway()
+);
+assertWebpayGatewaySame('integration', $fallbackConfiguration->environment);
+assertWebpayGatewaySame('597055555555', $fallbackConfiguration->commerceCode);
+assertWebpayGatewaySame(str_repeat('W', 64), $fallbackConfiguration->apiKey());
+remove_filter(
+    'pre_option_woocommerce_veciahorra_webpay_plus_settings',
+    $woocommerceFallback
+);
 
 $appFiles = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(
     dirname(__DIR__, 2) . '/app',

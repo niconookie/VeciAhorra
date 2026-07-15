@@ -356,6 +356,8 @@
         var created = false;
         var checkoutIdempotencyKey = 'checkout:' + String(Date.now()) + ':'
             + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+        var paymentIdempotencyKey = 'payment:' + String(Date.now()) + ':'
+            + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
         var ambiguousAttempt = false;
         var requestSequence = 0;
         var activeController = null;
@@ -414,10 +416,12 @@
             );
             paymentMessage.textContent = data.message;
             paymentAction.hidden = true;
+            paymentAction.removeAttribute('data-va-start-payment');
             paymentRefresh.hidden = data.terminal !== true;
             if (action === 'redirect_to_webpay' && typeof data.redirect_url === 'string') {
                 paymentAction.textContent = 'Continuar a Webpay';
-                paymentAction.href = data.redirect_url;
+                paymentAction.href = '#';
+                paymentAction.setAttribute('data-va-start-payment', 'true');
                 paymentAction.hidden = false;
             } else if (action === 'retry_payment') {
                 paymentAction.textContent = 'Iniciar un nuevo pago';
@@ -686,6 +690,88 @@
             }) : [{ message: 'La compra ya no es válida. Debes validarla nuevamente.' }];
         }
 
+        function startPayment(checkoutId) {
+            var controller = new AbortController();
+            var timer;
+            var options;
+
+            if (!validCheckoutPublicId(checkoutId)) {
+                return Promise.reject({
+                    code: 'invalid_response',
+                    message: 'El servidor no entregó un checkout_id válido.'
+                });
+            }
+
+            options = requestOptions(controller.signal);
+            options.headers = Object.assign({}, options.headers || {}, {
+                'Idempotency-Key': paymentIdempotencyKey
+            });
+            status.hidden = false;
+            status.textContent = 'Iniciando pago seguro…';
+            timer = window.setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT);
+
+            return config.api.post('/payments/session', {
+                checkout_id: checkoutId
+            }, options).then(function (payload) {
+                var data = payload && payload.success === true ? payload.data : null;
+
+                if (!data || typeof data.payment_session_id !== 'string'
+                    || typeof data.redirect_url !== 'string'
+                    || typeof data.token_ws !== 'string') {
+                    throw { code: 'invalid_response', message: 'La sesión de pago no entregó una redirección válida.' };
+                }
+                submitWebpay(data.redirect_url, data.token_ws);
+                return payload;
+            }).catch(function (requestError) {
+                showValidationErrors([{
+                    message: communicationMessage(requestError)
+                }]);
+                status.textContent = 'El pedido fue creado, pero no fue posible iniciar el pago.';
+                return null;
+            }).finally(function () {
+                window.clearTimeout(timer);
+            });
+        }
+
+        function submitWebpay(redirectUrl, token) {
+            var allowedHosts = [
+                'webpay3gint.transbank.cl',
+                'webpay3g.transbank.cl'
+            ];
+            var redirect;
+            var form;
+            var input;
+
+            if (typeof redirectUrl !== 'string' || typeof token !== 'string'
+                || !/^[A-Za-z0-9]{16,191}$/.test(token)) {
+                throw { code: 'invalid_response', message: 'La redirección Webpay es incompatible.' };
+            }
+            redirect = new URL(redirectUrl, window.location.href);
+            if (redirect.protocol !== 'https:'
+                || allowedHosts.indexOf(redirect.hostname.toLowerCase()) === -1
+                || redirect.username !== '' || redirect.password !== ''
+                || (redirect.port !== '' && redirect.port !== '443')) {
+                throw { code: 'invalid_response', message: 'La URL de Webpay no es segura.' };
+            }
+
+            form = document.createElement('form');
+            input = document.createElement('input');
+            form.method = 'POST';
+            form.action = redirect.href;
+            input.type = 'hidden';
+            input.name = 'token_ws';
+            input.value = token;
+            form.append(input);
+            document.body.append(form);
+
+            try {
+                form.submit();
+            } catch (error) {
+                form.remove();
+                throw error;
+            }
+        }
+
         function createCheckout() {
             var controller;
             var timer;
@@ -731,7 +817,9 @@
                     return null;
                 }
                 renderCheckoutResult(result);
-                return payload;
+                return startPayment(
+                    result.data.checkout && result.data.checkout.checkout_id
+                );
             }).catch(function (requestError) {
                 ambiguousAttempt = timedOut || !requestError
                     || [400, 401, 403, 409, 422].indexOf(requestError.status) === -1
@@ -921,7 +1009,7 @@
                     return null;
                 }
                 applyValidation(normalizedValidation(payload, visibleItems));
-                return payload;
+                return validated ? createCheckout() : payload;
             }).catch(function (requestError) {
                 if (requestId !== requestSequence) {
                     return null;
@@ -956,6 +1044,14 @@
             paymentRefresh.addEventListener('click', function () {
                 if (!paymentInFlight) {
                     paymentStartedAt = Date.now(); paymentStopped = false; pollPaymentStatus();
+                }
+            });
+        }
+        if (paymentAction) {
+            paymentAction.addEventListener('click', function (event) {
+                if (paymentAction.getAttribute('data-va-start-payment') === 'true') {
+                    event.preventDefault();
+                    startPayment(checkoutPublicId);
                 }
             });
         }

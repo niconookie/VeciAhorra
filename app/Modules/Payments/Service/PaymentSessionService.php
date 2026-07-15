@@ -314,7 +314,7 @@ final class PaymentSessionService
             throw new RecordNotFoundException('La sesion de pago no existe.');
         }
         if ($owned['status'] === PaymentSession::STATUS_READY) {
-            return $this->publicData($owned, (string) $owned['checkout_public_id'], true);
+            return $this->publicData($owned, (string) $owned['checkout_public_id'], true, true);
         }
         if (in_array($owned['status'], [
             PaymentSession::STATUS_CREATE_PROCESSING,
@@ -324,7 +324,7 @@ final class PaymentSessionService
             PaymentSession::STATUS_CANCELLED,
             PaymentSession::STATUS_CONFIRMED,
         ], true)) {
-            return $this->publicData($owned, (string) $owned['checkout_public_id'], $reused);
+            return $this->publicData($owned, (string) $owned['checkout_public_id'], $reused, true);
         }
 
         $claimOwner = bin2hex(random_bytes(24));
@@ -348,7 +348,7 @@ final class PaymentSessionService
         if ($claimed === null) {
             $stored = $this->sessionRepository->findOwnedByPublicId($publicId, $owner)
                 ?? throw new RecordNotFoundException('La sesion de pago no existe.');
-            return $this->publicData($stored, (string) $stored['checkout_public_id'], true);
+            return $this->publicData($stored, (string) $stored['checkout_public_id'], true, true);
         }
 
         $version = (int) $claimed['create_version'];
@@ -361,7 +361,7 @@ final class PaymentSessionService
         )) {
             $stored = $this->sessionRepository->findOwnedByPublicId($publicId, $owner)
                 ?? throw new RecordNotFoundException('La sesion de pago no existe.');
-            return $this->publicData($stored, (string) $stored['checkout_public_id'], true);
+            return $this->publicData($stored, (string) $stored['checkout_public_id'], true, true);
         }
 
         try {
@@ -398,7 +398,7 @@ final class PaymentSessionService
 
         $stored = $this->sessionRepository->findOwnedByPublicId($publicId, $owner)
             ?? throw new RecordNotFoundException('La sesion de pago no existe.');
-        return $this->publicData($stored, (string) $stored['checkout_public_id'], $reused);
+        return $this->publicData($stored, (string) $stored['checkout_public_id'], $reused, true);
     }
 
     private function persistCreateResult(
@@ -503,7 +503,8 @@ final class PaymentSessionService
         return $this->publicData(
             $session,
             (string) $session['checkout_public_id'],
-            null
+            null,
+            false
         );
     }
 
@@ -585,7 +586,8 @@ final class PaymentSessionService
     private function publicData(
         array $session,
         string $checkoutPublicId,
-        ?bool $reused
+        ?bool $reused,
+        bool $includeRedirectToken
     ): array {
         $data = [
             'payment_session_id' => (string) $session['public_id'],
@@ -604,11 +606,61 @@ final class PaymentSessionService
             $data['redirect_url'] = $session['redirect_url'];
         }
 
+        if ($includeRedirectToken) {
+            $token = $this->redirectToken($session, $checkoutPublicId);
+
+            if ($token !== null) {
+                $data['token_ws'] = $token;
+            }
+        }
+
         if ($reused !== null) {
             $data['reused'] = $reused;
         }
 
         return $data;
+    }
+
+    private function redirectToken(
+        array $session,
+        string $checkoutPublicId
+    ): ?string {
+        $token = $session['provider_session_id'] ?? null;
+        $url = $session['redirect_url'] ?? null;
+        $expiresAt = $session['expires_at'] ?? null;
+
+        if (
+            ($session['status'] ?? null) !== PaymentSession::STATUS_READY
+            || ($session['provider'] ?? null) !== 'webpay_plus'
+            || ! is_string($token)
+            || preg_match('/^[A-Za-z0-9]{16,191}$/D', $token) !== 1
+            || ! is_string($expiresAt)
+            || $expiresAt <= current_time('mysql')
+        ) {
+            return null;
+        }
+
+        $origin = $this->originRepository->findByPaymentAttemptId(
+            (string) ($session['public_id'] ?? '')
+        );
+
+        if (
+            $origin === null
+            || $origin->paymentAttemptId() !== ($session['public_id'] ?? null)
+            || $origin->originResourceId() !== $checkoutPublicId
+            || $origin->gatewayId() !== 'webpay_plus'
+            || $origin->expiresAt() < $expiresAt
+            || $origin->tokenHash() === null
+            || ! hash_equals($origin->tokenHash(), hash('sha256', $token))
+            || ! WebpayPaymentGateway::isAllowedPaymentUrl(
+                $origin->environment(),
+                $url
+            )
+        ) {
+            return null;
+        }
+
+        return $token;
     }
 
     private function localAttemptData(

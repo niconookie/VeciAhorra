@@ -115,6 +115,10 @@ foreach ([
 assertFrontendFoundationSame(0, $config['currentUser']['id']);
 assertFrontendFoundationSame(false, $config['currentUser']['loggedIn']);
 assertFrontendFoundationSame('', $config['nonce']);
+assertFrontendFoundation(
+    ! str_contains($config['locale'], '_'),
+    'El locale frontend no usa una etiqueta BCP 47 valida.'
+);
 
 $renderer = new ViewRenderer();
 $unsafeRejected = false;

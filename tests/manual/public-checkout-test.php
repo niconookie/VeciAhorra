@@ -120,6 +120,10 @@ foreach ([
     "'delivery'", 'summary.totalCents >= minimumCents',
     "['address', 'commune']", 'aria-invalid', 'aria-describedby',
     'event.preventDefault()', "'/checkout'", 'Resultado pendiente',
+    "'/payments/session'", 'paymentIdempotencyKey',
+    "form.method = 'POST'", 'form.action = redirect.href',
+    "input.name = 'token_ws'", 'input.value = token',
+    'document.body.append(form)', 'form.submit()', 'form.remove()',
     'Debes iniciar sesión para crear el pedido.',
     'Recarga la página y revisa tus pedidos',
     '[400, 401, 403, 409, 422]',
@@ -139,7 +143,7 @@ assertPublicCheckout(
 );
 foreach ([
     'config.api.patch', 'config.api.delete',
-    '/orders', '/reservations', '/payments', '/deliveries',
+    '/orders', '/reservations', '/deliveries',
     'localStorage', 'sessionStorage',
 ] as $forbidden) {
     assertPublicCheckout(
@@ -154,6 +158,22 @@ assertPublicCheckout(
 assertPublicCheckout(
     substr_count($javascript, "'/checkout'") === 1,
     'Debe existir una sola llamada al endpoint transaccional.'
+);
+assertPublicCheckout(
+    substr_count($javascript, "'/payments/session'") === 1,
+    'Debe existir una sola llamada al inicio durable de pago.'
+);
+assertPublicCheckout(
+    ! str_contains($javascript, 'window.location.assign('),
+    'Checkout navega a Webpay mediante GET.'
+);
+assertPublicCheckout(
+    substr_count($javascript, "input.name = 'token_ws'") === 1,
+    'El formulario Webpay no contiene exactamente un token_ws.'
+);
+assertPublicCheckout(
+    ! str_contains($javascript, 'paymentAction.href = data.redirect_url'),
+    'La recuperacion de PaymentSession navega a Webpay mediante GET.'
 );
 foreach ([
     '.veciahorra-frontend .va-checkout',

@@ -142,12 +142,12 @@ final class FrontendAssets
                 'id' => $userId > 0 ? $userId : 0,
                 'loggedIn' => $userId > 0,
             ],
-            'locale' => sanitize_text_field(determine_locale()),
+            'locale' => str_replace('_', '-', sanitize_text_field(determine_locale())),
             'currency' => 'CLP',
             'pages' => [
                 'cart' => esc_url_raw((string) apply_filters(
                     'veciahorra_frontend_cart_url',
-                    home_url('/carrito/')
+                    home_url('/carrito-veciahorra/')
                 )),
                 'checkout' => esc_url_raw($this->checkoutUrl()),
                 'orders' => esc_url_raw(home_url('/mis-pedidos/')),

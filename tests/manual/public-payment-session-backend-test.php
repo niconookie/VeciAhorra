@@ -352,6 +352,7 @@ try {
     assertPublicPaymentBackendSame('ready', $firstSession['status']);
     assertPublicPaymentBackendSame('webpay_plus', $firstSession['provider']);
     assertPublicPaymentBackend(isset($firstSession['redirect_url']), 'Falta redirect durable.');
+    assertPublicPaymentBackend(! isset($firstSession['token_ws']), 'GET interno expuso token_ws.');
     assertPublicPaymentBackendSame('1', trim((string) file_get_contents($callCounter)));
     $statusProjection = new PublicPaymentStatusService();
     $redirectProjection = $statusProjection->project(
@@ -394,6 +395,11 @@ try {
         $replayedSession['payment_session_id']
     );
     assertPublicPaymentBackendSame(true, $replayedSession['reused']);
+    assertPublicPaymentBackend(
+        isset($replayedSession['token_ws'])
+            && preg_match('/^[A-Za-z0-9]{16,191}$/D', $replayedSession['token_ws']) === 1,
+        'POST ready no proyecto token_ws.'
+    );
     assertPublicPaymentBackendSame(
         1,
         (int) $wpdb->get_var($wpdb->prepare(
@@ -421,6 +427,42 @@ try {
         'La respuesta publica expuso token_hash.'
     );
 
+    $sessionRowId = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM {$sessionsTable} WHERE public_id=%s",
+        $firstSession['payment_session_id']
+    ));
+    $wpdb->update(
+        $sessionsTable,
+        ['redirect_url' => 'https://example.test/not-webpay'],
+        ['id' => $sessionRowId]
+    );
+    $invalidUrlProjection = $paymentSessionService->start(
+        $multiple['checkout_id'],
+        $key,
+        ['user_id' => $ownerId, 'session_id' => null]
+    );
+    assertPublicPaymentBackend(
+        ! isset($invalidUrlProjection['token_ws']),
+        'Una URL no permitida expuso token_ws.'
+    );
+    $wpdb->update($sessionsTable, [
+        'redirect_url' => $replayedSession['redirect_url'],
+        'provider_session_id' => '',
+    ], ['id' => $sessionRowId]);
+    $emptyTokenProjection = $paymentSessionService->start(
+        $multiple['checkout_id'],
+        $key,
+        ['user_id' => $ownerId, 'session_id' => null]
+    );
+    assertPublicPaymentBackend(
+        ! isset($emptyTokenProjection['token_ws']),
+        'Un token vacio fue proyectado.'
+    );
+    $wpdb->update($sessionsTable, [
+        'provider_session_id' => $replayedSession['token_ws'],
+        'redirect_url' => $replayedSession['redirect_url'],
+    ], ['id' => $sessionRowId]);
+
     $wpdb->update($ordersTable, ['total' => '3001.00'], ['id' => $orderThree]);
 
     try {
@@ -447,6 +489,7 @@ try {
         $firstSession['payment_session_id'],
         $recovered['payment_session_id']
     );
+    assertPublicPaymentBackend(! isset($recovered['token_ws']), 'GET de PaymentSession expuso token_ws.');
 
     wp_set_current_user($ownerId);
     $checkoutRest = rest_do_request(new WP_REST_Request(
@@ -460,6 +503,10 @@ try {
             . $firstSession['payment_session_id']
     ));
     assertPublicPaymentBackendSame(200, $sessionRest->get_status());
+    assertPublicPaymentBackend(
+        ! isset($sessionRest->get_data()['data']['token_ws']),
+        'GET REST de PaymentSession expuso token_ws.'
+    );
     $startRestRequest = new WP_REST_Request(
         'POST',
         '/veciahorra/v1/payments/session'
@@ -477,6 +524,10 @@ try {
     assertPublicPaymentBackendSame(
         $firstSession['payment_session_id'],
         $startRest->get_data()['data']['payment_session_id'] ?? null
+    );
+    assertPublicPaymentBackendSame(
+        $replayedSession['token_ws'],
+        $startRest->get_data()['data']['token_ws'] ?? null
     );
     assertPublicPaymentBackendSame(
         400,

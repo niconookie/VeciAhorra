@@ -13,11 +13,15 @@ final class PaymentGatewayConfiguration
 
     public static function gateway(): string
     {
-        $gateway = strtolower(trim(self::value(
+        $configured = self::configuredValue(
             'VECIAHORRA_PAYMENT_GATEWAY',
-            'payment_gateway',
-            self::GATEWAY_MOCK
-        )));
+            'payment_gateway'
+        );
+        $gateway = $configured === null
+            ? (self::woocommerceWebpayEnabled()
+                ? self::GATEWAY_WEBPAY
+                : self::GATEWAY_MOCK)
+            : strtolower(trim($configured));
 
         if (! in_array($gateway, [
             self::GATEWAY_MOCK,
@@ -33,32 +37,56 @@ final class PaymentGatewayConfiguration
 
     public static function webpay(): WebpayGatewayConfiguration
     {
+        $gatewayConfigured = self::configuredValue(
+            'VECIAHORRA_PAYMENT_GATEWAY',
+            'payment_gateway'
+        ) !== null;
+        $configured = [
+            self::configuredValue('VECIAHORRA_WEBPAY_ENVIRONMENT', 'webpay_environment'),
+            self::configuredValue('VECIAHORRA_WEBPAY_COMMERCE_CODE', 'webpay_commerce_code'),
+            self::configuredValue('VECIAHORRA_WEBPAY_API_KEY', 'webpay_api_key'),
+            self::configuredValue('VECIAHORRA_WEBPAY_RETURN_URL', 'webpay_return_url'),
+        ];
+
+        if (! $gatewayConfigured && $configured === [null, null, null, null]) {
+            $settings = get_option(
+                'woocommerce_veciahorra_webpay_plus_settings',
+                []
+            );
+
+            if (is_array($settings) && self::woocommerceWebpayEnabled($settings)) {
+                return new WebpayGatewayConfiguration(
+                    (string) ($settings['mode'] ?? 'integration'),
+                    (string) ($settings['commerce_code'] ?? ''),
+                    (string) ($settings['api_key'] ?? ''),
+                    home_url('/wp-json/veciahorra/v1/payments/webpay/return')
+                );
+            }
+        }
+
         return new WebpayGatewayConfiguration(
-            self::value(
-                'VECIAHORRA_WEBPAY_ENVIRONMENT',
-                'webpay_environment',
-                'integration'
-            ),
-            self::value(
-                'VECIAHORRA_WEBPAY_COMMERCE_CODE',
-                'webpay_commerce_code'
-            ),
-            self::value(
-                'VECIAHORRA_WEBPAY_API_KEY',
-                'webpay_api_key'
-            ),
-            self::value(
-                'VECIAHORRA_WEBPAY_RETURN_URL',
-                'webpay_return_url'
-            )
+            $configured[0] ?? 'integration',
+            $configured[1] ?? '',
+            $configured[2] ?? '',
+            $configured[3] ?? ''
         );
     }
 
-    private static function value(
+    private static function woocommerceWebpayEnabled(?array $settings = null): bool
+    {
+        $settings ??= get_option(
+            'woocommerce_veciahorra_webpay_plus_settings',
+            []
+        );
+
+        return is_array($settings)
+            && ($settings['enabled'] ?? 'no') === 'yes';
+    }
+
+    private static function configuredValue(
         string $constant,
-        string $environment,
-        string $default = ''
-    ): string {
+        string $environment
+    ): ?string {
         if (defined($constant)) {
             $value = constant($constant);
 
@@ -67,10 +95,7 @@ final class PaymentGatewayConfiguration
 
         $value = getenv($environment);
 
-        if (is_string($value) && $value !== '') {
-            return $value;
-        }
-
-        return $default;
+        return is_string($value) && $value !== '' ? $value : null;
     }
+
 }
