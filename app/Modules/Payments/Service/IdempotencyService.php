@@ -77,6 +77,7 @@ final class IdempotencyService
             'total_amount' => $amount,
             'orders' => array_values($orderIds),
             'fulfillment_method' => $fulfillmentMethod,
+            'gateway' => 'webpay_plus',
         ];
 
         return hash('sha256', (string) wp_json_encode(

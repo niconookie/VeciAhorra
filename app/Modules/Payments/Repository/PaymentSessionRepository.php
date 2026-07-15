@@ -227,17 +227,178 @@ class PaymentSessionRepository extends Repository
         $row = $this->db()->get_row($this->db()->prepare(
             sprintf(
                 'SELECT * FROM %s WHERE checkout_id = %%d'
-                . ' AND status IN (%%s, %%s) AND expires_at > %%s'
+                . ' AND status IN (%%s, %%s, %%s, %%s, %%s) AND expires_at > %%s'
                 . ' ORDER BY id DESC LIMIT 1',
                 $this->table(self::TABLE)
             ),
             $checkoutId,
             'pending',
+            PaymentSession::STATUS_CREATE_PROCESSING,
+            PaymentSession::STATUS_CREATE_RETRYABLE,
+            PaymentSession::STATUS_CREATE_AMBIGUOUS,
             'ready',
             $now
         ), ARRAY_A);
 
         return $row === null ? null : $row;
+    }
+
+    public function claimCreate(
+        int $id,
+        string $owner,
+        string $now,
+        string $leaseExpiresAt
+    ): ?array {
+        $this->assertActiveTransaction();
+        $row = $this->findForUpdate($id);
+        if ($row === null || (string) $row['expires_at'] <= $now) {
+            return null;
+        }
+        $status = (string) $row['status'];
+        $eligible = in_array($status, [
+            PaymentSession::STATUS_PENDING,
+            PaymentSession::STATUS_CREATE_RETRYABLE,
+        ], true) || ($status === PaymentSession::STATUS_CREATE_PROCESSING
+            && (string) ($row['create_lease_expires_at'] ?? '') <= $now
+            && empty($row['create_remote_started_at']));
+        if (! $eligible) {
+            return null;
+        }
+        $updated = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s SET status = %%s, create_owner = %%s,'
+                . ' create_version = create_version + 1,'
+                . ' create_lease_expires_at = %%s, create_started_at = %%s,'
+                . ' create_remote_started_at = NULL,'
+                . ' create_attempt_count = create_attempt_count + 1,'
+                . ' create_last_result = %%s, updated_at = %%s'
+                . ' WHERE id = %%d AND create_version = %%d AND status = %%s',
+                $this->table(self::TABLE)
+            ),
+            PaymentSession::STATUS_CREATE_PROCESSING,
+            $owner,
+            $leaseExpiresAt,
+            $now,
+            'claimed',
+            $now,
+            $id,
+            (int) $row['create_version'],
+            $status
+        ));
+        if ($updated !== 1) {
+            return null;
+        }
+        return $this->find($id);
+    }
+
+    public function markCreateRemoteStarted(
+        int $id,
+        string $owner,
+        int $version,
+        string $now
+    ): bool {
+        $updated = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s SET create_remote_started_at = %%s,'
+                . ' create_last_result = %%s, updated_at = %%s'
+                . ' WHERE id = %%d AND status = %%s AND create_owner = %%s'
+                . ' AND create_version = %%d AND create_lease_expires_at > %%s'
+                . ' AND create_remote_started_at IS NULL',
+                $this->table(self::TABLE)
+            ),
+            $now, 'remote_started', $now, $id,
+            PaymentSession::STATUS_CREATE_PROCESSING, $owner, $version, $now
+        ));
+        return $updated === 1;
+    }
+
+    public function completeCreate(
+        int $id,
+        string $owner,
+        int $version,
+        string $provider,
+        string $token,
+        string $redirectUrl,
+        string $expiresAt,
+        string $now
+    ): bool {
+        $this->assertActiveTransaction();
+        $updated = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s SET status = %%s, provider = %%s,'
+                . ' provider_session_id = %%s, redirect_url = %%s,'
+                . ' expires_at = %%s, create_owner = NULL,'
+                . ' create_lease_expires_at = NULL, create_last_result = %%s,'
+                . ' updated_at = %%s WHERE id = %%d AND status = %%s'
+                . ' AND create_owner = %%s AND create_version = %%d'
+                . ' AND create_lease_expires_at > %%s',
+                $this->table(self::TABLE)
+            ),
+            PaymentSession::STATUS_READY, $provider, $token, $redirectUrl,
+            $expiresAt, 'redirect_ready', $now, $id,
+            PaymentSession::STATUS_CREATE_PROCESSING, $owner, $version, $now
+        ));
+        return $updated === 1;
+    }
+
+    public function finishCreateFailure(
+        int $id,
+        string $owner,
+        int $version,
+        string $status,
+        string $result,
+        string $now
+    ): bool {
+        if (! in_array($status, [PaymentSession::STATUS_CREATE_RETRYABLE,
+            PaymentSession::STATUS_CREATE_AMBIGUOUS,
+            PaymentSession::STATUS_CREATE_FAILED], true)) {
+            throw new \InvalidArgumentException('Estado de create invalido.');
+        }
+        $updated = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s SET status = %%s, create_owner = NULL,'
+                . ' create_lease_expires_at = NULL, create_last_result = %%s,'
+                . ' updated_at = %%s WHERE id = %%d AND status = %%s'
+                . ' AND create_owner = %%s AND create_version = %%d',
+                $this->table(self::TABLE)
+            ),
+            $status, $result, $now, $id,
+            PaymentSession::STATUS_CREATE_PROCESSING, $owner, $version
+        ));
+        return $updated === 1;
+    }
+
+    /** @return list<int> */
+    public function findExpiredCreateClaims(string $now, int $limit = 100): array
+    {
+        $rows = $this->db()->get_col($this->db()->prepare(
+            sprintf(
+                'SELECT id FROM %s WHERE status = %%s'
+                . ' AND create_lease_expires_at <= %%s ORDER BY id ASC LIMIT %%d',
+                $this->table(self::TABLE)
+            ),
+            PaymentSession::STATUS_CREATE_PROCESSING, $now, $limit
+        ));
+        return array_map('intval', $rows);
+    }
+
+    public function classifyExpiredCreateClaim(int $id, string $now): bool
+    {
+        $this->assertActiveTransaction();
+        $row = $this->findForUpdate($id);
+        if ($row === null || $row['status'] !== PaymentSession::STATUS_CREATE_PROCESSING
+            || (string) $row['create_lease_expires_at'] > $now) {
+            return false;
+        }
+        $status = empty($row['create_remote_started_at'])
+            ? PaymentSession::STATUS_CREATE_RETRYABLE
+            : PaymentSession::STATUS_CREATE_AMBIGUOUS;
+        return $this->finishCreateFailure(
+            $id, (string) $row['create_owner'], (int) $row['create_version'],
+            $status, $status === PaymentSession::STATUS_CREATE_AMBIGUOUS
+                ? 'abandoned_after_remote_start' : 'abandoned_before_remote_start',
+            $now
+        );
     }
 
     public function findOwnedByPublicId(string $publicId, array $owner): ?array
@@ -335,6 +496,28 @@ class PaymentSessionRepository extends Repository
                 );
             }
         }
+    }
+
+    public function expirePending(int $id, string $now): bool
+    {
+        $this->assertPositive($id, 'payment_session_id');
+        $this->assertActiveTransaction();
+        $updated = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s SET status = %%s, updated_at = %%s'
+                . ' WHERE id = %%d AND status = %%s AND expires_at <= %%s',
+                $this->table(self::TABLE)
+            ),
+            PaymentSession::STATUS_EXPIRED,
+            $now,
+            $id,
+            PaymentSession::STATUS_PENDING,
+            $now
+        ));
+        if ($updated === false) {
+            throw new PersistenceException('No fue posible expirar el intento local.');
+        }
+        return $updated === 1;
     }
 
     private function assertActiveTransaction(): void

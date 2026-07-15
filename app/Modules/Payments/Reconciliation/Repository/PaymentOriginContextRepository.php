@@ -112,6 +112,16 @@ final class PaymentOriginContextRepository extends Repository
         return $row === null ? null : $this->hydrate($row);
     }
 
+    public function idByPaymentAttemptId(string $paymentAttemptId): ?int
+    {
+        $value = $this->db()->get_var($this->db()->prepare(
+            sprintf('SELECT id FROM %s WHERE payment_attempt_id = %%s LIMIT 1',
+                $this->table(self::TABLE)),
+            $paymentAttemptId
+        ));
+        return $value === null ? null : (int) $value;
+    }
+
     public function findByTokenHash(string $tokenHash): ?DurablePaymentOrigin
     {
         ReconciliationValidation::hash($tokenHash, 'token_hash');
@@ -150,13 +160,14 @@ final class PaymentOriginContextRepository extends Repository
                 sprintf(
                     'UPDATE %s SET token_hash = %%s, updated_at = %%s'
                     . ' WHERE id = %%d AND payment_attempt_id = %%s'
-                    . ' AND token_hash IS NULL AND expires_at > UTC_TIMESTAMP()',
+                    . ' AND token_hash IS NULL AND expires_at > %%s',
                     $this->table(self::TABLE)
                 ),
                 $tokenHash,
                 $updatedAt,
                 $originContextId,
-                $paymentAttemptId
+                $paymentAttemptId,
+                $updatedAt
             ));
         } finally {
             $database->suppress_errors($previousSuppression);

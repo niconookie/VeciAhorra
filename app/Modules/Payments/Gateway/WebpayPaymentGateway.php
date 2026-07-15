@@ -46,13 +46,11 @@ final class WebpayPaymentGateway implements
         PaymentSessionContext $context
     ): GatewaySessionResult {
         $amount = $this->amount($context->amount);
-        $buyOrder = WebpayTransactionReference::buyOrder(
-            $context->checkoutId,
-            $context->idempotencyKey
+        $buyOrder = $context->buyOrder ?? WebpayTransactionReference::buyOrder(
+            $context->checkoutId, $context->idempotencyKey
         );
-        $sessionId = WebpayTransactionReference::sessionId(
-            $context->checkoutId
-        );
+        $sessionId = $context->financialSessionId
+            ?? WebpayTransactionReference::sessionId($context->checkoutId);
 
         try {
             $response = $this->transaction->create(

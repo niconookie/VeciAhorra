@@ -24,6 +24,7 @@ use VeciAhorra\Database\Migrations\CreateDeliveryCompletionsTable;
 use VeciAhorra\Database\Migrations\EnsureUniqueDeliveryOrder;
 use VeciAhorra\Database\Migrations\CreateFulfillmentCompletionsTable;
 use VeciAhorra\Database\Migrations\EnsureUniqueFulfillmentCompletion;
+use VeciAhorra\Database\Migrations\AddDurableWebpayCreateState;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -99,6 +100,7 @@ final class MigrationManager
             new CreateCheckoutsTable(),
             new CreateCheckoutOrdersTable(),
             new CreatePaymentSessionsTable(),
+            new AddDurableWebpayCreateState(),
             new CreatePaymentOriginContextsTable(),
             new CreateWebpayReturnsTable(),
             new CreatePaymentReconciliationsTable(),

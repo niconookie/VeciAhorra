@@ -9,6 +9,10 @@ use InvalidArgumentException;
 final class PaymentSession
 {
     public const STATUS_PENDING = 'pending';
+    public const STATUS_CREATE_PROCESSING = 'create_processing';
+    public const STATUS_CREATE_RETRYABLE = 'create_retryable';
+    public const STATUS_CREATE_AMBIGUOUS = 'create_ambiguous';
+    public const STATUS_CREATE_FAILED = 'create_failed';
     public const STATUS_READY = 'ready';
     public const STATUS_CONFIRMED = 'confirmed';
     public const STATUS_EXPIRED = 'expired';
@@ -118,6 +122,10 @@ final class PaymentSession
     {
         return in_array($status, [
             self::STATUS_PENDING,
+            self::STATUS_CREATE_PROCESSING,
+            self::STATUS_CREATE_RETRYABLE,
+            self::STATUS_CREATE_AMBIGUOUS,
+            self::STATUS_CREATE_FAILED,
             self::STATUS_READY,
             self::STATUS_CONFIRMED,
             self::STATUS_EXPIRED,
