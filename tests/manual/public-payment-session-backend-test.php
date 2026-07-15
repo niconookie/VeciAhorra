@@ -27,6 +27,7 @@ use VeciAhorra\Modules\Payments\Gateway\WebpayReturnGatewayInterface;
 use VeciAhorra\Modules\Payments\Gateway\WebpayCommitResult;
 use VeciAhorra\Modules\Payments\Repository\WebpayReturnRepository;
 use VeciAhorra\Modules\Payments\Service\WebpayReturnService;
+use VeciAhorra\Modules\Payments\Service\PublicPaymentStatusService;
 use VeciAhorra\Modules\Payments\Requests\WebpayReturnRequest;
 
 putenv('webpay_environment=integration');
@@ -352,6 +353,37 @@ try {
     assertPublicPaymentBackendSame('webpay_plus', $firstSession['provider']);
     assertPublicPaymentBackend(isset($firstSession['redirect_url']), 'Falta redirect durable.');
     assertPublicPaymentBackendSame('1', trim((string) file_get_contents($callCounter)));
+    $statusProjection = new PublicPaymentStatusService();
+    $redirectProjection = $statusProjection->project(
+        $multiple['checkout_id'],
+        ['user_id' => $ownerId, 'session_id' => null]
+    );
+    assertPublicPaymentBackendSame('redirect_ready', $redirectProjection['payment_status']);
+    assertPublicPaymentBackendSame('redirect_to_webpay', $redirectProjection['next_action']);
+    assertPublicPaymentBackend(isset($redirectProjection['redirect_url']), 'Proyeccion sin URL durable.');
+    wp_set_current_user($ownerId);
+    $statusResponse = rest_do_request(new WP_REST_Request(
+        'GET',
+        '/veciahorra/v1/checkout/' . $multiple['checkout_id'] . '/payment-status'
+    ));
+    assertPublicPaymentBackendSame(200, $statusResponse->get_status());
+    assertPublicPaymentBackend(
+        str_contains((string) $statusResponse->get_headers()['Cache-Control'], 'no-store'),
+        'La proyeccion publica permite cache compartida.'
+    );
+    $encodedStatus = wp_json_encode($statusResponse->get_data());
+    foreach (['token_hash', 'lease_owner', 'fingerprint', 'buy_order'] as $secret) {
+        assertPublicPaymentBackend(! str_contains((string) $encodedStatus, $secret), 'Respuesta expuso ' . $secret);
+    }
+    wp_set_current_user(0);
+    try {
+        $statusProjection->project(
+            $multiple['checkout_id'],
+            ['user_id' => $otherOwnerId, 'session_id' => null]
+        );
+        throw new RuntimeException('La proyeccion expuso un Checkout ajeno.');
+    } catch (RecordNotFoundException) {
+    }
     $replayedSession = $paymentSessionService->start(
         $multiple['checkout_id'],
         $key,
@@ -621,6 +653,13 @@ try {
         "SELECT COUNT(*) FROM {$wpdb->prefix}" . Config::TABLE_PREFIX
             . 'webpay_returns WHERE token_hash=%s', $publicTokenHash
     )));
+    $verifyingProjection = $statusProjection->project(
+        $multiple['checkout_id'],
+        ['user_id' => $ownerId, 'session_id' => null]
+    );
+    assertPublicPaymentBackendSame('payment_verifying', $verifyingProjection['payment_status']);
+    assertPublicPaymentBackendSame('wait', $verifyingProjection['next_action']);
+    assertPublicPaymentBackendSame(null, $verifyingProjection['redirect_url']);
     assertPublicPaymentBackendSame(1, (int) $wpdb->get_var($wpdb->prepare(
         "SELECT COUNT(*) FROM {$wpdb->prefix}" . Config::TABLE_PREFIX
             . 'payment_reconciliations r JOIN ' . $originsTable

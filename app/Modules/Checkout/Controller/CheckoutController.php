@@ -9,12 +9,14 @@ use Throwable;
 use VeciAhorra\Modules\Checkout\Service\CheckoutService;
 use VeciAhorra\Exceptions\ConflictException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
+use VeciAhorra\Modules\Payments\Service\PublicPaymentStatusService;
 
 final class CheckoutController
 {
-    public function __construct(private CheckoutService $service)
-    {
-    }
+    public function __construct(
+        private CheckoutService $service,
+        private ?PublicPaymentStatusService $paymentStatus = null
+    ) {}
 
     public function validate(array $payload): array
     {
@@ -34,6 +36,14 @@ final class CheckoutController
     {
         return $this->execute(
             fn (): array => $this->service->get($publicId, $owner)
+        );
+    }
+
+    public function paymentStatus(string $publicId, array $owner): array
+    {
+        return $this->execute(fn (): array =>
+            ($this->paymentStatus ?? new PublicPaymentStatusService())
+                ->project($publicId, $owner)
         );
     }
 

@@ -22,6 +22,14 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
         <p class="va-empty-state__message"><?php esc_html_e('Agrega productos antes de continuar.', 'veciahorra'); ?></p>
     </div>
 
+    <section class="va-alert va-alert--info" tabindex="-1" aria-live="polite"
+        data-va-payment-status-panel hidden>
+        <h2><?php esc_html_e('Estado de tu pago', 'veciahorra'); ?></h2>
+        <p data-va-payment-status-message></p>
+        <a class="va-button" data-va-payment-status-action hidden></a>
+        <button class="va-button" type="button" data-va-payment-status-refresh hidden><?php esc_html_e('Actualizar estado', 'veciahorra'); ?></button>
+    </section>
+
     <div class="va-checkout__content" data-va-checkout-content hidden>
         <section class="va-checkout__summary" aria-labelledby="<?php echo esc_attr($instanceId . '-summary-title'); ?>">
             <h2 id="<?php echo esc_attr($instanceId . '-summary-title'); ?>"><?php esc_html_e('Resumen', 'veciahorra'); ?></h2>

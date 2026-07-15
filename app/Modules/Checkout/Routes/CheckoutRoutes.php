@@ -36,6 +36,16 @@ final class CheckoutRoutes
 
         register_rest_route(
             self::NAMESPACE,
+            self::RESOURCE . '/(?P<checkout_id>[^/]+)/payment-status',
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'paymentStatus'],
+                'permission_callback' => [$this, 'canAccessCheckout'],
+            ]
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
             self::RESOURCE . '/(?P<checkout_id>[^/]+)',
             [
                 'methods' => WP_REST_Server::READABLE,
@@ -133,6 +143,25 @@ final class CheckoutRoutes
         }
 
         return $this->response($this->controller->show($publicId, $owner));
+    }
+
+    public function paymentStatus(WP_REST_Request $request): WP_REST_Response
+    {
+        $owner = $this->ownerOrError($request);
+        if ($owner instanceof WP_REST_Response) {
+            return $owner;
+        }
+        $publicId = (string) ($request->get_url_params()['checkout_id'] ?? '');
+        $result = Checkout::validPublicId($publicId)
+            ? $this->controller->paymentStatus($publicId, $owner)
+            : ['success' => false, 'error' => [
+                'code' => 'resource_not_found',
+                'message' => 'El Checkout no esta disponible.',
+            ]];
+        $response = $this->response($result);
+        $response->header('Cache-Control', 'no-store, private, max-age=0');
+        $response->header('Pragma', 'no-cache');
+        return $response;
     }
 
     /** @return array{session_id: ?string, user_id: ?int}|WP_REST_Response */

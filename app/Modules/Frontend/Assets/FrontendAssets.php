@@ -150,6 +150,7 @@ final class FrontendAssets
                     home_url('/carrito/')
                 )),
                 'checkout' => esc_url_raw($this->checkoutUrl()),
+                'orders' => esc_url_raw(home_url('/mis-pedidos/')),
             ],
             'checkout' => [
                 'minimumDeliveryAmount' => max(0, $minimumDeliveryAmount),

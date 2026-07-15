@@ -361,6 +361,17 @@
         var activeController = null;
         var defaultSubmitText = 'Crear pedido';
         var authenticated = !!(config.currentUser && config.currentUser.loggedIn);
+        var paymentPanel = root.querySelector('[data-va-payment-status-panel]');
+        var paymentMessage = root.querySelector('[data-va-payment-status-message]');
+        var paymentAction = root.querySelector('[data-va-payment-status-action]');
+        var paymentRefresh = root.querySelector('[data-va-payment-status-refresh]');
+        var checkoutPublicId = new URL(window.location.href).searchParams.get('checkout_id');
+        var paymentTimer = null;
+        var paymentController = null;
+        var paymentStartedAt = 0;
+        var paymentInFlight = false;
+        var lastPaymentState = null;
+        var paymentStopped = false;
 
         function showError(message) {
             loading.hidden = true;
@@ -371,6 +382,97 @@
             validated = false;
             submit.textContent = defaultSubmitText;
             submit.disabled = true;
+        }
+
+        function validCheckoutPublicId(value) {
+            return typeof value === 'string' && /^chk_[A-Za-z0-9_-]{43}$/.test(value);
+        }
+
+        function stopPaymentPolling() {
+            paymentStopped = true;
+            if (paymentTimer !== null) { window.clearTimeout(paymentTimer); paymentTimer = null; }
+            if (paymentController) { paymentController.abort(); paymentController = null; }
+            paymentInFlight = false;
+        }
+
+        function paymentDelay(serverDelay) {
+            var elapsed = Date.now() - paymentStartedAt;
+            var floor = elapsed < 15000 ? 2500 : (elapsed < 60000 ? 5000 : 12000);
+            var requested = Number.isSafeInteger(serverDelay) ? serverDelay : floor;
+            return Math.max(floor, Math.min(requested, 15000));
+        }
+
+        function renderPaymentState(data) {
+            var action = data.next_action;
+            lastPaymentState = data;
+            loading.hidden = true; error.hidden = true; empty.hidden = true; content.hidden = true;
+            paymentPanel.hidden = false;
+            paymentPanel.className = 'va-alert ' + (
+                data.payment_status === 'completed' ? 'va-alert--success'
+                    : (data.payment_status === 'failed' || data.payment_status === 'manual_review'
+                        ? 'va-alert--error' : 'va-alert--info')
+            );
+            paymentMessage.textContent = data.message;
+            paymentAction.hidden = true;
+            paymentRefresh.hidden = data.terminal !== true;
+            if (action === 'redirect_to_webpay' && typeof data.redirect_url === 'string') {
+                paymentAction.textContent = 'Continuar a Webpay';
+                paymentAction.href = data.redirect_url;
+                paymentAction.hidden = false;
+            } else if (action === 'retry_payment') {
+                paymentAction.textContent = 'Iniciar un nuevo pago';
+                paymentAction.href = (config.pages && config.pages.checkout) || window.location.pathname;
+                paymentAction.hidden = false;
+            } else if (action === 'view_order') {
+                paymentAction.textContent = 'Ver mis pedidos';
+                paymentAction.href = (config.pages && config.pages.orders)
+                    || ((config.pages && config.pages.checkout) || window.location.pathname);
+                paymentAction.hidden = false;
+            }
+            if (data.terminal === true) {
+                stopPaymentPolling();
+                paymentPanel.focus();
+            }
+        }
+
+        function pollPaymentStatus() {
+            var timer;
+            var timedOut = false;
+            if (paymentStopped || !validCheckoutPublicId(checkoutPublicId) || paymentInFlight) { return Promise.resolve(null); }
+            if (paymentStartedAt > 0 && Date.now() - paymentStartedAt > 300000) {
+                stopPaymentPolling(); paymentRefresh.hidden = false; return Promise.resolve(lastPaymentState);
+            }
+            paymentInFlight = true;
+            paymentController = new AbortController();
+            timer = window.setTimeout(function () { timedOut = true; paymentController.abort(); }, REQUEST_TIMEOUT);
+            return config.api.get(
+                '/checkout/' + encodeURIComponent(checkoutPublicId) + '/payment-status',
+                requestOptions(paymentController.signal)
+            ).then(function (payload) {
+                var data = payload && payload.success === true ? payload.data : null;
+                if (!data || typeof data.payment_status !== 'string'
+                    || typeof data.terminal !== 'boolean' || typeof data.message !== 'string') {
+                    throw { code: 'invalid_response', message: 'Estado de pago incompleto.' };
+                }
+                renderPaymentState(data);
+                if (!data.terminal) {
+                    paymentTimer = window.setTimeout(pollPaymentStatus, paymentDelay(data.poll_after_ms));
+                }
+                return data;
+            }).catch(function () {
+                if (!timedOut && !lastPaymentState) {
+                    paymentPanel.hidden = false;
+                    paymentMessage.textContent = 'El estado no esta disponible temporalmente. Intenta actualizarlo.';
+                }
+                paymentRefresh.hidden = false;
+                if (!paymentStopped && paymentStartedAt > 0
+                    && Date.now() - paymentStartedAt < 300000) {
+                    paymentTimer = window.setTimeout(pollPaymentStatus, 10000);
+                }
+                return lastPaymentState;
+            }).finally(function () {
+                window.clearTimeout(timer); paymentController = null; paymentInFlight = false;
+            });
         }
 
         function clearValidationMessages() {
@@ -850,14 +952,32 @@
             validatePurchase();
         });
         retry.addEventListener('click', load);
+        if (paymentRefresh) {
+            paymentRefresh.addEventListener('click', function () {
+                if (!paymentInFlight) {
+                    paymentStartedAt = Date.now(); paymentStopped = false; pollPaymentStatus();
+                }
+            });
+        }
+        window.addEventListener('pagehide', stopPaymentPolling, { once: true });
 
         root.vaCheckout = {
             load: load,
             getSummary: function () { return calculated; },
             validate: function () { return validateForm(true); },
-            validatePurchase: validatePurchase
+            validatePurchase: validatePurchase,
+            pollPaymentStatus: pollPaymentStatus,
+            destroy: stopPaymentPolling
         };
-        load();
+        if (validCheckoutPublicId(checkoutPublicId) && paymentPanel
+            && paymentMessage && paymentAction && paymentRefresh) {
+            paymentStartedAt = Date.now();
+            paymentStopped = false;
+            loading.hidden = false;
+            pollPaymentStatus();
+        } else {
+            load();
+        }
     }
 
     function initialize() {

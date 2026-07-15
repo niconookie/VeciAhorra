@@ -123,9 +123,16 @@ foreach ([
     'Debes iniciar sesión para crear el pedido.',
     'Recarga la página y revisa tus pedidos',
     '[400, 401, 403, 409, 422]',
+    '/payment-status', 'pollPaymentStatus', 'poll_after_ms',
+    'paymentInFlight', 'pagehide', 'stopPaymentPolling',
+    'Date.now() - paymentStartedAt > 300000',
 ] as $contract) {
     assertPublicCheckoutContains($contract, $javascript);
 }
+assertPublicCheckout(
+    str_contains($controller->renderCheckout(), 'data-va-payment-status-panel'),
+    'Checkout no contiene la region accesible de estado de pago.'
+);
 assertPublicCheckout(
     substr_count($javascript, "config.api.get('/cart'") === 1,
     'Checkout debe cargar el carrito una vez por cada load.'
