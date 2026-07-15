@@ -18,7 +18,16 @@ final class DurableCompletionRecovery
         foreach ($wpdb->get_col(sprintf("SELECT id FROM {$p}payment_reconciliations r WHERE " . $eligible . ' ORDER BY id LIMIT 100', 'r.reconciliation_status', 'r')) as $id) {
             $this->scheduler->reconciliation((int) $id);
         }
-        foreach ($wpdb->get_col("SELECT r.id FROM {$p}payment_reconciliations r LEFT JOIN {$p}business_completions b ON b.reconciliation_id=r.id WHERE r.reconciliation_status='completed' AND (b.id IS NULL OR " . sprintf($eligible, 'b.status', 'b') . ') ORDER BY r.id LIMIT 100') as $id) {
+        $businessRecoverySql = $wpdb->prepare(
+            "SELECT r.id FROM {$p}payment_reconciliations r"
+            . " JOIN {$p}payment_origin_contexts o ON o.id=r.origin_context_id"
+            . " LEFT JOIN {$p}business_completions b ON b.reconciliation_id=r.id"
+            . " WHERE r.reconciliation_status='completed' AND o.origin=%s"
+            . " AND (b.id IS NULL OR " . sprintf($eligible, 'b.status', 'b') . ')'
+            . ' ORDER BY r.id LIMIT 100',
+            CompletionBranchPolicy::businessOrigin()
+        );
+        foreach ($wpdb->get_col($businessRecoverySql) as $id) {
             $this->scheduler->business((int) $id);
         }
         foreach ($wpdb->get_col("SELECT b.id FROM {$p}business_completions b LEFT JOIN {$p}delivery_completions d ON d.business_completion_id=b.id WHERE b.status='completed' AND (d.id IS NULL OR " . sprintf($eligible, 'd.completion_status', 'd') . ') ORDER BY b.id LIMIT 100') as $id) {

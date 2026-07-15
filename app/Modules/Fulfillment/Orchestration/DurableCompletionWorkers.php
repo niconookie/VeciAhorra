@@ -22,7 +22,10 @@ use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentReconciliationProc
 
 final class DurableCompletionWorkers
 {
-    public function __construct(private readonly DurableCompletionScheduler $scheduler = new DurableCompletionScheduler()) {}
+    public function __construct(
+        private readonly DurableCompletionScheduler $scheduler = new DurableCompletionScheduler(),
+        private readonly CompletionBranchPolicy $branches = new CompletionBranchPolicy()
+    ) {}
 
     public function reconciliation(int $id): void
     {
@@ -32,7 +35,9 @@ final class DurableCompletionWorkers
             (new PaymentReconciliationProcessor())->process($claim->lease());
         }
         $row = (new PaymentReconciliationRepository())->find($id);
-        if ($row?->status() === PaymentReconciliation::STATUS_COMPLETED) {
+        if ($row?->status() === PaymentReconciliation::STATUS_COMPLETED
+            && $this->branches->nextAfterReconciliation($row)
+                === CompletionBranchPolicy::BUSINESS_COMPLETION) {
             $this->scheduler->business($id);
         } elseif ($claim->status() === LeaseAcquireResult::BUSY
             || in_array($row?->status(), [PaymentReconciliation::STATUS_PENDING, PaymentReconciliation::STATUS_RETRYABLE, PaymentReconciliation::STATUS_PROCESSING], true)) {

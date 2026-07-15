@@ -23,6 +23,8 @@ require dirname(__DIR__, 2) . '/vendor/autoload.php';
 
 use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionScheduler;
 use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionRecovery;
+use VeciAhorra\Modules\Fulfillment\Orchestration\CompletionBranchPolicy;
+use VeciAhorra\Modules\Payments\Reconciliation\DTO\DurablePaymentOrigin;
 
 $scheduler = new DurableCompletionScheduler();
 $scheduler->reconciliation(519);
@@ -65,6 +67,13 @@ foreach (['PaymentSessionRepository', 'CheckoutRepository', 'OrderRepository', '
 $wpdb = new class {
     public string $prefix = 'wp_';
     public array $queries = [];
+    public function prepare(string $query, mixed ...$args): string
+    {
+        foreach ($args as $arg) {
+            $query = preg_replace('/%s/', "'" . addslashes((string) $arg) . "'", $query, 1);
+        }
+        return $query;
+    }
     public function get_col(string $query): array { $this->queries[] = $query; return []; }
 };
 (new DurableCompletionRecovery($scheduler))->recover();
@@ -75,6 +84,19 @@ foreach (['r.attempt_count', 'b.attempt_count', 'd.attempt_count', 'f.attempt_co
     if (! str_contains($wpdb->queries[$index], $qualified)) {
         throw new RuntimeException('Recovery contiene una columna ambigua: ' . $qualified);
     }
+}
+if (! str_contains($wpdb->queries[1], "o.origin='" . CompletionBranchPolicy::businessOrigin() . "'")) {
+    throw new RuntimeException('Recovery no limita BusinessCompletion al origen durable interno.');
+}
+$workerSource = file_get_contents($root . 'DurableCompletionWorkers.php');
+if (! str_contains($workerSource, 'nextAfterReconciliation($row)')) {
+    throw new RuntimeException('Worker no aplica la politica durable de origen.');
+}
+$branches = new CompletionBranchPolicy();
+if ($branches->nextForOrigin(DurablePaymentOrigin::ORIGIN_VECIAHORRA) !== CompletionBranchPolicy::BUSINESS_COMPLETION
+    || $branches->nextForOrigin(DurablePaymentOrigin::ORIGIN_WOOCOMMERCE) !== CompletionBranchPolicy::BRANCH_COMPLETED
+    || $branches->nextForOrigin('unknown') !== CompletionBranchPolicy::UNSUPPORTED) {
+    throw new RuntimeException('La politica durable de ramas no es exhaustiva o segura.');
 }
 
 echo "PASS durable-completion-orchestration-test actions=4 retry_backoff=120 capped=5 recovery_queries=4\n";
