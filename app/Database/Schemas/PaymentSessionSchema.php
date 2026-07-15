@@ -24,6 +24,13 @@ final class PaymentSessionSchema implements TableInterface
             ->string('idempotency_key', 128)
             ->string('request_fingerprint', 64)
             ->string('status', 30)->default('pending')
+            ->string('create_owner', 64)->nullable()
+            ->integerUnsigned('create_version')->default('0')
+            ->datetime('create_lease_expires_at')->nullable()
+            ->datetime('create_started_at')->nullable()
+            ->datetime('create_remote_started_at')->nullable()
+            ->integerUnsigned('create_attempt_count')->default('0')
+            ->string('create_last_result', 64)->nullable()
             ->string('provider', 50)->nullable()
             ->string('provider_session_id', 191)->nullable()
             ->text('redirect_url')->nullable()
@@ -50,6 +57,10 @@ final class PaymentSessionSchema implements TableInterface
             ->index(
                 ['status', 'expires_at'],
                 'payment_sessions_expiration_index'
+            )
+            ->index(
+                ['status', 'create_lease_expires_at'],
+                'payment_sessions_create_recovery_index'
             )
             ->index(
                 'confirmation_fingerprint',
