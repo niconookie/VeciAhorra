@@ -149,12 +149,16 @@ assertFrontendFoundation(
     str_contains($html, 'class="veciahorra-frontend"'),
     'Placeholder no contiene raiz frontend.'
 );
-foreach (['va-card', 'va-alert', 'va-empty-state', 'va-loader', 'va-button'] as $class) {
+foreach (['va-catalog', 'va-catalog__hero', 'va-empty-state', 'va-loader', 'va-button'] as $class) {
     assertFrontendFoundation(
         str_contains($html, $class),
         "No se renderizo componente {$class}."
     );
 }
+assertFrontendFoundation(
+    wp_script_is(FrontendAssets::CATALOG_SCRIPT_HANDLE, 'enqueued'),
+    'Catalogo no encolo su JavaScript.'
+);
 $secondHtml = $controller->renderPlaceholder();
 assertFrontendFoundation(
     str_contains($html, 'id="va-frontend-1"')

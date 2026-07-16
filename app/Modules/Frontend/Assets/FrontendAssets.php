@@ -17,6 +17,7 @@ final class FrontendAssets
     public const STYLE_HANDLE = 'veciahorra-frontend';
     public const SCRIPT_HANDLE = 'veciahorra-frontend';
     public const OFFER_SCRIPT_HANDLE = 'veciahorra-product-offers';
+    public const CATALOG_SCRIPT_HANDLE = 'veciahorra-catalog';
     public const CART_SCRIPT_HANDLE = 'veciahorra-cart';
     public const CHECKOUT_SCRIPT_HANDLE = 'veciahorra-checkout';
     public const REST_NAMESPACE = 'veciahorra/v1';
@@ -51,6 +52,13 @@ final class FrontendAssets
             true
         );
         wp_register_script(
+            self::CATALOG_SCRIPT_HANDLE,
+            $baseUrl . 'js/veciahorra-catalog.js',
+            [self::SCRIPT_HANDLE],
+            Config::PLUGIN_VERSION,
+            true
+        );
+        wp_register_script(
             self::OFFER_SCRIPT_HANDLE,
             $baseUrl . 'js/veciahorra-product-offers.js',
             [self::SCRIPT_HANDLE],
@@ -81,6 +89,16 @@ final class FrontendAssets
 
         $this->enqueue();
         wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);
+    }
+
+    public function enqueueCatalog(): void
+    {
+        if (is_admin()) {
+            return;
+        }
+
+        $this->enqueue();
+        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);
     }
 
     public function enqueueCart(): void

@@ -76,6 +76,55 @@ foreach ($desiredStore as $field => $value) {
     }
 }
 
+$demoImage = static function (string $assetName, string $alt): int {
+    $assetKey = 'veciahorra-demo-' . sanitize_key(pathinfo($assetName, PATHINFO_FILENAME));
+    $existing = get_posts([
+        'post_type' => 'attachment',
+        'post_status' => 'inherit',
+        'numberposts' => 1,
+        'meta_key' => '_veciahorra_demo_asset',
+        'meta_value' => $assetKey,
+    ]);
+
+    if (isset($existing[0]) && $existing[0] instanceof WP_Post) {
+        $attachmentId = (int) $existing[0]->ID;
+
+        if (is_file((string) get_attached_file($attachmentId))) {
+            return $attachmentId;
+        }
+    }
+
+    $source = dirname(__DIR__, 2) . '/assets/demo/' . $assetName;
+
+    if (! is_file($source)) {
+        throw new RuntimeException('No se encontró la imagen E2E: ' . $assetName);
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+    $temporary = wp_tempnam($assetName);
+
+    if (! is_string($temporary) || ! copy($source, $temporary)) {
+        throw new RuntimeException('No fue posible preparar la imagen E2E: ' . $assetName);
+    }
+
+    $attachmentId = media_handle_sideload([
+        'name' => $assetName,
+        'tmp_name' => $temporary,
+    ], 0, $alt);
+
+    if (is_wp_error($attachmentId)) {
+        @unlink($temporary);
+        throw new RuntimeException($attachmentId->get_error_message());
+    }
+
+    update_post_meta((int) $attachmentId, '_veciahorra_demo_asset', $assetKey);
+    update_post_meta((int) $attachmentId, '_wp_attachment_image_alt', $alt);
+
+    return (int) $attachmentId;
+};
+
 $productDefinitions = [
     [
         'sku' => 'VA-E2E-RETIRO-001',
@@ -84,6 +133,7 @@ $productDefinitions = [
         'price' => 3500,
         'stock' => 20,
         'page_slug' => 'producto-veciahorra-retiro',
+        'image_asset' => 'va-e2e-bebida.png',
     ],
     [
         'sku' => 'VA-E2E-DESPACHO-001',
@@ -92,6 +142,7 @@ $productDefinitions = [
         'price' => 4500,
         'stock' => 20,
         'page_slug' => 'producto-veciahorra-despacho',
+        'image_asset' => 'va-e2e-arroz.png',
     ],
 ];
 
@@ -99,6 +150,7 @@ $preparedProducts = [];
 
 foreach ($productDefinitions as $definition) {
     $product = $productRepository->findBySku($definition['sku']);
+    $imageId = $demoImage($definition['image_asset'], $definition['name']);
     $productData = [
         'woo_product_id' => null,
         'name' => $definition['name'],
@@ -107,7 +159,7 @@ foreach ($productDefinitions as $definition) {
         'category_id' => null,
         'brand_id' => null,
         'unit_id' => null,
-        'image_id' => null,
+        'image_id' => $imageId,
     ];
 
     if ($product === null) {
@@ -169,6 +221,7 @@ foreach ($productDefinitions as $definition) {
         'id' => $productId,
         'status' => $preparedProduct->status,
         'woo_product_id' => $preparedProduct->woo_product_id,
+        'image_id' => (int) $preparedProduct->image_id,
         'inventory_id' => $inventoryId,
         'inventory_status' => $preparedInventory['status'],
         'minimarket_id' => (int) $preparedInventory['minimarket_id'],
@@ -218,22 +271,11 @@ foreach ($preparedProducts as $product) {
     );
 }
 
-$catalogLinks = array_map(
-    static fn (array $product): string => sprintf(
-        '<li><a href="%s">%s — $%s</a></li>',
-        esc_url(get_permalink($productPageIds[$product['id']])),
-        esc_html($product['name']),
-        esc_html(number_format_i18n($product['price'], 0))
-    ),
-    $preparedProducts
-);
 $pageIds = [
     'catalog' => $publishPage(
         'catalogo-veciahorra',
         'Catálogo VeciAhorra',
-        '<p>Catálogo propio para pruebas end-to-end.</p><ul>'
-            . implode('', $catalogLinks)
-            . '</ul>'
+        '[veciahorra_frontend]'
     ),
     'cart' => $publishPage(
         'carrito-veciahorra',

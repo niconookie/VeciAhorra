@@ -20,6 +20,8 @@
     color: var(--va-color-text);
 }
 
+.veciahorra-frontend [hidden] { display: none !important; }
+
 .veciahorra-frontend .va-skip-link {
     left: var(--va-space-3);
     position: fixed;
@@ -28,7 +30,7 @@
 }
 
 .veciahorra-frontend .va-skip-link:focus { top: var(--va-space-3); }
-.veciahorra-frontend .va-container { margin-inline: auto; max-width: 80rem; padding: var(--va-space-3); }
+.veciahorra-frontend .va-container { box-sizing: border-box; margin-inline: auto; max-width: 80rem; padding: var(--va-space-3); }
 .veciahorra-frontend .va-placeholder { display: grid; gap: var(--va-space-3); }
 .veciahorra-frontend .va-card { background: var(--va-color-background); border: 1px solid var(--va-color-border); border-radius: var(--va-radius-lg); box-shadow: var(--va-shadow-sm); padding: var(--va-space-4); }
 .veciahorra-frontend .va-card__title { margin-block: 0 var(--va-space-2); }
@@ -128,7 +130,36 @@
 .veciahorra-frontend .va-checkout-validation-errors:focus-visible { outline: 0.1875rem solid var(--va-color-danger); outline-offset: 0.1875rem; }
 .veciahorra-frontend .va-checkout-validation-errors ul { margin-bottom: 0; }
 
+.veciahorra-frontend .va-catalog { display: grid; gap: clamp(1.5rem, 4vw, 3rem); margin-inline: auto; max-width: 80rem; }
+.veciahorra-frontend .va-catalog__hero { background: linear-gradient(135deg, #eaf6ef, #f7fbf8 58%, #edf5f8); border: 1px solid #d3e7da; border-radius: 1.25rem; overflow: hidden; padding: clamp(1.5rem, 5vw, 3.5rem); position: relative; }
+.veciahorra-frontend .va-catalog__hero::after { background: rgb(23 107 69 / 9%); border-radius: 50%; content: ""; height: 13rem; position: absolute; right: -4rem; top: -6rem; width: 13rem; }
+.veciahorra-frontend .va-catalog__hero h1 { font-size: clamp(2rem, 5vw, 3.5rem); letter-spacing: -0.035em; line-height: 1.05; margin: 0 0 var(--va-space-3); max-width: 17ch; }
+.veciahorra-frontend .va-catalog__hero > p:last-child { color: var(--va-color-muted); font-size: clamp(1rem, 2vw, 1.2rem); line-height: 1.65; margin: 0; max-width: 42rem; }
+.veciahorra-frontend .va-catalog__eyebrow { color: var(--va-color-primary); font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; margin: 0 0 var(--va-space-2); text-transform: uppercase; }
+.veciahorra-frontend .va-catalog__grid { align-items: stretch; display: grid; gap: clamp(0.75rem, 2vw, 1.5rem); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.veciahorra-frontend .va-catalog-card { background: var(--va-color-background); border: 1px solid var(--va-color-border); border-radius: 1rem; box-shadow: 0 0.25rem 1.25rem rgb(20 40 30 / 8%); display: flex; flex-direction: column; min-width: 0; overflow: hidden; transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
+.veciahorra-frontend .va-catalog-card:hover { border-color: #a9c8b8; box-shadow: 0 0.75rem 2rem rgb(20 40 30 / 13%); transform: translateY(-0.2rem); }
+.veciahorra-frontend .va-catalog-card__media { align-items: center; aspect-ratio: 1; background: #f7faf8; display: flex; justify-content: center; overflow: hidden; }
+.veciahorra-frontend .va-catalog-card__image { height: 100%; object-fit: contain; padding: clamp(0.5rem, 2vw, 1rem); transition: transform 220ms ease; width: 100%; }
+.veciahorra-frontend .va-catalog-card:hover .va-catalog-card__image { transform: scale(1.025); }
+.veciahorra-frontend .va-catalog-card__image-missing { align-items: center; color: var(--va-color-muted); display: flex; flex-direction: column; font-size: 0.72rem; gap: var(--va-space-2); padding: var(--va-space-2); text-align: center; }
+.veciahorra-frontend .va-catalog-card__image-missing::before { color: #82a793; content: "◇"; font-size: 1.75rem; line-height: 1; }
+.veciahorra-frontend .va-catalog-card__body { display: flex; flex: 1; flex-direction: column; padding: clamp(0.75rem, 2vw, 1.25rem); }
+.veciahorra-frontend .va-catalog-card__title { display: -webkit-box; font-size: clamp(0.95rem, 2vw, 1.15rem); line-height: 1.35; margin: 0 0 var(--va-space-3); min-height: 2.7em; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.veciahorra-frontend .va-catalog-card__store { color: var(--va-color-muted); font-size: 0.875rem; margin: 0 0 var(--va-space-4); }
+.veciahorra-frontend .va-catalog-card__price { color: var(--va-color-primary); font-size: clamp(1.15rem, 3vw, 1.5rem); font-weight: 800; letter-spacing: -0.02em; margin: auto 0 var(--va-space-2); }
+.veciahorra-frontend .va-catalog-card__stock { color: var(--va-color-muted); font-size: 0.8rem; margin: 0 0 var(--va-space-4); }
+.veciahorra-frontend .va-catalog-card__action { align-items: center; display: inline-flex; font-weight: 700; justify-content: center; margin-top: var(--va-space-2); text-decoration: none; width: 100%; }
+.veciahorra-frontend .va-catalog-card__action:hover { background: #105337; color: #fff; }
+.veciahorra-frontend .va-catalog-card__action:focus-visible { outline: 0.1875rem solid var(--va-color-secondary); outline-offset: 0.1875rem; }
+.veciahorra-frontend .va-catalog-card__unavailable { color: var(--va-color-muted); font-size: 0.8rem; margin-top: var(--va-space-2); text-align: center; }
+
 @keyframes va-spin { to { transform: rotate(360deg); } }
+@media (max-width: 22rem) { .veciahorra-frontend .va-catalog__grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 47.99rem) { .veciahorra-frontend .va-catalog { max-width: calc(100vw - 4rem); } }
+@media (min-width: 48rem) { .veciahorra-frontend .va-catalog__grid { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); } }
+@media (min-width: 48rem) { .veciahorra-frontend .va-catalog-card__media { aspect-ratio: 4 / 3; } }
+@media (min-width: 72rem) { .veciahorra-frontend .va-catalog__grid { grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); } }
 @media (min-width: 30rem) { .veciahorra-frontend .va-container { padding: var(--va-space-4); } }
 @media (max-width: 47.99rem) { .veciahorra-frontend .va-cart-table thead { clip: rect(0 0 0 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; width: 1px; } .veciahorra-frontend .va-cart-table, .veciahorra-frontend .va-cart-table tbody, .veciahorra-frontend .va-cart-table tr, .veciahorra-frontend .va-cart-table td { display: block; width: 100%; } .veciahorra-frontend .va-cart-table tr { border: 1px solid var(--va-color-border); border-radius: var(--va-radius-lg); box-shadow: var(--va-shadow-sm); margin-bottom: var(--va-space-3); padding: var(--va-space-3); } .veciahorra-frontend .va-cart-table td { align-items: center; border: 0; display: flex; gap: var(--va-space-3); justify-content: space-between; padding: var(--va-space-2) 0; } .veciahorra-frontend .va-cart-table td::before { color: var(--va-color-muted); content: attr(data-label); font-size: 0.875rem; font-weight: 700; } .veciahorra-frontend .va-cart-table td:first-child { align-items: flex-start; } }
 @media (min-width: 48rem) { .veciahorra-frontend .va-placeholder { grid-template-columns: repeat(2, minmax(0, 1fr)); } .veciahorra-frontend .va-placeholder > h1 { grid-column: 1 / -1; } .veciahorra-frontend .va-offer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .veciahorra-frontend .va-selection-summary__values { grid-template-columns: repeat(3, minmax(0, 1fr)); } .veciahorra-frontend .va-cart-action { grid-template-columns: minmax(0, 1fr) auto; } .veciahorra-frontend .va-cart-action h2, .veciahorra-frontend .va-cart-action__message { grid-column: 1 / -1; } .veciahorra-frontend .va-checkout-form__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .veciahorra-frontend .va-checkout-line { grid-template-columns: minmax(12rem, 2fr) repeat(3, minmax(8rem, 1fr)); } }

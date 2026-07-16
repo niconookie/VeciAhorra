@@ -55,13 +55,10 @@ final class FrontendController
                 ),
             ]);
         } else {
-            $page = $this->views->render('page-placeholder', [
+            $this->assets->enqueueCatalog();
+            $page = $this->views->render('catalog', [
                 'instanceId' => $instanceId,
-                'title' => __('VeciAhorra', 'veciahorra'),
-                'message' => __(
-                    'La experiencia de clientes estará disponible próximamente.',
-                    'veciahorra'
-                ),
+                'productUrls' => $this->productUrls(),
             ]);
         }
 
@@ -69,6 +66,37 @@ final class FrontendController
             'content' => $page,
             'instanceId' => $instanceId,
         ]);
+    }
+
+    /** @return array<int, string> */
+    private function productUrls(): array
+    {
+        $urls = [];
+        $pages = get_posts([
+            'post_type' => 'page',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+        ]);
+        $pattern = get_shortcode_regex([self::SHORTCODE]);
+
+        foreach ($pages as $page) {
+            if (! $page instanceof \WP_Post
+                || ! preg_match_all('/' . $pattern . '/s', $page->post_content, $matches)
+            ) {
+                continue;
+            }
+
+            foreach ($matches[3] as $rawAttributes) {
+                $attributes = shortcode_parse_atts($rawAttributes);
+                $productId = absint(is_array($attributes) ? ($attributes['product_id'] ?? 0) : 0);
+
+                if ($productId > 0) {
+                    $urls[$productId] = (string) get_permalink($page);
+                }
+            }
+        }
+
+        return $urls;
     }
 
     /** @param array<string, mixed>|string $attributes */
