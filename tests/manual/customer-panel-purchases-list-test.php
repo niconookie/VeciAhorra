@@ -116,6 +116,7 @@ assertCustomerPanelList(
 foreach ([
     'single_request', 'duplicate_guard', 'loading', 'empty', 'results',
     'http_error', 'network_error', 'invalid_json', 'invalid_contract', 'timeout',
+    'router', 'canonicalization', 'popstate',
 ] as $scenario) {
     assertCustomerPanelList(
         ($payload['scenarios'][$scenario] ?? false) === true,

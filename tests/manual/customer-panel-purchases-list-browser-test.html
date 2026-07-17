@@ -64,8 +64,43 @@
         window.VeciAhorra = {
             locale: 'es-CL',
             timeZone: 'UTC',
+            pages: {orders: window.location.href.split(/[?#]/)[0]},
             api: {get: get}
         };
+    }
+
+    async function routeScenario(query, expectedReplacement) {
+        var nativeReplaceState = window.history.replaceState.bind(window.history);
+        var nativePushState = window.history.pushState.bind(window.history);
+        var cleanUrl = window.location.href.split(/[?#]/)[0];
+        var replacements = [];
+        var pushes = 0;
+        var calls = [];
+
+        nativeReplaceState(null, '', cleanUrl + query);
+        window.history.replaceState = function (state, title, url) {
+            replacements.push(String(url));
+        };
+        window.history.pushState = function () {
+            pushes += 1;
+        };
+        shell();
+        configure(function (path) {
+            calls.push(path);
+            return Promise.resolve({success: true, data: []});
+        });
+        await loadPanel();
+        await tick();
+        window.history.replaceState = nativeReplaceState;
+        window.history.pushState = nativePushState;
+
+        assert(pushes === 0, 'router ejecutó pushState');
+        assert(calls.length === 1 && calls[0] === 'customer-panel/purchases', 'router alteró el GET del listado');
+        assert(replacements.length === (expectedReplacement === null ? 0 : 1), 'cantidad de replaceState incorrecta para ' + query);
+
+        if (expectedReplacement !== null) {
+            assert(replacements[0] === expectedReplacement, 'URL canónica incorrecta para ' + query);
+        }
     }
 
     async function rejectedScenario(name, reason) {
@@ -172,6 +207,37 @@
         assert(timeoutState.busy === 'false' && timeoutState.loaderHidden, 'timeout no terminal');
         window.AbortController = NativeAbortController;
         scenarios.timeout = true;
+
+        var cleanUrl = window.location.href.split(/[?#]/)[0];
+        var validId = 'chk_' + 'A'.repeat(43);
+        await routeScenario('', null);
+        await routeScenario('?extra=1#fragment', cleanUrl);
+        await routeScenario('?compra=' + validId, null);
+        await routeScenario(
+            '?compra=' + validId + '&extra=1#fragment',
+            cleanUrl + '?compra=' + validId
+        );
+        await routeScenario('?compra=', null);
+        await routeScenario('?compra=uno&compra=dos', null);
+        await routeScenario('?compra=chk_invalido', null);
+        await routeScenario('?compra=%20' + validId + '%20', null);
+        await routeScenario('?compra=%E0%A4%A', null);
+        scenarios.router = true;
+        scenarios.canonicalization = true;
+
+        var nativeReplaceState = window.history.replaceState.bind(window.history);
+        var nativePushState = window.history.pushState.bind(window.history);
+        var popReplacements = 0;
+        var popPushes = 0;
+        nativeReplaceState(null, '', cleanUrl + '?compra=' + validId);
+        window.history.replaceState = function () { popReplacements += 1; };
+        window.history.pushState = function () { popPushes += 1; };
+        window.dispatchEvent(new PopStateEvent('popstate'));
+        await tick();
+        window.history.replaceState = nativeReplaceState;
+        window.history.pushState = nativePushState;
+        assert(popReplacements === 0 && popPushes === 0, 'popstate modificó el historial');
+        scenarios.popstate = true;
 
         if (failures.length > 0) {
             throw new Error(failures.join('; '));

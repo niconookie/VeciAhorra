@@ -3,6 +3,69 @@
 
     var ENDPOINT = 'customer-panel/purchases';
     var TIMEOUT_MS = 12000;
+    var PUBLIC_ID_PATTERN = /^chk_[A-Za-z0-9_-]{43}$/;
+
+    function canonicalListUrl(config) {
+        var url = new URL(config.pages.orders, window.location.href);
+
+        url.search = '';
+        url.hash = '';
+
+        return url;
+    }
+
+    function canonicalDetailUrl(publicId, config) {
+        var url = canonicalListUrl(config);
+
+        url.searchParams.set('compra', publicId);
+
+        return url;
+    }
+
+    function readRoute() {
+        var url = new URL(window.location.href);
+        var values = url.searchParams.getAll('compra');
+
+        if (values.length === 0) {
+            return {name: 'list'};
+        }
+
+        if (values.length === 1 && PUBLIC_ID_PATTERN.test(values[0])) {
+            return {name: 'detail', publicId: values[0]};
+        }
+
+        return {name: 'not_found'};
+    }
+
+    function canonicalizeInitialRoute(route, config) {
+        var canonical;
+
+        if (route.name === 'list') {
+            canonical = canonicalListUrl(config);
+        } else if (route.name === 'detail') {
+            canonical = canonicalDetailUrl(route.publicId, config);
+        } else {
+            return;
+        }
+
+        if (canonical.href !== window.location.href) {
+            window.history.replaceState(null, '', canonical.href);
+        }
+    }
+
+    function navigate(config, canonicalize) {
+        var route = readRoute();
+
+        if (canonicalize) {
+            canonicalizeInitialRoute(route, config);
+        }
+
+        return route;
+    }
+
+    function handlePopState(config) {
+        navigate(config, false);
+    }
 
     function element(tag, className, text) {
         var node = document.createElement(tag);
@@ -198,6 +261,10 @@
 
         mount.dataset.vaCustomerPanelInitialized = 'true';
         mount.classList.add('va-customer-panel--initialized');
+        navigate(config, true);
+        window.addEventListener('popstate', function () {
+            handlePopState(config);
+        });
         root = {
             content: mount.querySelector('[data-va-customer-panel-content]'),
             status: mount.querySelector('[data-va-customer-panel-status]'),
