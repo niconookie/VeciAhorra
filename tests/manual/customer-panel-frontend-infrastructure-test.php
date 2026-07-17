@@ -149,9 +149,14 @@ assertCustomerPanelFrontend(str_contains($inline, '"enabled":true'), 'La configu
 assertCustomerPanelFrontend(! preg_match('/nonce|user|purchase|order|restUrl/i', $inline), 'La configuracion expone datos innecesarios.');
 
 $javascript = (string) file_get_contents(dirname(__DIR__, 2) . '/assets/frontend/js/customer-panel.js');
-foreach (['fetch', 'XMLHttpRequest', 'decodeURIComponent', 'customer-panel/purchases/', 'pending', 'paid', 'delivered'] as $forbidden) {
+foreach (['fetch', 'XMLHttpRequest', 'decodeURIComponent'] as $forbidden) {
     assertCustomerPanelFrontend(! str_contains($javascript, $forbidden), "JavaScript contiene {$forbidden}.");
 }
+assertCustomerPanelFrontend(
+    substr_count($javascript, 'api.get(ENDPOINT, options)') === 1
+        && substr_count($javascript, 'api.get(DETAIL_ENDPOINT + encodeURIComponent(publicId), options)') === 1,
+    'El JavaScript no conserva una única invocación por endpoint.'
+);
 assertCustomerPanelFrontend(
     substr_count($javascript, "document.querySelector('[data-va-customer-panel-mount]')") === 1,
     'JavaScript busca mas de un mount funcional.'

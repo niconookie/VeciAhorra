@@ -69,6 +69,27 @@
         };
     }
 
+    function detailFixture(publicId, payment) {
+        return {success: true, data: {
+            checkout_public_id: publicId, created_at: '2026-02-03T12:30:00Z',
+            visible_status: {code: 'preparing', label: 'Preparando', message: 'Mensaje resuelto'},
+            requires_review: false,
+            fulfillment: {method: 'delivery', label: 'Despacho'},
+            summary: {subtotal: '3300.00', total: '3300.00', currency: 'CLP', product_quantity: 3, line_count: 2, order_count: 2, minimarket_count: 2},
+            orders: [
+                {minimarket: {name: 'Mercado Zeta', historical: false}, subtotal: '1100.00', items: [
+                    {name: 'Producto Zeta', name_historical: false, image: null, image_historical: false, quantity: 1, unit_price: '1100.00', subtotal: '1100.00'}
+                ]},
+                {minimarket: {name: 'Mercado Alfa', historical: false}, subtotal: '2200.00', items: [
+                    {name: 'Producto Alfa', name_historical: false, image: 'https://example.test/producto.jpg', image_historical: false, quantity: 2, unit_price: '1100.00', subtotal: '2200.00'}
+                ]}
+            ],
+            payment: payment,
+            delivery: {method: 'delivery', status: 'assigned', label: 'Preparando despacho'},
+            timeline: [{code: 'created', label: 'Compra creada', occurred_at: '2026-02-03T12:30:00Z'}]
+        }};
+    }
+
     async function routeScenario(query, expectedReplacement, expectedCalls) {
         var nativeReplaceState = window.history.replaceState.bind(window.history);
         var nativePushState = window.history.pushState.bind(window.history);
@@ -87,7 +108,9 @@
         shell();
         configure(function (path) {
             calls.push(path);
-            return Promise.resolve({success: true, data: []});
+            return path === 'customer-panel/purchases'
+                ? Promise.resolve({success: true, data: []})
+                : new Promise(function () {});
         });
         await loadPanel();
         await tick();
@@ -96,7 +119,9 @@
 
         assert(pushes === 0, 'router ejecutó pushState');
         assert(calls.length === expectedCalls, 'cantidad REST incorrecta para ' + query);
-        assert(calls.every(function (path) { return path === 'customer-panel/purchases'; }), 'router llamó al detalle');
+        assert(calls.every(function (path) {
+            return path === 'customer-panel/purchases' || path.indexOf('customer-panel/purchases/chk_') === 0;
+        }), 'router llamó una ruta inesperada');
         assert(replacements.length === (expectedReplacement === null ? 0 : 1), 'cantidad de replaceState incorrecta para ' + query);
 
         if (expectedReplacement !== null) {
@@ -117,6 +142,29 @@
         assert(calls === 1, name + ': llamada duplicada');
         assert(state.text === expectedError, name + ': mensaje distinto');
         assert(state.busy === 'false' && state.loaderHidden, name + ': estado no terminal');
+        scenarios[name] = true;
+    }
+
+    async function directDetail(publicId, get) {
+        var cleanUrl = window.location.href.split(/[?#]/)[0];
+
+        window.history.replaceState(null, '', cleanUrl + '?compra=' + publicId);
+        shell();
+        configure(get);
+        await loadPanel();
+    }
+
+    async function rejectedDetailScenario(name, publicId, reason) {
+        var calls = [];
+
+        await directDetail(publicId, function (path) {
+            calls.push(path);
+            return Promise.reject(reason);
+        });
+        await tick();
+        assert(calls.length === 1 && calls[0] === 'customer-panel/purchases/' + publicId, name + ': GET de detalle incorrecto');
+        assert(terminalState().text.includes(expectedError), name + ': mensaje distinto');
+        assert(terminalState().busy === 'false', name + ': estado no terminal');
         scenarios[name] = true;
     }
 
@@ -164,7 +212,9 @@
         shell();
         configure(function (path) {
             navigationCalls.push(path);
-            return Promise.resolve({success: true, data: purchases});
+            return Promise.resolve(path === 'customer-panel/purchases'
+                ? {success: true, data: purchases}
+                : detailFixture(purchases[0].checkout_public_id, null));
         });
         await loadPanel();
         await tick();
@@ -200,12 +250,13 @@
         };
         window.scrollTo = function (x, y) { restoredScroll = [x, y]; };
         purchaseLinks[0].click();
-        await tick();
         assert(pushesForNavigation[0] === expectedDetailUrl.href, 'apertura no ejecutó pushState canónico');
         assert(document.querySelector('.va-customer-panel__detail-title'), 'no mostró heading de carga de detalle');
         assert(document.querySelector('[data-va-customer-panel-content]').getAttribute('aria-busy') === 'true', 'detalle sin aria-busy');
         assert(document.querySelector('.va-loader[role="status"][aria-live="polite"]'), 'loader de detalle no es anunciable');
-        assert(navigationCalls.length === 1 && navigationCalls[0] === 'customer-panel/purchases', 'apertura ejecutó REST adicional');
+        await tick();
+        assert(navigationCalls.length === 2 && navigationCalls[1] === 'customer-panel/purchases/' + purchases[0].checkout_public_id, 'apertura no ejecutó un GET de detalle');
+        assert(document.querySelector('[data-va-customer-panel-content]').getAttribute('aria-busy') === 'false', 'detalle válido no terminó loading');
         document.querySelector('.va-customer-panel__back-link').click();
         await tick();
         assert(document.querySelectorAll('.va-customer-panel__item').length === 2, 'snapshot no restaurado');
@@ -220,12 +271,14 @@
         assert(document.querySelectorAll('.va-customer-panel__item').length === 2, 'popstate no restauró snapshot');
         assert(document.activeElement === purchaseLinks[1], 'popstate no restauró foco');
         assert(pushesForNavigation.length === 3, 'popstate ejecutó pushState');
-        assert(navigationCalls.length === 1, 'popstate solicitó REST');
+        assert(navigationCalls.length === 3, 'popstate solicitó REST adicional');
         window.history.pushState = nativePushForNavigation;
         window.scrollTo = nativeScrollTo;
         scenarios.navigation = true;
         scenarios.snapshot = true;
         scenarios.popstate_snapshot = true;
+        scenarios.detail_opening = true;
+        scenarios.detail_snapshot_return = true;
 
         var stale = deferred();
         var staleCalls = 0;
@@ -236,9 +289,11 @@
             this.abort = function () { abortsOnNavigation += 1; };
         };
         shell();
-        configure(function () {
+        configure(function (path) {
             staleCalls += 1;
-            return stale.promise;
+            return path === 'customer-panel/purchases'
+                ? stale.promise
+                : new Promise(function () {});
         });
         await loadPanel();
         var syntheticLink = document.createElement('a');
@@ -248,7 +303,7 @@
         syntheticLink.click();
         stale.resolve({success: true, data: purchases});
         await tick();
-        assert(staleCalls === 1, 'concurrencia duplicó el GET de listado');
+        assert(staleCalls === 2, 'concurrencia no separó listado y detalle');
         assert(abortsOnNavigation === 1, 'navegación no abortó exactamente una solicitud');
         assert(document.querySelector('.va-customer-panel__detail-title'), 'respuesta obsoleta reemplazó detalle');
         assert(document.querySelectorAll('.va-customer-panel__item').length === 0, 'respuesta obsoleta renderizó lista');
@@ -288,13 +343,103 @@
         scenarios.timeout = true;
 
         var validId = 'chk_' + 'A'.repeat(43);
+        var detailCalls = [];
+        var detailPending = deferred();
+        await directDetail(validId, function (path) {
+            detailCalls.push(path);
+            return detailPending.promise;
+        });
+        assert(detailCalls.length === 1 && detailCalls[0] === 'customer-panel/purchases/' + validId, 'deep link no ejecutó un único GET de detalle');
+        assert(document.querySelector('.va-loader[role="status"]'), 'deep link no mostró loading de detalle');
+        assert(terminalState().busy === 'true', 'deep link no mantuvo aria-busy');
+        detailPending.resolve(detailFixture(validId, null));
+        await tick();
+        var detailText = terminalState().text;
+        var detailOrders = Array.from(document.querySelectorAll('.va-customer-panel__detail-order'));
+        assert(detailOrders.length === 2, 'detalle no renderizó todas las órdenes');
+        assert(detailOrders[0].textContent.includes('Mercado Zeta') && detailOrders[1].textContent.includes('Mercado Alfa'), 'detalle alteró el orden recibido');
+        assert(detailText.includes(validId) && detailText.includes('Preparando') && detailText.includes('Mensaje resuelto'), 'encabezado de detalle incompleto');
+        assert(detailText.includes('Cantidad de productos') && detailText.includes('3') && detailText.includes('Líneas'), 'resumen de detalle incompleto');
+        assert(detailText.includes('Producto Zeta') && detailText.includes('Producto Alfa'), 'productos no renderizados');
+        assert(detailText.includes('Información de pago no disponible.'), 'payment null no mostró el mensaje previsto');
+        assert(detailText.includes('Preparando despacho'), 'entrega no renderizada');
+        assert(!detailText.includes('Compra creada'), 'timeline fuera de alcance fue renderizado');
+        assert(document.querySelectorAll('.va-customer-panel__detail-image').length === 1, 'imagen disponible no fue renderizada');
+        assert(terminalState().busy === 'false', 'detalle válido no terminó loading');
+        scenarios.detail_direct = true;
+        scenarios.detail_valid = true;
+        scenarios.detail_payment_null = true;
+
+        var unsafeImageDetail = detailFixture(validId, null);
+        unsafeImageDetail.data.orders[1].items[0].image = 'javascript:alert(1)';
+        await directDetail(validId, function () { return Promise.resolve(unsafeImageDetail); });
+        await tick();
+        assert(document.querySelectorAll('.va-customer-panel__detail-image').length === 0, 'detalle aceptó un esquema de imagen inseguro');
+        assert(terminalState().text.includes('Producto Alfa'), 'imagen insegura ocultó el producto');
+        scenarios.detail_image_safety = true;
+
+        var paid = {status: 'received', label: 'Pago recibido', amount: '3300.00', currency: 'CLP', paid_at: '2026-02-03T12:35:00Z', method: 'Webpay Plus'};
+        await directDetail(validId, function () { return Promise.resolve(detailFixture(validId, paid)); });
+        await tick();
+        detailText = terminalState().text;
+        assert(detailText.includes('Pago recibido') && detailText.includes('Webpay Plus') && detailText.includes('3.300'), 'pago presente incompleto');
+        scenarios.detail_payment = true;
+
+        await directDetail(validId, function () { return Promise.reject({status: 404}); });
+        await tick();
+        assert(terminalState().text.includes('La compra no está disponible.'), '404 no converge en not_found');
+        assert(!terminalState().text.includes('404'), '404 expuso código interno');
+        scenarios.detail_404 = true;
+        await rejectedDetailScenario('detail_http_error', validId, {status: 500});
+        await rejectedDetailScenario('detail_network_error', validId, {status: 0});
+        await rejectedDetailScenario('detail_invalid_json', validId, {code: 'invalid_json'});
+
+        await directDetail(validId, function () { return Promise.resolve({success: true, data: {invalid: true}}); });
+        await tick();
+        assert(terminalState().text.includes(expectedError), 'contrato de detalle inválido no converge en error');
+        scenarios.detail_invalid_contract = true;
+
+        var nativeDetailTimeout = window.setTimeout;
+        var detailTimeoutAborts = 0;
+        var NativeDetailAbort = window.AbortController;
+        window.setTimeout = function (callback, delay) {
+            return nativeDetailTimeout(callback, delay === 12000 ? 0 : delay);
+        };
+        window.AbortController = function () {
+            this.signal = {};
+            this.abort = function () { detailTimeoutAborts += 1; };
+        };
+        await directDetail(validId, function () { return new Promise(function () {}); });
+        await tick();
+        assert(detailTimeoutAborts === 1, 'timeout de detalle no abortó exactamente una vez');
+        assert(terminalState().text.includes(expectedError), 'timeout de detalle no converge en error');
+        window.setTimeout = nativeDetailTimeout;
+        window.AbortController = NativeDetailAbort;
+        scenarios.detail_timeout = true;
+
+        var staleDetail = deferred();
+        var secondId = 'chk_' + 'B'.repeat(43);
+        await directDetail(validId, function (path) {
+            return path.endsWith(validId)
+                ? staleDetail.promise
+                : Promise.resolve(detailFixture(secondId, null));
+        });
+        window.history.replaceState(null, '', cleanUrl + '?compra=' + secondId);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+        await tick();
+        assert(terminalState().text.includes(secondId), 'segunda respuesta de detalle no fue renderizada');
+        staleDetail.resolve(detailFixture(validId, paid));
+        await tick();
+        assert(terminalState().text.includes(secondId) && !terminalState().text.includes(validId), 'respuesta obsoleta de detalle reemplazó la vista vigente');
+        scenarios.detail_stale_response = true;
+
         await routeScenario('', null, 1);
         await routeScenario('?extra=1#fragment', cleanUrl, 1);
-        await routeScenario('?compra=' + validId, null, 0);
+        await routeScenario('?compra=' + validId, null, 1);
         await routeScenario(
             '?compra=' + validId + '&extra=1#fragment',
             cleanUrl + '?compra=' + validId,
-            0
+            1
         );
         await routeScenario('?compra=', null, 0);
         await routeScenario('?compra=uno&compra=dos', null, 0);

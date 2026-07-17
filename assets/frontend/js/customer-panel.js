@@ -2,6 +2,7 @@
     'use strict';
 
     var ENDPOINT = 'customer-panel/purchases';
+    var DETAIL_ENDPOINT = ENDPOINT + '/';
     var TIMEOUT_MS = 12000;
     var PUBLIC_ID_PATTERN = /^chk_[A-Za-z0-9_-]{43}$/;
 
@@ -156,7 +157,7 @@
         heading.focus();
     }
 
-    function renderNotFound(state) {
+    function renderDetailNotFound(state) {
         var heading = element('h2', 'va-customer-panel__detail-title', 'Detalle de compra');
         var message = element('p', 'va-alert va-alert--error', 'La compra no está disponible.');
         var back = element('a', 'va-customer-panel__back-link', 'Volver a mis compras');
@@ -170,13 +171,51 @@
         heading.focus();
     }
 
+    function renderDetailRecoverableError(state) {
+        var heading = element('h2', 'va-customer-panel__detail-title', 'Detalle de compra');
+        var message = element('p', 'va-alert va-alert--error', 'No pudimos cargar tus compras. Inténtalo nuevamente.');
+        var back = element('a', 'va-customer-panel__back-link', 'Volver a mis compras');
+
+        heading.tabIndex = -1;
+        back.href = canonicalListUrl(state.config).href;
+        state.root.content.replaceChildren(heading, message, back);
+        state.root.content.setAttribute('aria-busy', 'false');
+        state.root.status.hidden = true;
+        state.root.announcer.textContent = 'No pudimos cargar tus compras. Inténtalo nuevamente.';
+        heading.focus();
+    }
+
     function enterDetail(state, route, canonicalUrl) {
         if (state.activeMode === 'detail' && state.activeCanonicalUrl === canonicalUrl) {
             return;
         }
 
-        beginRequest(state, 'detail', route.publicId, canonicalUrl);
+        var request = beginRequest(state, 'detail', route.publicId, canonicalUrl);
+
         renderDetailLoading(state);
+        requestDetail(state.api, request, route.publicId)
+            .then(validateDetailEnvelope)
+            .then(function (detail) {
+                if (!isCurrentRequest(state, request)) {
+                    return;
+                }
+
+                state.activeController = null;
+                renderDetail(state, detail);
+            })
+            .catch(function (error) {
+                if (!isCurrentRequest(state, request)) {
+                    return;
+                }
+
+                state.activeController = null;
+                if (error && error.status === 404) {
+                    renderDetailNotFound(state);
+                    return;
+                }
+
+                renderDetailRecoverableError(state);
+            });
     }
 
     function enterList(state, canonicalUrl) {
@@ -190,7 +229,7 @@
 
     function enterNotFound(state) {
         beginRequest(state, 'not_found', null, window.location.href);
-        renderNotFound(state);
+        renderDetailNotFound(state);
     }
 
     function navigate(state, route, canonicalUrl, push) {
@@ -309,6 +348,237 @@
         return amount + ' ' + currency;
     }
 
+    function isObject(value) {
+        return value !== null && typeof value === 'object' && !Array.isArray(value);
+    }
+
+    function isString(value) {
+        return typeof value === 'string';
+    }
+
+    function isNullableString(value) {
+        return value === null || isString(value);
+    }
+
+    function isNonNegativeInteger(value) {
+        return Number.isInteger(value) && value >= 0;
+    }
+
+    function validDetailItem(item) {
+        return isObject(item)
+            && isString(item.name)
+            && typeof item.name_historical === 'boolean'
+            && isNullableString(item.image)
+            && typeof item.image_historical === 'boolean'
+            && isNonNegativeInteger(item.quantity)
+            && isString(item.unit_price)
+            && isString(item.subtotal);
+    }
+
+    function validDetailOrder(order) {
+        return isObject(order)
+            && isObject(order.minimarket)
+            && isString(order.minimarket.name)
+            && typeof order.minimarket.historical === 'boolean'
+            && isString(order.subtotal)
+            && Array.isArray(order.items)
+            && order.items.every(validDetailItem);
+    }
+
+    function validPayment(payment) {
+        return payment === null || (isObject(payment)
+            && isString(payment.status)
+            && isString(payment.label)
+            && isString(payment.amount)
+            && isString(payment.currency)
+            && isNullableString(payment.paid_at)
+            && isNullableString(payment.method));
+    }
+
+    function validTimelineEvent(event) {
+        return isObject(event)
+            && isString(event.code)
+            && isString(event.label)
+            && isString(event.occurred_at);
+    }
+
+    function validateDetailEnvelope(payload) {
+        var detail = payload && payload.data;
+        var summary = detail && detail.summary;
+
+        if (!payload || payload.success !== true || !isObject(detail)
+            || !isString(detail.checkout_public_id)
+            || !isString(detail.created_at)
+            || !isObject(detail.visible_status)
+            || !isString(detail.visible_status.code)
+            || !isString(detail.visible_status.label)
+            || !isString(detail.visible_status.message)
+            || typeof detail.requires_review !== 'boolean'
+            || !isObject(detail.fulfillment)
+            || !isNullableString(detail.fulfillment.method)
+            || !isString(detail.fulfillment.label)
+            || !isObject(summary)
+            || !isString(summary.subtotal)
+            || !isString(summary.total)
+            || !isString(summary.currency)
+            || !isNonNegativeInteger(summary.product_quantity)
+            || !isNonNegativeInteger(summary.line_count)
+            || !isNonNegativeInteger(summary.order_count)
+            || !isNonNegativeInteger(summary.minimarket_count)
+            || !Array.isArray(detail.orders)
+            || !detail.orders.every(validDetailOrder)
+            || !validPayment(detail.payment)
+            || !isObject(detail.delivery)
+            || !isNullableString(detail.delivery.method)
+            || !isString(detail.delivery.status)
+            || !isString(detail.delivery.label)
+            || !Array.isArray(detail.timeline)
+            || !detail.timeline.every(validTimelineEvent)) {
+            throw new Error('invalid_contract');
+        }
+
+        return detail;
+    }
+
+    function detailValue(label, value) {
+        var row = element('div', 'va-customer-panel__detail-row');
+
+        row.append(element('dt', '', label), element('dd', '', value));
+        return row;
+    }
+
+    function safeImageUrl(value) {
+        var url;
+
+        try {
+            url = new URL(value, window.location.href);
+        } catch (error) {
+            return null;
+        }
+
+        return (url.protocol === 'https:' || url.protocol === 'http:')
+            && url.username === '' && url.password === ''
+            ? url.href
+            : null;
+    }
+
+    function renderDetailItem(item, currency, config) {
+        var listItem = element('li', 'va-customer-panel__detail-item');
+        var content = element('div', 'va-customer-panel__detail-item-content');
+        var values = element('dl', 'va-customer-panel__detail-values');
+        var image;
+        var imageUrl = item.image === null ? null : safeImageUrl(item.image);
+
+        if (imageUrl !== null) {
+            image = element('img', 'va-customer-panel__detail-image');
+            image.src = imageUrl;
+            image.alt = '';
+            image.loading = 'lazy';
+            content.append(image);
+        }
+
+        values.append(
+            detailValue('Producto', item.name),
+            detailValue('Cantidad', String(item.quantity)),
+            detailValue('Precio unitario', formatTotal({amount: item.unit_price, currency: currency}, config)),
+            detailValue('Subtotal', formatTotal({amount: item.subtotal, currency: currency}, config))
+        );
+        content.append(values);
+        listItem.append(content);
+        return listItem;
+    }
+
+    function renderDetailOrder(order, currency, config) {
+        var listItem = element('li', 'va-customer-panel__detail-order va-card');
+        var heading = element('h4', '', order.minimarket.name);
+        var subtotal = element('p', '', 'Subtotal: ' + formatTotal({amount: order.subtotal, currency: currency}, config));
+        var productsHeading = element('h5', '', 'Productos');
+        var products = element('ul', 'va-customer-panel__detail-items');
+
+        order.items.forEach(function (item) {
+            products.append(renderDetailItem(item, currency, config));
+        });
+        listItem.append(heading, subtotal, productsHeading, products);
+        return listItem;
+    }
+
+    function renderDetail(state, detail) {
+        var heading = element('h2', 'va-customer-panel__detail-title', 'Detalle de compra');
+        var back = element('a', 'va-customer-panel__back-link', 'Volver a mis compras');
+        var header = element('section', 'va-customer-panel__detail-header');
+        var headerValues = element('dl', 'va-customer-panel__detail-values');
+        var summarySection = element('section', 'va-customer-panel__detail-section');
+        var summary = element('dl', 'va-customer-panel__detail-values');
+        var ordersSection = element('section', 'va-customer-panel__detail-section');
+        var orders = element('ol', 'va-customer-panel__detail-orders');
+        var paymentSection = element('section', 'va-customer-panel__detail-section');
+        var paymentValues;
+        var deliverySection = element('section', 'va-customer-panel__detail-section');
+
+        heading.tabIndex = -1;
+        back.href = canonicalListUrl(state.config).href;
+        headerValues.append(
+            detailValue('Identificador', detail.checkout_public_id),
+            detailValue('Fecha', formatDate(detail.created_at, state.config)),
+            detailValue('Estado', detail.visible_status.label),
+            detailValue('Información', detail.visible_status.message),
+            detailValue('Entrega', detail.fulfillment.label)
+        );
+        if (detail.requires_review) {
+            headerValues.append(detailValue('Revisión', 'Requiere revisión'));
+        }
+        header.append(headerValues);
+
+        summarySection.append(element('h3', '', 'Resumen'));
+        summary.append(
+            detailValue('Subtotal', formatTotal({amount: detail.summary.subtotal, currency: detail.summary.currency}, state.config)),
+            detailValue('Total', formatTotal({amount: detail.summary.total, currency: detail.summary.currency}, state.config)),
+            detailValue('Moneda', detail.summary.currency),
+            detailValue('Cantidad de productos', String(detail.summary.product_quantity)),
+            detailValue('Líneas', String(detail.summary.line_count)),
+            detailValue('Pedidos', String(detail.summary.order_count)),
+            detailValue('Minimarkets', String(detail.summary.minimarket_count))
+        );
+        summarySection.append(summary);
+
+        ordersSection.append(element('h3', '', 'Órdenes'));
+        detail.orders.forEach(function (order) {
+            orders.append(renderDetailOrder(order, detail.summary.currency, state.config));
+        });
+        ordersSection.append(orders);
+
+        paymentSection.append(element('h3', '', 'Pago'));
+        if (detail.payment === null) {
+            paymentSection.append(element('p', '', 'Información de pago no disponible.'));
+        } else {
+            paymentValues = element('dl', 'va-customer-panel__detail-values');
+            paymentValues.append(
+                detailValue('Estado', detail.payment.label),
+                detailValue('Monto', formatTotal({amount: detail.payment.amount, currency: detail.payment.currency}, state.config)),
+                detailValue('Moneda', detail.payment.currency)
+            );
+            if (detail.payment.paid_at !== null) {
+                paymentValues.append(detailValue('Fecha de pago', formatDate(detail.payment.paid_at, state.config)));
+            }
+            if (detail.payment.method !== null) {
+                paymentValues.append(detailValue('Método', detail.payment.method));
+            }
+            paymentSection.append(paymentValues);
+        }
+
+        deliverySection.append(
+            element('h3', '', 'Entrega'),
+            element('p', '', detail.delivery.label)
+        );
+        state.root.content.replaceChildren(
+            heading, back, header, summarySection, ordersSection, paymentSection, deliverySection
+        );
+        state.root.content.setAttribute('aria-busy', 'false');
+        state.root.status.hidden = true;
+        state.root.announcer.textContent = 'El detalle de la compra se cargó correctamente.';
+        heading.focus();
+    }
+
     function renderPurchase(item, config) {
         var listItem = element('li', 'va-customer-panel__item');
         var article = element('article', 'va-customer-panel__purchase va-card');
@@ -401,6 +671,12 @@
     function requestPurchases(api, request) {
         return requestWithTimeout(request, function (options) {
             return api.get(ENDPOINT, options);
+        });
+    }
+
+    function requestDetail(api, request, publicId) {
+        return requestWithTimeout(request, function (options) {
+            return api.get(DETAIL_ENDPOINT + encodeURIComponent(publicId), options);
         });
     }
 

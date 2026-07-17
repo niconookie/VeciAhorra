@@ -119,6 +119,10 @@ foreach ([
     'router', 'canonicalization', 'popstate',
     'navigation', 'snapshot', 'concurrency', 'stale_response',
     'popstate_snapshot',
+    'detail_direct', 'detail_opening', 'detail_valid', 'detail_payment_null',
+    'detail_payment', 'detail_404', 'detail_http_error', 'detail_network_error',
+    'detail_invalid_json', 'detail_invalid_contract', 'detail_timeout',
+    'detail_stale_response', 'detail_snapshot_return', 'detail_image_safety',
 ] as $scenario) {
     assertCustomerPanelList(
         ($payload['scenarios'][$scenario] ?? false) === true,
