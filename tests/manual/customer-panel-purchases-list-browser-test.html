@@ -60,6 +60,20 @@
         };
     }
 
+    function ignoredPanelClick(link, options) {
+        var preventedByPanel;
+        var observe = function (event) {
+            preventedByPanel = event.defaultPrevented;
+            event.preventDefault();
+        };
+
+        document.addEventListener('click', observe, {once: true});
+        link.dispatchEvent(new MouseEvent('click', Object.assign({
+            bubbles: true, cancelable: true, button: 0
+        }, options || {})));
+        return preventedByPanel === false;
+    }
+
     function configure(get) {
         window.VeciAhorra = {
             locale: 'es-CL',
@@ -81,12 +95,15 @@
                     {name: 'Producto Zeta', name_historical: false, image: null, image_historical: false, quantity: 1, unit_price: '1100.00', subtotal: '1100.00'}
                 ]},
                 {minimarket: {name: 'Mercado Alfa', historical: false}, subtotal: '2200.00', items: [
-                    {name: 'Producto Alfa', name_historical: false, image: 'https://example.test/producto.jpg', image_historical: false, quantity: 2, unit_price: '1100.00', subtotal: '2200.00'}
+                    {name: 'Producto Alfa', name_historical: false, image: null, image_historical: false, quantity: 2, unit_price: '1100.00', subtotal: '2200.00'}
                 ]}
             ],
             payment: payment,
             delivery: {method: 'delivery', status: 'assigned', label: 'Preparando despacho'},
-            timeline: [{code: 'created', label: 'Compra creada', occurred_at: '2026-02-03T12:30:00Z'}]
+            timeline: [
+                {code: 'delivery_created', label: 'Evento Zeta', message: 'Mensaje Zeta', occurred_at: '2026-02-03T13:30:00Z'},
+                {code: 'future_code', label: 'Evento Alfa', message: 'Mensaje Alfa', occurred_at: '2026-02-03T12:30:00Z'}
+            ]
         }};
     }
 
@@ -249,6 +266,21 @@
             nativePushForNavigation(state, title, url);
         };
         window.scrollTo = function (x, y) { restoredScroll = [x, y]; };
+        var guardLink = purchaseLinks[0].cloneNode(true);
+        guardLink.href = 'javascript:void(0)';
+        document.querySelector('[data-va-customer-panel-content]').append(guardLink);
+        assert(ignoredPanelClick(guardLink, {ctrlKey: true}), 'click con Ctrl fue interceptado');
+        assert(ignoredPanelClick(guardLink, {metaKey: true}), 'click con Meta fue interceptado');
+        assert(ignoredPanelClick(guardLink, {shiftKey: true}), 'click con Shift fue interceptado');
+        assert(ignoredPanelClick(guardLink, {altKey: true}), 'click con Alt fue interceptado');
+        assert(ignoredPanelClick(guardLink, {button: 1}), 'click no primario fue interceptado');
+        guardLink.target = '_parent';
+        assert(ignoredPanelClick(guardLink), 'target alternativo fue interceptado');
+        guardLink.className = '';
+        guardLink.removeAttribute('target');
+        assert(ignoredPanelClick(guardLink), 'enlace ajeno al panel fue interceptado');
+        guardLink.remove();
+        assert(navigationCalls.length === 1 && pushesForNavigation.length === 0, 'click ignorado alteró REST o History');
         purchaseLinks[0].click();
         assert(pushesForNavigation[0] === expectedDetailUrl.href, 'apertura no ejecutó pushState canónico');
         assert(document.querySelector('.va-customer-panel__detail-title'), 'no mostró heading de carga de detalle');
@@ -279,6 +311,7 @@
         scenarios.popstate_snapshot = true;
         scenarios.detail_opening = true;
         scenarios.detail_snapshot_return = true;
+        scenarios.navigation_click_guards = true;
 
         var stale = deferred();
         var staleCalls = 0;
@@ -297,6 +330,7 @@
         });
         await loadPanel();
         var syntheticLink = document.createElement('a');
+        syntheticLink.className = 'va-customer-panel__purchase-link';
         syntheticLink.href = expectedDetailUrl.href;
         syntheticLink.textContent = 'Abrir';
         document.querySelector('[data-va-customer-panel-content]').append(syntheticLink);
@@ -352,7 +386,15 @@
         assert(detailCalls.length === 1 && detailCalls[0] === 'customer-panel/purchases/' + validId, 'deep link no ejecutó un único GET de detalle');
         assert(document.querySelector('.va-loader[role="status"]'), 'deep link no mostró loading de detalle');
         assert(terminalState().busy === 'true', 'deep link no mantuvo aria-busy');
-        detailPending.resolve(detailFixture(validId, null));
+        var nativeImageSource = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+        Object.defineProperty(HTMLImageElement.prototype, 'src', {
+            configurable: true,
+            get: function () { return this.dataset.testSource || ''; },
+            set: function (value) { this.dataset.testSource = String(value); }
+        });
+        var validImageDetail = detailFixture(validId, null);
+        validImageDetail.data.orders[1].items[0].image = 'https://example.test/producto.jpg';
+        detailPending.resolve(validImageDetail);
         await tick();
         var detailText = terminalState().text;
         var detailOrders = Array.from(document.querySelectorAll('.va-customer-panel__detail-order'));
@@ -363,18 +405,33 @@
         assert(detailText.includes('Producto Zeta') && detailText.includes('Producto Alfa'), 'productos no renderizados');
         assert(detailText.includes('Información de pago no disponible.'), 'payment null no mostró el mensaje previsto');
         assert(detailText.includes('Preparando despacho'), 'entrega no renderizada');
-        assert(!detailText.includes('Compra creada'), 'timeline fuera de alcance fue renderizado');
+        var timelineEntries = Array.from(document.querySelectorAll('.va-customer-panel__timeline-entry'));
+        assert(timelineEntries.length === 2, 'timeline no renderizó todas las entradas');
+        assert(timelineEntries[0].textContent.includes('Evento Zeta') && timelineEntries[1].textContent.includes('Evento Alfa'), 'timeline alteró el orden recibido');
+        assert(timelineEntries[0].textContent.includes('Mensaje Zeta') && timelineEntries[1].textContent.includes('Mensaje Alfa'), 'timeline alteró los mensajes');
+        assert(timelineEntries[0].querySelector('time').dateTime === '2026-02-03T13:30:00Z', 'timeline alteró el timestamp');
+        assert(timelineEntries[0].classList.contains('va-customer-panel__timeline-entry--completed'), 'código permitido no recibió decoración');
+        assert(timelineEntries[1].classList.contains('va-customer-panel__timeline-entry--neutral'), 'código desconocido no recibió decoración neutra');
         assert(document.querySelectorAll('.va-customer-panel__detail-image').length === 1, 'imagen disponible no fue renderizada');
+        assert(document.querySelectorAll('.va-customer-panel__detail-image-placeholder[aria-hidden="true"]').length === 1, 'imagen ausente no mostró placeholder decorativo');
+        document.querySelector('.va-customer-panel__detail-image').dispatchEvent(new Event('error'));
+        assert(document.querySelectorAll('.va-customer-panel__detail-image').length === 0, 'imagen fallida permaneció rota');
+        assert(document.querySelectorAll('.va-customer-panel__detail-image-placeholder[aria-hidden="true"]').length === 2, 'imagen fallida no fue reemplazada por placeholder');
+        Object.defineProperty(HTMLImageElement.prototype, 'src', nativeImageSource);
         assert(terminalState().busy === 'false', 'detalle válido no terminó loading');
         scenarios.detail_direct = true;
         scenarios.detail_valid = true;
         scenarios.detail_payment_null = true;
+        scenarios.detail_timeline = true;
+        scenarios.detail_media = true;
+        scenarios.detail_image_error = true;
 
         var unsafeImageDetail = detailFixture(validId, null);
         unsafeImageDetail.data.orders[1].items[0].image = 'javascript:alert(1)';
         await directDetail(validId, function () { return Promise.resolve(unsafeImageDetail); });
         await tick();
         assert(document.querySelectorAll('.va-customer-panel__detail-image').length === 0, 'detalle aceptó un esquema de imagen inseguro');
+        assert(document.querySelectorAll('.va-customer-panel__detail-image-placeholder').length === 2, 'imagen insegura no mostró placeholder');
         assert(terminalState().text.includes('Producto Alfa'), 'imagen insegura ocultó el producto');
         scenarios.detail_image_safety = true;
 

@@ -5,6 +5,13 @@
     var DETAIL_ENDPOINT = ENDPOINT + '/';
     var TIMEOUT_MS = 12000;
     var PUBLIC_ID_PATTERN = /^chk_[A-Za-z0-9_-]{43}$/;
+    var TIMELINE_DECORATION = {
+        checkout_created: 'completed',
+        payment_confirmed: 'completed',
+        payment_reconciled: 'completed',
+        orders_materialized: 'completed',
+        delivery_created: 'completed'
+    };
 
     function canonicalListUrl(config) {
         var url = new URL(config.pages.orders, window.location.href);
@@ -462,20 +469,37 @@
             : null;
     }
 
-    function renderDetailItem(item, currency, config) {
-        var listItem = element('li', 'va-customer-panel__detail-item');
-        var content = element('div', 'va-customer-panel__detail-item-content');
-        var values = element('dl', 'va-customer-panel__detail-values');
-        var image;
+    function productImagePlaceholder() {
+        var placeholder = element('span', 'va-customer-panel__detail-image-placeholder');
+
+        placeholder.setAttribute('aria-hidden', 'true');
+        return placeholder;
+    }
+
+    function renderProductImage(item) {
         var imageUrl = item.image === null ? null : safeImageUrl(item.image);
+        var image;
 
         if (imageUrl !== null) {
             image = element('img', 'va-customer-panel__detail-image');
             image.src = imageUrl;
             image.alt = '';
             image.loading = 'lazy';
-            content.append(image);
+            image.onerror = function () {
+                image.onerror = null;
+                image.replaceWith(productImagePlaceholder());
+            };
+            return image;
         }
+
+        return productImagePlaceholder();
+    }
+
+    function renderDetailItem(item, currency, config) {
+        var listItem = element('li', 'va-customer-panel__detail-item');
+        var content = element('div', 'va-customer-panel__detail-item-content');
+        var values = element('dl', 'va-customer-panel__detail-values');
+        content.append(renderProductImage(item));
 
         values.append(
             detailValue('Producto', item.name),
@@ -486,6 +510,40 @@
         content.append(values);
         listItem.append(content);
         return listItem;
+    }
+
+    function renderTimelineEntry(entry, config) {
+        var decoration = TIMELINE_DECORATION[entry.code] || 'neutral';
+        var listItem = element(
+            'li',
+            'va-customer-panel__timeline-entry va-customer-panel__timeline-entry--' + decoration
+        );
+        var time = element('time', 'va-customer-panel__timeline-time', formatDate(entry.occurred_at, config));
+
+        listItem.append(element('p', 'va-customer-panel__timeline-label', entry.label));
+        if (typeof entry.message === 'string') {
+            listItem.append(element('p', 'va-customer-panel__timeline-message', entry.message));
+        }
+        time.dateTime = entry.occurred_at;
+        listItem.append(time);
+        return listItem;
+    }
+
+    function renderTimeline(entries, config) {
+        var section = element('section', 'va-customer-panel__detail-section va-customer-panel__timeline');
+        var list = element('ol', 'va-customer-panel__timeline-list');
+
+        section.append(element('h3', '', 'Timeline'));
+        if (entries.length === 0) {
+            section.append(element('p', '', 'No hay eventos para mostrar.'));
+            return section;
+        }
+
+        entries.forEach(function (entry) {
+            list.append(renderTimelineEntry(entry, config));
+        });
+        section.append(list);
+        return section;
     }
 
     function renderDetailOrder(order, currency, config) {
@@ -514,6 +572,7 @@
         var paymentSection = element('section', 'va-customer-panel__detail-section');
         var paymentValues;
         var deliverySection = element('section', 'va-customer-panel__detail-section');
+        var timelineSection;
 
         heading.tabIndex = -1;
         back.href = canonicalListUrl(state.config).href;
@@ -570,8 +629,9 @@
             element('h3', '', 'Entrega'),
             element('p', '', detail.delivery.label)
         );
+        timelineSection = renderTimeline(detail.timeline, state.config);
         state.root.content.replaceChildren(
-            heading, back, header, summarySection, ordersSection, paymentSection, deliverySection
+            heading, back, header, summarySection, ordersSection, paymentSection, deliverySection, timelineSection
         );
         state.root.content.setAttribute('aria-busy', 'false');
         state.root.status.hidden = true;
@@ -720,7 +780,9 @@
         var values;
         var route;
 
-        if (!link || event.defaultPrevented || event.button !== 0
+        if (!link
+            || !link.matches('.va-customer-panel__purchase-link, .va-customer-panel__back-link')
+            || event.defaultPrevented || event.button !== 0
             || (link.target && link.target !== '_self')
             || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
             return;

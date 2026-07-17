@@ -45,3 +45,46 @@
     font-size: 1.125rem;
     font-weight: 700;
 }
+
+.veciahorra-frontend .va-customer-panel__detail-item-content {
+    align-items: start;
+    display: grid;
+    gap: var(--va-space-3);
+    grid-template-columns: 4rem minmax(0, 1fr);
+}
+
+.veciahorra-frontend .va-customer-panel__detail-image,
+.veciahorra-frontend .va-customer-panel__detail-image-placeholder {
+    aspect-ratio: 1;
+    background: var(--va-color-surface-muted, #f3f4f6);
+    border-radius: var(--va-radius-md, 0.5rem);
+    display: block;
+    inline-size: 4rem;
+    object-fit: cover;
+}
+
+.veciahorra-frontend .va-customer-panel__timeline-list {
+    display: grid;
+    gap: var(--va-space-3);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__timeline-entry {
+    border-inline-start: 0.25rem solid var(--va-color-border, currentColor);
+    padding-inline-start: var(--va-space-3);
+}
+
+.veciahorra-frontend .va-customer-panel__timeline-entry--completed {
+    border-inline-start-color: var(--va-color-success, #16794b);
+}
+
+.veciahorra-frontend .va-customer-panel__timeline-label,
+.veciahorra-frontend .va-customer-panel__timeline-message {
+    margin: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__timeline-time {
+    color: var(--va-color-muted);
+}

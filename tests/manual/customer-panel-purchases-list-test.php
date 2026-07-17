@@ -118,11 +118,12 @@ foreach ([
     'http_error', 'network_error', 'invalid_json', 'invalid_contract', 'timeout',
     'router', 'canonicalization', 'popstate',
     'navigation', 'snapshot', 'concurrency', 'stale_response',
-    'popstate_snapshot',
+    'popstate_snapshot', 'navigation_click_guards',
     'detail_direct', 'detail_opening', 'detail_valid', 'detail_payment_null',
     'detail_payment', 'detail_404', 'detail_http_error', 'detail_network_error',
     'detail_invalid_json', 'detail_invalid_contract', 'detail_timeout',
     'detail_stale_response', 'detail_snapshot_return', 'detail_image_safety',
+    'detail_timeline', 'detail_media', 'detail_image_error',
 ] as $scenario) {
     assertCustomerPanelList(
         ($payload['scenarios'][$scenario] ?? false) === true,
