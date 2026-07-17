@@ -18,10 +18,11 @@ $titleId = $instanceId . '-title';
         </header>
 
         <?php if ($loggedIn) : ?>
-            <div class="va-customer-panel__status" role="status" aria-live="polite" data-va-customer-panel-status>
-                <?php esc_html_e('Panel de compras preparado.', 'veciahorra'); ?>
+            <div class="va-customer-panel__status va-loader" role="status" aria-live="polite" data-va-customer-panel-status>
+                <span class="va-loader__indicator" aria-hidden="true"></span>
+                <span data-va-customer-panel-status-text><?php esc_html_e('Cargando tus compras…', 'veciahorra'); ?></span>
             </div>
-            <section class="va-customer-panel__content" aria-label="<?php esc_attr_e('Contenido de compras', 'veciahorra'); ?>" data-va-customer-panel-content>
+            <section class="va-customer-panel__content" aria-label="<?php esc_attr_e('Contenido de compras', 'veciahorra'); ?>" aria-busy="true" data-va-customer-panel-content>
                 <noscript><?php esc_html_e('Activa JavaScript para consultar tus compras', 'veciahorra'); ?></noscript>
             </section>
             <div class="va-announcer" aria-live="polite" aria-atomic="true" data-va-customer-panel-announcer></div>

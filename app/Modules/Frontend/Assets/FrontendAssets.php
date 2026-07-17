@@ -137,14 +137,18 @@ final class FrontendAssets
         wp_enqueue_script(self::CHECKOUT_SCRIPT_HANDLE);
     }
 
-    public function enqueueCustomerPanel(): void
+    public function enqueueCustomerPanel(bool $authenticated = false): void
     {
         if (is_admin()) {
             return;
         }
 
-        $this->registerAssets();
-        wp_enqueue_style(self::STYLE_HANDLE);
+        if ($authenticated) {
+            $this->enqueue();
+        } else {
+            $this->registerAssets();
+            wp_enqueue_style(self::STYLE_HANDLE);
+        }
         wp_enqueue_style(self::CUSTOMER_PANEL_STYLE_HANDLE);
         wp_enqueue_script(self::CUSTOMER_PANEL_SCRIPT_HANDLE);
 
@@ -210,6 +214,7 @@ final class FrontendAssets
                 'loggedIn' => $userId > 0,
             ],
             'locale' => str_replace('_', '-', sanitize_text_field(determine_locale())),
+            'timeZone' => sanitize_text_field(wp_timezone_string() ?: 'UTC'),
             'currency' => 'CLP',
             'pages' => [
                 'cart' => esc_url_raw((string) apply_filters(

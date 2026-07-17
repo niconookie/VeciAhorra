@@ -17,3 +17,31 @@
 .veciahorra-frontend.va-customer-panel--duplicate {
     padding: 1rem;
 }
+
+.veciahorra-frontend .va-customer-panel__list {
+    display: grid;
+    gap: var(--va-space-3);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__purchase {
+    display: grid;
+    gap: var(--va-space-2);
+}
+
+.veciahorra-frontend .va-customer-panel__purchase p,
+.veciahorra-frontend .va-customer-panel__purchase-status p {
+    margin: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__date,
+.veciahorra-frontend .va-customer-panel__quantities {
+    color: var(--va-color-muted);
+}
+
+.veciahorra-frontend .va-customer-panel__total {
+    font-size: 1.125rem;
+    font-weight: 700;
+}

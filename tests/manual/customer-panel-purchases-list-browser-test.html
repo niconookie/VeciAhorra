@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Customer Panel Purchases List Test</title></head>
+<body>
+<script>
+(async function () {
+    'use strict';
+
+    var panelScript = '../../assets/frontend/js/customer-panel.js';
+    var scenarios = {};
+    var failures = [];
+    var expectedError = 'No pudimos cargar tus compras. Inténtalo nuevamente.';
+
+    function assert(condition, message) {
+        if (!condition) {
+            throw new Error(message);
+        }
+    }
+
+    function shell() {
+        document.body.innerHTML = [
+            '<div class="va-customer-panel" data-va-customer-panel-mount>',
+            '<div data-va-customer-panel-status><span data-va-customer-panel-status-text>Cargando tus compras…</span></div>',
+            '<section aria-busy="true" data-va-customer-panel-content></section>',
+            '<div data-va-customer-panel-announcer></div>',
+            '</div>'
+        ].join('');
+    }
+
+    function deferred() {
+        var resolve;
+        var reject;
+        var promise = new Promise(function (resolvePromise, rejectPromise) {
+            resolve = resolvePromise;
+            reject = rejectPromise;
+        });
+
+        return {promise: promise, resolve: resolve, reject: reject};
+    }
+
+    function tick() {
+        return new Promise(function (resolve) { window.setTimeout(resolve, 0); });
+    }
+
+    function loadPanel() {
+        return new Promise(function (resolve, reject) {
+            var script = document.createElement('script');
+            script.src = panelScript + '?run=' + Math.random();
+            script.onload = resolve;
+            script.onerror = function () { reject(new Error('No se pudo cargar customer-panel.js')); };
+            document.head.append(script);
+        });
+    }
+
+    function terminalState() {
+        return {
+            text: document.querySelector('[data-va-customer-panel-content]').textContent.trim(),
+            busy: document.querySelector('[data-va-customer-panel-content]').getAttribute('aria-busy'),
+            loaderHidden: document.querySelector('[data-va-customer-panel-status]').hidden
+        };
+    }
+
+    function configure(get) {
+        window.VeciAhorra = {
+            locale: 'es-CL',
+            timeZone: 'UTC',
+            api: {get: get}
+        };
+    }
+
+    async function rejectedScenario(name, reason) {
+        var calls = 0;
+        shell();
+        configure(function () {
+            calls += 1;
+            return Promise.reject(reason);
+        });
+        await loadPanel();
+        await tick();
+        var state = terminalState();
+        assert(calls === 1, name + ': llamada duplicada');
+        assert(state.text === expectedError, name + ': mensaje distinto');
+        assert(state.busy === 'false' && state.loaderHidden, name + ': estado no terminal');
+        scenarios[name] = true;
+    }
+
+    try {
+        var pending = deferred();
+        var calls = [];
+        shell();
+        configure(function (path) {
+            calls.push(path);
+            return pending.promise;
+        });
+        await loadPanel();
+        assert(calls.length === 1 && calls[0] === 'customer-panel/purchases', 'GET inicial incorrecto');
+        assert(document.querySelector('[data-va-customer-panel-status]').hidden === false, 'loader no visible');
+        assert(document.querySelector('[data-va-customer-panel-content]').getAttribute('aria-busy') === 'true', 'aria-busy inicial incorrecto');
+        scenarios.single_request = true;
+        scenarios.loading = true;
+
+        await loadPanel();
+        assert(calls.length === 1, 'el guard permitió una llamada duplicada');
+        scenarios.duplicate_guard = true;
+        pending.resolve({success: true, data: []});
+        await tick();
+        var emptyState = terminalState();
+        assert(emptyState.text === 'Aún no tienes compras para mostrar.', 'estado vacío incorrecto');
+        assert(emptyState.busy === 'false' && emptyState.loaderHidden, 'vacío no terminal');
+        scenarios.empty = true;
+
+        var purchases = [
+            {
+                checkout_public_id: 'chk_PRIMERO', created_at: '2026-01-01T10:00:00Z',
+                total: {amount: '1111.00', currency: 'CLP'}, product_quantity: 7,
+                order_count: 3, minimarket_count: 1, minimarkets: ['Mercado Uno'],
+                visible_status: {label: 'Estado Primero', message: 'Mensaje Primero'}
+            },
+            {
+                checkout_public_id: 'chk_SEGUNDO', created_at: '2026-01-02T10:00:00Z',
+                total: {amount: '2222.00', currency: 'CLP'}, product_quantity: 2,
+                order_count: 1, minimarket_count: 1, minimarkets: ['Mercado Dos'],
+                visible_status: {label: 'Estado Segundo', message: 'Mensaje Segundo'}
+            }
+        ];
+        shell();
+        configure(function () { return Promise.resolve({success: true, data: purchases}); });
+        await loadPanel();
+        await tick();
+        var items = Array.from(document.querySelectorAll('.va-customer-panel__item'));
+        var resultState = terminalState();
+        assert(items.length === 2, 'cantidad de resultados incorrecta');
+        if (!items[0].textContent.includes('chk_PRIMERO')) {
+            failures.push('no renderiza identificador público primero');
+        }
+        if (!items[1].textContent.includes('chk_SEGUNDO')) {
+            failures.push('no renderiza identificador público segundo');
+        }
+        assert(items[0].textContent.includes('Mercado Uno') && items[1].textContent.includes('Mercado Dos'), 'orden alterado');
+        assert(items[0].textContent.includes('Estado Primero') && items[0].textContent.includes('Mensaje Primero'), 'estado o mensaje alterado');
+        assert(items[0].textContent.includes('7 productos') && items[0].textContent.includes('3 pedidos'), 'cantidades alteradas');
+        assert(items[0].textContent.includes('1.111'), 'total no representado');
+        assert(resultState.busy === 'false' && resultState.loaderHidden, 'resultados no terminales');
+        scenarios.results = failures.length === 0;
+
+        await rejectedScenario('http_error', {status: 500});
+        await rejectedScenario('network_error', {status: 0, code: 'network_error'});
+        await rejectedScenario('invalid_json', {status: 200, code: 'invalid_json'});
+
+        shell();
+        configure(function () { return Promise.resolve({success: true, data: {invalid: true}}); });
+        await loadPanel();
+        await tick();
+        var invalidState = terminalState();
+        assert(invalidState.text === expectedError, 'contrato inválido no usa error genérico');
+        assert(invalidState.busy === 'false' && invalidState.loaderHidden, 'contrato inválido no terminal');
+        scenarios.invalid_contract = true;
+
+        var aborts = 0;
+        var NativeAbortController = window.AbortController;
+        window.AbortController = function () {
+            this.signal = {};
+            this.abort = function () { aborts += 1; };
+        };
+        shell();
+        configure(function () { return new Promise(function () {}); });
+        await loadPanel();
+        await new Promise(function (resolve) { window.setTimeout(resolve, 12010); });
+        var timeoutState = terminalState();
+        assert(aborts === 1, 'AbortController.abort no se ejecutó exactamente una vez');
+        assert(timeoutState.text === expectedError, 'timeout no usa error genérico');
+        assert(timeoutState.busy === 'false' && timeoutState.loaderHidden, 'timeout no terminal');
+        window.AbortController = NativeAbortController;
+        scenarios.timeout = true;
+
+        if (failures.length > 0) {
+            throw new Error(failures.join('; '));
+        }
+
+        document.body.innerHTML = '<pre id="test-results" data-status="pass"></pre>';
+        document.getElementById('test-results').textContent = JSON.stringify({scenarios: scenarios});
+    } catch (error) {
+        document.body.innerHTML = '<pre id="test-results" data-status="fail"></pre>';
+        document.getElementById('test-results').textContent = JSON.stringify({
+            scenarios: scenarios,
+            message: error && error.message ? error.message : String(error)
+        });
+    }
+}());
+</script>
+</body>
+</html>

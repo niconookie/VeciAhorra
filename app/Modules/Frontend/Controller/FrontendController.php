@@ -158,7 +158,8 @@ final class FrontendController
             return '';
         }
 
-        $this->assets->enqueueCustomerPanel();
+        $loggedIn = is_user_logged_in();
+        $this->assets->enqueueCustomerPanel($loggedIn);
         $this->customerPanelInstance++;
 
         if ($this->customerPanelInstance > 1) {
@@ -172,7 +173,7 @@ final class FrontendController
 
         return $this->views->render('customer-panel', [
             'instanceId' => $instanceId,
-            'loggedIn' => is_user_logged_in(),
+            'loggedIn' => $loggedIn,
             'loginUrl' => wp_login_url($ordersUrl),
         ]);
     }

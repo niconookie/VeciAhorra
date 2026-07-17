@@ -149,10 +149,13 @@ assertCustomerPanelFrontend(str_contains($inline, '"enabled":true'), 'La configu
 assertCustomerPanelFrontend(! preg_match('/nonce|user|purchase|order|restUrl/i', $inline), 'La configuracion expone datos innecesarios.');
 
 $javascript = (string) file_get_contents(dirname(__DIR__, 2) . '/assets/frontend/js/customer-panel.js');
-foreach (['fetch', 'XMLHttpRequest', 'window.location', 'location.search', 'URLSearchParams', 'pushState', 'replaceState', 'popstate', 'compra', 'pending', 'paid', 'delivered'] as $forbidden) {
+foreach (['fetch', 'XMLHttpRequest', 'window.location', 'location.search', 'URLSearchParams', 'pushState', 'replaceState', 'popstate', '?compra=', 'pending', 'paid', 'delivered'] as $forbidden) {
     assertCustomerPanelFrontend(! str_contains($javascript, $forbidden), "JavaScript contiene {$forbidden}.");
 }
-assertCustomerPanelFrontend(substr_count($javascript, 'querySelector(') === 1, 'JavaScript busca mas de un mount.');
+assertCustomerPanelFrontend(
+    substr_count($javascript, "document.querySelector('[data-va-customer-panel-mount]')") === 1,
+    'JavaScript busca mas de un mount funcional.'
+);
 assertCustomerPanelFrontend(
     str_contains($javascript, "vaCustomerPanelInitialized === 'true'")
         && str_contains($javascript, "vaCustomerPanelInitialized = 'true'"),
