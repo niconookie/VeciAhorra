@@ -15,18 +15,14 @@ final class CustomerPanelController
     {
     }
 
-    public function index(int $customerId): array
+    public function purchases(int $userId): array
     {
-        return $this->execute(
-            fn (): array => $this->service->listOrders($customerId)
-        );
+        return $this->execute(fn (): array => $this->service->listPurchases($userId));
     }
 
-    public function show(int $customerId, int $orderId): array
+    public function purchase(int $userId, string $publicId): array
     {
-        return $this->execute(
-            fn (): array => $this->service->getOrder($customerId, $orderId)
-        );
+        return $this->execute(fn (): array => $this->service->getPurchase($userId, $publicId));
     }
 
     private function execute(callable $callback): array
@@ -34,11 +30,11 @@ final class CustomerPanelController
         try {
             return ['success' => true, 'data' => $callback()];
         } catch (RecordNotFoundException $exception) {
-            return $this->error('order_not_found', $exception->getMessage());
+            return $this->error('customer_order_not_found', 'La compra no está disponible.');
         } catch (InvalidArgumentException $exception) {
-            return $this->error('validation_error', $exception->getMessage());
+            return $this->error('invalid_query', $exception->getMessage());
         } catch (Throwable) {
-            return $this->error('internal_error', 'Ocurrio un error interno.');
+            return $this->error('customer_panel_unavailable', 'Ocurrio un error interno.');
         }
     }
 

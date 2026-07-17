@@ -12,7 +12,7 @@ use WP_REST_Server;
 final class CustomerPanelRoutes
 {
     private const NAMESPACE = 'veciahorra/v1';
-    private const RESOURCE = '/me/orders';
+    private const PURCHASES = '/customer-panel/purchases';
 
     public function __construct(private CustomerPanelController $controller)
     {
@@ -22,36 +22,34 @@ final class CustomerPanelRoutes
     {
         register_rest_route(
             self::NAMESPACE,
-            self::RESOURCE,
+            self::PURCHASES,
             [
                 'methods' => WP_REST_Server::READABLE,
-                'callback' => [$this, 'index'],
+                'callback' => [$this, 'purchases'],
                 'permission_callback' => [$this, 'isAuthenticated'],
             ]
         );
         register_rest_route(
             self::NAMESPACE,
-            self::RESOURCE . '/(?P<id>\d+)',
+            self::PURCHASES . '/(?P<checkout_public_id>[^/]+)',
             [
                 'methods' => WP_REST_Server::READABLE,
-                'callback' => [$this, 'show'],
+                'callback' => [$this, 'purchase'],
                 'permission_callback' => [$this, 'isAuthenticated'],
             ]
         );
     }
 
-    public function index(WP_REST_Request $request): WP_REST_Response
+    public function purchases(WP_REST_Request $request): WP_REST_Response
     {
-        return $this->response($this->controller->index(
-            get_current_user_id()
-        ));
+        return $this->privateResponse($this->controller->purchases(get_current_user_id()));
     }
 
-    public function show(WP_REST_Request $request): WP_REST_Response
+    public function purchase(WP_REST_Request $request): WP_REST_Response
     {
-        return $this->response($this->controller->show(
+        return $this->privateResponse($this->controller->purchase(
             get_current_user_id(),
-            (int) ($request->get_url_params()['id'] ?? 0)
+            (string) ($request->get_url_params()['checkout_public_id'] ?? '')
         ));
     }
 
@@ -65,11 +63,21 @@ final class CustomerPanelRoutes
         $status = ($result['success'] ?? false) === true
             ? 200
             : match ($result['error']['code'] ?? '') {
-                'validation_error' => 422,
-                'order_not_found' => 404,
+                'invalid_query' => 422,
+                'customer_order_not_found' => 404,
                 default => 500,
             };
 
         return new WP_REST_Response($result, $status);
+    }
+
+    private function privateResponse(array $result): WP_REST_Response
+    {
+        $response = $this->response($result);
+        $response->header('Cache-Control', 'private, no-store, max-age=0');
+        $response->header('Pragma', 'no-cache');
+        $response->header('Vary', 'Cookie');
+
+        return $response;
     }
 }
