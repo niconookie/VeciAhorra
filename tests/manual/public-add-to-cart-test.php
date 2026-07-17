@@ -68,7 +68,7 @@ foreach ([
     'data-va-add-to-cart', 'disabled', 'aria-busy="false"',
     'data-va-add-loading', 'data-va-cart-success', 'aria-live="polite"',
     'data-va-cart-error', 'role="alert"', 'data-va-view-cart',
-    'Ver carrito', '/carrito/',
+    'Ver carrito', '/carrito-veciahorra/',
 ] as $contract) {
     assertPublicAddToCartContains($contract, $html);
 }
