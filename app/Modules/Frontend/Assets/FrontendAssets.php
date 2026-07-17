@@ -20,10 +20,13 @@ final class FrontendAssets
     public const CATALOG_SCRIPT_HANDLE = 'veciahorra-catalog';
     public const CART_SCRIPT_HANDLE = 'veciahorra-cart';
     public const CHECKOUT_SCRIPT_HANDLE = 'veciahorra-checkout';
+    public const CUSTOMER_PANEL_STYLE_HANDLE = 'veciahorra-customer-panel';
+    public const CUSTOMER_PANEL_SCRIPT_HANDLE = 'veciahorra-customer-panel';
     public const REST_NAMESPACE = 'veciahorra/v1';
 
     private bool $registered = false;
     private bool $enqueued = false;
+    private bool $customerPanelConfigured = false;
 
     public function __construct(private ?CartSession $cartSession = null)
     {
@@ -79,6 +82,19 @@ final class FrontendAssets
             Config::PLUGIN_VERSION,
             true
         );
+        wp_register_style(
+            self::CUSTOMER_PANEL_STYLE_HANDLE,
+            $baseUrl . 'css/customer-panel.css',
+            [self::STYLE_HANDLE],
+            Config::PLUGIN_VERSION
+        );
+        wp_register_script(
+            self::CUSTOMER_PANEL_SCRIPT_HANDLE,
+            $baseUrl . 'js/customer-panel.js',
+            [self::SCRIPT_HANDLE],
+            Config::PLUGIN_VERSION,
+            true
+        );
     }
 
     public function enqueueProductOffers(): void
@@ -121,6 +137,39 @@ final class FrontendAssets
         wp_enqueue_script(self::CHECKOUT_SCRIPT_HANDLE);
     }
 
+    public function enqueueCustomerPanel(): void
+    {
+        if (is_admin()) {
+            return;
+        }
+
+        $this->registerAssets();
+        wp_enqueue_style(self::STYLE_HANDLE);
+        wp_enqueue_style(self::CUSTOMER_PANEL_STYLE_HANDLE);
+        wp_enqueue_script(self::CUSTOMER_PANEL_SCRIPT_HANDLE);
+
+        if ($this->customerPanelConfigured) {
+            return;
+        }
+
+        $this->customerPanelConfigured = true;
+        $configuration = wp_json_encode(
+            ['enabled' => true],
+            JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+        );
+
+        if (is_string($configuration)) {
+            wp_add_inline_script(
+                self::CUSTOMER_PANEL_SCRIPT_HANDLE,
+                'window.VeciAhorra = window.VeciAhorra || {};'
+                    . 'window.VeciAhorra.customerPanel = Object.assign('
+                    . 'window.VeciAhorra.customerPanel || {}, '
+                    . $configuration . ');',
+                'before'
+            );
+        }
+    }
+
     public function enqueue(): void
     {
         if ($this->enqueued || is_admin()) {
@@ -140,7 +189,7 @@ final class FrontendAssets
         if (is_string($configuration)) {
             wp_add_inline_script(
                 self::SCRIPT_HANDLE,
-                'window.VeciAhorra = ' . $configuration . ';',
+                'window.VeciAhorra = Object.assign(window.VeciAhorra || {}, ' . $configuration . ');',
                 'before'
             );
         }

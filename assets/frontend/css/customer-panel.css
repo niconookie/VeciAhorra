@@ -1,0 +1,19 @@
+.veciahorra-frontend.va-customer-panel {
+    inline-size: 100%;
+}
+
+.veciahorra-frontend .va-customer-panel__main {
+    display: grid;
+    gap: 1rem;
+}
+
+.veciahorra-frontend .va-customer-panel__header,
+.veciahorra-frontend .va-customer-panel__content,
+.veciahorra-frontend .va-customer-panel__access,
+.veciahorra-frontend .va-customer-panel__status {
+    margin: 0;
+}
+
+.veciahorra-frontend.va-customer-panel--duplicate {
+    padding: 1rem;
+}

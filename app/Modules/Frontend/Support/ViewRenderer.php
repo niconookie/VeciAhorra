@@ -18,6 +18,8 @@ final class ViewRenderer
         'product-detail' => 'Views/product-detail.php',
         'cart' => 'Views/cart.php',
         'checkout' => 'Views/checkout.php',
+        'customer-panel' => 'Views/customer-panel.php',
+        'customer-panel-duplicate' => 'Views/customer-panel-duplicate.php',
         'button' => 'Components/button.php',
         'card' => 'Components/card.php',
         'loader' => 'Components/loader.php',

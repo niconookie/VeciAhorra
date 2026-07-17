@@ -15,8 +15,10 @@ final class FrontendController
     public const SHORTCODE = 'veciahorra_frontend';
     public const CART_SHORTCODE = 'veciahorra_cart';
     public const CHECKOUT_SHORTCODE = 'veciahorra_checkout';
+    public const CUSTOMER_PANEL_SHORTCODE = 'veciahorra_customer_panel';
 
     private int $instance = 0;
+    private int $customerPanelInstance = 0;
 
     public function __construct(
         private FrontendAssets $assets,
@@ -143,6 +145,35 @@ final class FrontendController
         return $this->views->render('layout', [
             'content' => $page,
             'instanceId' => $instanceId,
+        ]);
+    }
+
+    /** @param array<string, mixed>|string $attributes */
+    public function renderCustomerPanel(
+        array|string $attributes = [],
+        ?string $content = null,
+        string $tag = ''
+    ): string {
+        if (is_admin()) {
+            return '';
+        }
+
+        $this->assets->enqueueCustomerPanel();
+        $this->customerPanelInstance++;
+
+        if ($this->customerPanelInstance > 1) {
+            return $this->views->render('customer-panel-duplicate', [
+                'ordersUrl' => esc_url_raw(home_url('/mis-pedidos/')),
+            ]);
+        }
+
+        $instanceId = 'va-customer-panel-1';
+        $ordersUrl = esc_url_raw(home_url('/mis-pedidos/'));
+
+        return $this->views->render('customer-panel', [
+            'instanceId' => $instanceId,
+            'loggedIn' => is_user_logged_in(),
+            'loginUrl' => wp_login_url($ordersUrl),
         ]);
     }
 }
