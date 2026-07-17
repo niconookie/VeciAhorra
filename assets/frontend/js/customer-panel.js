@@ -53,18 +53,167 @@
         }
     }
 
-    function navigate(config, canonicalize) {
-        var route = readRoute();
-
-        if (canonicalize) {
-            canonicalizeInitialRoute(route, config);
-        }
-
-        return route;
+    function createNavigationState(mount, root, config, api) {
+        return {
+            mount: mount,
+            root: root,
+            config: config,
+            api: api,
+            activeController: null,
+            requestGeneration: 0,
+            activeMode: 'booting',
+            activePublicId: null,
+            activeCanonicalUrl: '',
+            listSnapshot: null,
+            originLink: null,
+            scrollPosition: 0,
+            destroyed: false
+        };
     }
 
-    function handlePopState(config) {
-        navigate(config, false);
+    function beginRequest(state, mode, publicId, canonicalUrl) {
+        if (state.activeController) {
+            state.activeController.abort();
+        }
+
+        state.requestGeneration += 1;
+        state.activeController = typeof window.AbortController === 'function'
+            ? new window.AbortController()
+            : null;
+        state.activeMode = mode;
+        state.activePublicId = publicId;
+        state.activeCanonicalUrl = canonicalUrl;
+
+        return {
+            generation: state.requestGeneration,
+            mode: mode,
+            publicId: publicId,
+            canonicalUrl: canonicalUrl,
+            controller: state.activeController,
+            signal: state.activeController ? state.activeController.signal : undefined
+        };
+    }
+
+    function isCurrentRequest(state, request) {
+        return !state.destroyed
+            && state.requestGeneration === request.generation
+            && state.activeMode === request.mode
+            && state.activePublicId === request.publicId
+            && state.activeCanonicalUrl === request.canonicalUrl;
+    }
+
+    function saveListSnapshot(state, originLink) {
+        state.listSnapshot = Array.from(state.root.content.childNodes);
+        state.originLink = originLink;
+        state.scrollPosition = window.scrollY;
+    }
+
+    function restoreListSnapshot(state) {
+        var heading;
+
+        if (state.listSnapshot) {
+            state.root.content.replaceChildren.apply(state.root.content, state.listSnapshot);
+        } else {
+            heading = element('h2', 'va-customer-panel__list-title', 'Tus compras');
+            heading.tabIndex = -1;
+            state.root.content.replaceChildren(heading);
+        }
+
+        state.root.content.setAttribute('aria-busy', 'false');
+        state.root.status.hidden = true;
+        window.setTimeout(function () {
+            window.scrollTo(0, state.scrollPosition);
+
+            if (state.originLink && state.originLink.isConnected) {
+                state.originLink.focus();
+            } else {
+                heading = state.root.content.querySelector('.va-customer-panel__list-title');
+                if (heading) {
+                    heading.focus();
+                }
+            }
+        }, 0);
+    }
+
+    function renderDetailLoading(state) {
+        var heading = element('h2', 'va-customer-panel__detail-title', 'Detalle de compra');
+        var back = element('a', 'va-customer-panel__back-link', 'Volver a mis compras');
+        var loader = element('div', 'va-loader');
+        var indicator = element('span', 'va-loader__indicator');
+
+        heading.tabIndex = -1;
+        back.href = canonicalListUrl(state.config).href;
+        loader.setAttribute('role', 'status');
+        loader.setAttribute('aria-live', 'polite');
+        indicator.setAttribute('aria-hidden', 'true');
+        loader.append(
+            indicator,
+            element('span', '', 'Cargando detalle de compra…')
+        );
+        state.root.content.replaceChildren(heading, back, loader);
+        state.root.content.setAttribute('aria-busy', 'true');
+        state.root.status.hidden = true;
+        heading.focus();
+    }
+
+    function renderNotFound(state) {
+        var heading = element('h2', 'va-customer-panel__detail-title', 'Detalle de compra');
+        var message = element('p', 'va-alert va-alert--error', 'La compra no está disponible.');
+        var back = element('a', 'va-customer-panel__back-link', 'Volver a mis compras');
+
+        heading.tabIndex = -1;
+        back.href = canonicalListUrl(state.config).href;
+        state.root.content.replaceChildren(heading, message, back);
+        state.root.content.setAttribute('aria-busy', 'false');
+        state.root.status.hidden = true;
+        state.root.announcer.textContent = 'La compra no está disponible.';
+        heading.focus();
+    }
+
+    function enterDetail(state, route, canonicalUrl) {
+        if (state.activeMode === 'detail' && state.activeCanonicalUrl === canonicalUrl) {
+            return;
+        }
+
+        beginRequest(state, 'detail', route.publicId, canonicalUrl);
+        renderDetailLoading(state);
+    }
+
+    function enterList(state, canonicalUrl) {
+        if (state.activeMode === 'list' && state.activeCanonicalUrl === canonicalUrl) {
+            return;
+        }
+
+        beginRequest(state, 'list', null, canonicalUrl);
+        restoreListSnapshot(state);
+    }
+
+    function enterNotFound(state) {
+        beginRequest(state, 'not_found', null, window.location.href);
+        renderNotFound(state);
+    }
+
+    function navigate(state, route, canonicalUrl, push) {
+        if (push) {
+            window.history.pushState(null, '', canonicalUrl);
+        }
+
+        if (route.name === 'detail') {
+            enterDetail(state, route, canonicalUrl);
+        } else if (route.name === 'list') {
+            enterList(state, canonicalUrl);
+        } else {
+            enterNotFound(state);
+        }
+    }
+
+    function handlePopState(state) {
+        var route = readRoute();
+        var canonicalUrl = route.name === 'detail'
+            ? canonicalDetailUrl(route.publicId, state.config).href
+            : (route.name === 'list' ? canonicalListUrl(state.config).href : window.location.href);
+
+        navigate(state, route, canonicalUrl, false);
     }
 
     function element(tag, className, text) {
@@ -163,6 +312,7 @@
     function renderPurchase(item, config) {
         var listItem = element('li', 'va-customer-panel__item');
         var article = element('article', 'va-customer-panel__purchase va-card');
+        var link = element('a', 'va-customer-panel__purchase-link');
         var date = element('p', 'va-customer-panel__date', formatDate(item.created_at, config));
         var publicId = element('p', 'va-customer-panel__public-id', item.checkout_public_id);
         var stores = element(
@@ -180,7 +330,9 @@
             document.createTextNode(item.product_quantity + (item.product_quantity === 1 ? ' producto · ' : ' productos · ')),
             document.createTextNode(item.order_count + (item.order_count === 1 ? ' pedido' : ' pedidos'))
         );
-        article.append(date, publicId, stores, status, quantities, total);
+        link.href = canonicalDetailUrl(item.checkout_public_id, config).href;
+        link.append(date, publicId, stores, status, quantities, total);
+        article.append(link);
         listItem.append(article);
 
         return listItem;
@@ -228,25 +380,94 @@
         root.announcer.textContent = 'No pudimos cargar tus compras. Inténtalo nuevamente.';
     }
 
-    function requestPurchases(api) {
-        var controller = typeof window.AbortController === 'function'
-            ? new window.AbortController()
-            : null;
+    function requestWithTimeout(request, operation) {
         var timer;
         var timeout = new Promise(function (resolve, reject) {
             timer = window.setTimeout(function () {
-                if (controller) {
-                    controller.abort();
+                if (request.controller) {
+                    request.controller.abort();
                 }
 
                 reject(new Error('timeout'));
             }, TIMEOUT_MS);
         });
-        var request = api.get(ENDPOINT, controller ? {signal: controller.signal} : {});
+        var apiPromise = operation(request.signal ? {signal: request.signal} : {});
 
-        return Promise.race([request, timeout]).finally(function () {
+        return Promise.race([apiPromise, timeout]).finally(function () {
             window.clearTimeout(timer);
         });
+    }
+
+    function requestPurchases(api, request) {
+        return requestWithTimeout(request, function (options) {
+            return api.get(ENDPOINT, options);
+        });
+    }
+
+    function loadList(state) {
+        var canonicalUrl = canonicalListUrl(state.config).href;
+        var request = beginRequest(state, 'list', null, canonicalUrl);
+
+        renderLoading(state.root);
+        requestPurchases(state.api, request)
+            .then(purchasesFrom)
+            .then(function (purchases) {
+                if (!isCurrentRequest(state, request)) {
+                    return;
+                }
+
+                state.activeController = null;
+                if (purchases.length === 0) {
+                    state.listSnapshot = null;
+                    state.originLink = null;
+                    state.scrollPosition = 0;
+                    renderEmpty(state.root);
+                    return;
+                }
+
+                state.listSnapshot = null;
+                state.originLink = null;
+                state.scrollPosition = 0;
+                renderList(state.root, purchases, state.config);
+            })
+            .catch(function () {
+                if (isCurrentRequest(state, request)) {
+                    state.activeController = null;
+                    renderError(state.root);
+                }
+            });
+    }
+
+    function handlePanelClick(event, state) {
+        var link = event.target.closest('a');
+        var url;
+        var values;
+        var route;
+
+        if (!link || event.defaultPrevented || event.button !== 0
+            || (link.target && link.target !== '_self')
+            || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+            return;
+        }
+
+        url = new URL(link.href, window.location.href);
+
+        if (url.origin !== window.location.origin) {
+            return;
+        }
+
+        values = url.searchParams.getAll('compra');
+        route = values.length === 1 && PUBLIC_ID_PATTERN.test(values[0])
+            ? {name: 'detail', publicId: values[0]}
+            : {name: 'list'};
+        event.preventDefault();
+
+        if (route.name === 'detail') {
+            saveListSnapshot(state, link);
+            navigate(state, route, canonicalDetailUrl(route.publicId, state.config).href, true);
+        } else {
+            navigate(state, route, canonicalListUrl(state.config).href, true);
+        }
     }
 
     function initialize() {
@@ -254,6 +475,8 @@
         var config = window.VeciAhorra || {};
         var api = config.api;
         var root;
+        var route;
+        var state;
 
         if (!mount || mount.dataset.vaCustomerPanelInitialized === 'true') {
             return;
@@ -261,10 +484,6 @@
 
         mount.dataset.vaCustomerPanelInitialized = 'true';
         mount.classList.add('va-customer-panel--initialized');
-        navigate(config, true);
-        window.addEventListener('popstate', function () {
-            handlePopState(config);
-        });
         root = {
             content: mount.querySelector('[data-va-customer-panel-content]'),
             status: mount.querySelector('[data-va-customer-panel-status]'),
@@ -281,20 +500,23 @@
             return;
         }
 
-        renderLoading(root);
-        requestPurchases(api)
-            .then(purchasesFrom)
-            .then(function (purchases) {
-                if (purchases.length === 0) {
-                    renderEmpty(root);
-                    return;
-                }
+        route = readRoute();
+        canonicalizeInitialRoute(route, config);
+        state = createNavigationState(mount, root, config, api);
+        mount.addEventListener('click', function (event) {
+            handlePanelClick(event, state);
+        });
+        window.addEventListener('popstate', function () {
+            handlePopState(state);
+        });
 
-                renderList(root, purchases, config);
-            })
-            .catch(function () {
-                renderError(root);
-            });
+        if (route.name === 'detail') {
+            enterDetail(state, route, canonicalDetailUrl(route.publicId, config).href);
+        } else if (route.name === 'list') {
+            loadList(state);
+        } else {
+            enterNotFound(state);
+        }
     }
 
     initialize();

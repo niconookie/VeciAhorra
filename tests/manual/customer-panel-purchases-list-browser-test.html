@@ -69,7 +69,7 @@
         };
     }
 
-    async function routeScenario(query, expectedReplacement) {
+    async function routeScenario(query, expectedReplacement, expectedCalls) {
         var nativeReplaceState = window.history.replaceState.bind(window.history);
         var nativePushState = window.history.pushState.bind(window.history);
         var cleanUrl = window.location.href.split(/[?#]/)[0];
@@ -95,7 +95,8 @@
         window.history.pushState = nativePushState;
 
         assert(pushes === 0, 'router ejecutó pushState');
-        assert(calls.length === 1 && calls[0] === 'customer-panel/purchases', 'router alteró el GET del listado');
+        assert(calls.length === expectedCalls, 'cantidad REST incorrecta para ' + query);
+        assert(calls.every(function (path) { return path === 'customer-panel/purchases'; }), 'router llamó al detalle');
         assert(replacements.length === (expectedReplacement === null ? 0 : 1), 'cantidad de replaceState incorrecta para ' + query);
 
         if (expectedReplacement !== null) {
@@ -120,6 +121,7 @@
     }
 
     try {
+        var cleanUrl = window.location.href.split(/[?#]/)[0];
         var pending = deferred();
         var calls = [];
         shell();
@@ -146,29 +148,33 @@
 
         var purchases = [
             {
-                checkout_public_id: 'chk_PRIMERO', created_at: '2026-01-01T10:00:00Z',
+                checkout_public_id: 'chk_' + 'P'.repeat(43), created_at: '2026-01-01T10:00:00Z',
                 total: {amount: '1111.00', currency: 'CLP'}, product_quantity: 7,
                 order_count: 3, minimarket_count: 1, minimarkets: ['Mercado Uno'],
                 visible_status: {label: 'Estado Primero', message: 'Mensaje Primero'}
             },
             {
-                checkout_public_id: 'chk_SEGUNDO', created_at: '2026-01-02T10:00:00Z',
+                checkout_public_id: 'chk_' + 'S'.repeat(43), created_at: '2026-01-02T10:00:00Z',
                 total: {amount: '2222.00', currency: 'CLP'}, product_quantity: 2,
                 order_count: 1, minimarket_count: 1, minimarkets: ['Mercado Dos'],
                 visible_status: {label: 'Estado Segundo', message: 'Mensaje Segundo'}
             }
         ];
+        var navigationCalls = [];
         shell();
-        configure(function () { return Promise.resolve({success: true, data: purchases}); });
+        configure(function (path) {
+            navigationCalls.push(path);
+            return Promise.resolve({success: true, data: purchases});
+        });
         await loadPanel();
         await tick();
         var items = Array.from(document.querySelectorAll('.va-customer-panel__item'));
         var resultState = terminalState();
         assert(items.length === 2, 'cantidad de resultados incorrecta');
-        if (!items[0].textContent.includes('chk_PRIMERO')) {
+        if (!items[0].textContent.includes('chk_' + 'P'.repeat(43))) {
             failures.push('no renderiza identificador público primero');
         }
-        if (!items[1].textContent.includes('chk_SEGUNDO')) {
+        if (!items[1].textContent.includes('chk_' + 'S'.repeat(43))) {
             failures.push('no renderiza identificador público segundo');
         }
         assert(items[0].textContent.includes('Mercado Uno') && items[1].textContent.includes('Mercado Dos'), 'orden alterado');
@@ -177,6 +183,79 @@
         assert(items[0].textContent.includes('1.111'), 'total no representado');
         assert(resultState.busy === 'false' && resultState.loaderHidden, 'resultados no terminales');
         scenarios.results = failures.length === 0;
+
+        var purchaseLinks = Array.from(document.querySelectorAll('.va-customer-panel__purchase-link'));
+        var expectedDetailUrl = new URL(cleanUrl);
+        expectedDetailUrl.searchParams.set('compra', purchases[0].checkout_public_id);
+        assert(purchaseLinks.length === 2, 'faltan enlaces reales de compras');
+        assert(purchaseLinks[0].href === expectedDetailUrl.href, 'href de detalle no es canónico');
+        var nativePushForNavigation = window.history.pushState.bind(window.history);
+        var nativeReplaceForNavigation = window.history.replaceState.bind(window.history);
+        var pushesForNavigation = [];
+        var nativeScrollTo = window.scrollTo.bind(window);
+        var restoredScroll = null;
+        window.history.pushState = function (state, title, url) {
+            pushesForNavigation.push(String(url));
+            nativePushForNavigation(state, title, url);
+        };
+        window.scrollTo = function (x, y) { restoredScroll = [x, y]; };
+        purchaseLinks[0].click();
+        await tick();
+        assert(pushesForNavigation[0] === expectedDetailUrl.href, 'apertura no ejecutó pushState canónico');
+        assert(document.querySelector('.va-customer-panel__detail-title'), 'no mostró heading de carga de detalle');
+        assert(document.querySelector('[data-va-customer-panel-content]').getAttribute('aria-busy') === 'true', 'detalle sin aria-busy');
+        assert(document.querySelector('.va-loader[role="status"][aria-live="polite"]'), 'loader de detalle no es anunciable');
+        assert(navigationCalls.length === 1 && navigationCalls[0] === 'customer-panel/purchases', 'apertura ejecutó REST adicional');
+        document.querySelector('.va-customer-panel__back-link').click();
+        await tick();
+        assert(document.querySelectorAll('.va-customer-panel__item').length === 2, 'snapshot no restaurado');
+        assert(restoredScroll && restoredScroll[0] === 0, 'scroll no restaurado');
+        assert(document.activeElement === purchaseLinks[0], 'foco no restaurado al enlace originador');
+        assert(pushesForNavigation.length === 2 && pushesForNavigation[1] === cleanUrl, 'retorno no ejecutó pushState a lista');
+        purchaseLinks[1].click();
+        await tick();
+        nativeReplaceForNavigation(null, '', cleanUrl);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+        await tick();
+        assert(document.querySelectorAll('.va-customer-panel__item').length === 2, 'popstate no restauró snapshot');
+        assert(document.activeElement === purchaseLinks[1], 'popstate no restauró foco');
+        assert(pushesForNavigation.length === 3, 'popstate ejecutó pushState');
+        assert(navigationCalls.length === 1, 'popstate solicitó REST');
+        window.history.pushState = nativePushForNavigation;
+        window.scrollTo = nativeScrollTo;
+        scenarios.navigation = true;
+        scenarios.snapshot = true;
+        scenarios.popstate_snapshot = true;
+
+        var stale = deferred();
+        var staleCalls = 0;
+        var abortsOnNavigation = 0;
+        var NativeAbortForNavigation = window.AbortController;
+        window.AbortController = function () {
+            this.signal = {};
+            this.abort = function () { abortsOnNavigation += 1; };
+        };
+        shell();
+        configure(function () {
+            staleCalls += 1;
+            return stale.promise;
+        });
+        await loadPanel();
+        var syntheticLink = document.createElement('a');
+        syntheticLink.href = expectedDetailUrl.href;
+        syntheticLink.textContent = 'Abrir';
+        document.querySelector('[data-va-customer-panel-content]').append(syntheticLink);
+        syntheticLink.click();
+        stale.resolve({success: true, data: purchases});
+        await tick();
+        assert(staleCalls === 1, 'concurrencia duplicó el GET de listado');
+        assert(abortsOnNavigation === 1, 'navegación no abortó exactamente una solicitud');
+        assert(document.querySelector('.va-customer-panel__detail-title'), 'respuesta obsoleta reemplazó detalle');
+        assert(document.querySelectorAll('.va-customer-panel__item').length === 0, 'respuesta obsoleta renderizó lista');
+        window.AbortController = NativeAbortForNavigation;
+        scenarios.concurrency = true;
+        scenarios.stale_response = true;
+        window.history.replaceState(null, '', cleanUrl);
 
         await rejectedScenario('http_error', {status: 500});
         await rejectedScenario('network_error', {status: 0, code: 'network_error'});
@@ -208,20 +287,21 @@
         window.AbortController = NativeAbortController;
         scenarios.timeout = true;
 
-        var cleanUrl = window.location.href.split(/[?#]/)[0];
         var validId = 'chk_' + 'A'.repeat(43);
-        await routeScenario('', null);
-        await routeScenario('?extra=1#fragment', cleanUrl);
-        await routeScenario('?compra=' + validId, null);
+        await routeScenario('', null, 1);
+        await routeScenario('?extra=1#fragment', cleanUrl, 1);
+        await routeScenario('?compra=' + validId, null, 0);
         await routeScenario(
             '?compra=' + validId + '&extra=1#fragment',
-            cleanUrl + '?compra=' + validId
+            cleanUrl + '?compra=' + validId,
+            0
         );
-        await routeScenario('?compra=', null);
-        await routeScenario('?compra=uno&compra=dos', null);
-        await routeScenario('?compra=chk_invalido', null);
-        await routeScenario('?compra=%20' + validId + '%20', null);
-        await routeScenario('?compra=%E0%A4%A', null);
+        await routeScenario('?compra=', null, 0);
+        await routeScenario('?compra=uno&compra=dos', null, 0);
+        await routeScenario('?compra=chk_invalido', null, 0);
+        await routeScenario('?compra=%20' + validId + '%20', null, 0);
+        await routeScenario('?compra=%E0%A4%A', null, 0);
+        assert(document.querySelector('[data-va-customer-panel-content]').textContent.includes('La compra no está disponible.'), 'ruta inválida no mostró not_found');
         scenarios.router = true;
         scenarios.canonicalization = true;
 
@@ -234,6 +314,11 @@
         window.history.pushState = function () { popPushes += 1; };
         window.dispatchEvent(new PopStateEvent('popstate'));
         await tick();
+        assert(document.querySelector('.va-customer-panel__detail-title'), 'popstate válido no entró a loading de detalle');
+        nativeReplaceState(null, '', cleanUrl + '?compra=');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+        await tick();
+        assert(document.querySelector('[data-va-customer-panel-content]').textContent.includes('La compra no está disponible.'), 'popstate inválido no mostró not_found');
         window.history.replaceState = nativeReplaceState;
         window.history.pushState = nativePushState;
         assert(popReplacements === 0 && popPushes === 0, 'popstate modificó el historial');
