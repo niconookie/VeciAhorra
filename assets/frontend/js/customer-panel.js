@@ -447,9 +447,15 @@
         return detail;
     }
 
-    function detailValue(label, value) {
-        var row = element('div', 'va-customer-panel__detail-row');
+    function detailValue(label, value, modifier) {
+        var className = 'va-customer-panel__detail-row';
+        var row;
 
+        if (modifier) {
+            className += ' va-customer-panel__detail-row--' + modifier;
+        }
+
+        row = element('div', className);
         row.append(element('dt', '', label), element('dd', '', value));
         return row;
     }
@@ -548,40 +554,45 @@
 
     function renderDetailOrder(order, currency, config) {
         var listItem = element('li', 'va-customer-panel__detail-order va-card');
+        var orderHeader = element('div', 'va-customer-panel__detail-order-header');
         var heading = element('h4', '', order.minimarket.name);
-        var subtotal = element('p', '', 'Subtotal: ' + formatTotal({amount: order.subtotal, currency: currency}, config));
+        var subtotal = element('p', 'va-customer-panel__detail-order-subtotal', 'Subtotal: ' + formatTotal({amount: order.subtotal, currency: currency}, config));
         var productsHeading = element('h5', '', 'Productos');
         var products = element('ul', 'va-customer-panel__detail-items');
 
         order.items.forEach(function (item) {
             products.append(renderDetailItem(item, currency, config));
         });
-        listItem.append(heading, subtotal, productsHeading, products);
+        orderHeader.append(heading, subtotal);
+        listItem.append(orderHeader, productsHeading, products);
         return listItem;
     }
 
     function renderDetail(state, detail) {
         var heading = element('h2', 'va-customer-panel__detail-title', 'Detalle de compra');
         var back = element('a', 'va-customer-panel__back-link', 'Volver a mis compras');
+        var headingRow = element('div', 'va-customer-panel__detail-heading-row');
+        var overview = element('div', 'va-customer-panel__detail-overview');
         var header = element('section', 'va-customer-panel__detail-header');
         var headerValues = element('dl', 'va-customer-panel__detail-values');
-        var summarySection = element('section', 'va-customer-panel__detail-section');
+        var summarySection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-summary');
         var summary = element('dl', 'va-customer-panel__detail-values');
-        var ordersSection = element('section', 'va-customer-panel__detail-section');
+        var ordersSection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-orders-section');
         var orders = element('ol', 'va-customer-panel__detail-orders');
-        var paymentSection = element('section', 'va-customer-panel__detail-section');
+        var paymentSection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-payment');
         var paymentValues;
-        var deliverySection = element('section', 'va-customer-panel__detail-section');
+        var deliverySection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-delivery');
+        var services = element('div', 'va-customer-panel__detail-services');
         var timelineSection;
 
         heading.tabIndex = -1;
         back.href = canonicalListUrl(state.config).href;
         headerValues.append(
-            detailValue('Identificador', detail.checkout_public_id),
-            detailValue('Fecha', formatDate(detail.created_at, state.config)),
-            detailValue('Estado', detail.visible_status.label),
-            detailValue('Información', detail.visible_status.message),
-            detailValue('Entrega', detail.fulfillment.label)
+            detailValue('Identificador', detail.checkout_public_id, 'identifier'),
+            detailValue('Fecha', formatDate(detail.created_at, state.config), 'date'),
+            detailValue('Estado', detail.visible_status.label, 'status'),
+            detailValue('Información', detail.visible_status.message, 'message'),
+            detailValue('Entrega', detail.fulfillment.label, 'fulfillment')
         );
         if (detail.requires_review) {
             headerValues.append(detailValue('Revisión', 'Requiere revisión'));
@@ -591,7 +602,7 @@
         summarySection.append(element('h3', '', 'Resumen'));
         summary.append(
             detailValue('Subtotal', formatTotal({amount: detail.summary.subtotal, currency: detail.summary.currency}, state.config)),
-            detailValue('Total', formatTotal({amount: detail.summary.total, currency: detail.summary.currency}, state.config)),
+            detailValue('Total', formatTotal({amount: detail.summary.total, currency: detail.summary.currency}, state.config), 'total'),
             detailValue('Moneda', detail.summary.currency),
             detailValue('Cantidad de productos', String(detail.summary.product_quantity)),
             detailValue('Líneas', String(detail.summary.line_count)),
@@ -630,8 +641,11 @@
             element('p', '', detail.delivery.label)
         );
         timelineSection = renderTimeline(detail.timeline, state.config);
+        headingRow.append(heading, back);
+        overview.append(header, summarySection);
+        services.append(paymentSection, deliverySection);
         state.root.content.replaceChildren(
-            heading, back, header, summarySection, ordersSection, paymentSection, deliverySection, timelineSection
+            headingRow, overview, ordersSection, services, timelineSection
         );
         state.root.content.setAttribute('aria-busy', 'false');
         state.root.status.hidden = true;

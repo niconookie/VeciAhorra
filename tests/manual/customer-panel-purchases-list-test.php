@@ -124,6 +124,7 @@ foreach ([
     'detail_invalid_json', 'detail_invalid_contract', 'detail_timeout',
     'detail_stale_response', 'detail_snapshot_return', 'detail_image_safety',
     'detail_timeline', 'detail_media', 'detail_image_error',
+    'detail_layout_structure',
 ] as $scenario) {
     assertCustomerPanelList(
         ($payload['scenarios'][$scenario] ?? false) === true,

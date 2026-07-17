@@ -398,6 +398,12 @@
         await tick();
         var detailText = terminalState().text;
         var detailOrders = Array.from(document.querySelectorAll('.va-customer-panel__detail-order'));
+        assert(document.querySelector('.va-customer-panel__detail-heading-row .va-customer-panel__detail-title'), 'falta wrapper estructural de cabecera');
+        assert(document.querySelector('.va-customer-panel__detail-overview .va-customer-panel__detail-summary'), 'falta bloque estructural de resumen');
+        assert(document.querySelector('.va-customer-panel__detail-services .va-customer-panel__detail-payment'), 'falta bloque estructural de pago y entrega');
+        assert(document.querySelector('.va-customer-panel__detail-services .va-customer-panel__detail-delivery'), 'falta entrega en el wrapper de servicios');
+        assert(document.querySelectorAll('.va-customer-panel__detail-order-header').length === 2, 'faltan cabeceras estructurales de órdenes');
+        assert(document.querySelectorAll('.va-customer-panel__detail-item > .va-customer-panel__detail-item-content > .va-customer-panel__detail-values').length === 2, 'faltan clases estructurales de productos');
         assert(detailOrders.length === 2, 'detalle no renderizó todas las órdenes');
         assert(detailOrders[0].textContent.includes('Mercado Zeta') && detailOrders[1].textContent.includes('Mercado Alfa'), 'detalle alteró el orden recibido');
         assert(detailText.includes(validId) && detailText.includes('Preparando') && detailText.includes('Mensaje resuelto'), 'encabezado de detalle incompleto');
@@ -425,6 +431,7 @@
         scenarios.detail_timeline = true;
         scenarios.detail_media = true;
         scenarios.detail_image_error = true;
+        scenarios.detail_layout_structure = true;
 
         var unsafeImageDetail = detailFixture(validId, null);
         unsafeImageDetail.data.orders[1].items[0].image = 'javascript:alert(1)';

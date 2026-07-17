@@ -168,7 +168,14 @@ assertCustomerPanelFrontend(
 );
 
 $css = (string) file_get_contents(dirname(__DIR__, 2) . '/assets/frontend/css/customer-panel.css');
-foreach (preg_split('/}\s*/', $css) ?: [] as $rule) {
+assertCustomerPanelFrontend(str_contains($css, 'inline-size: min(100%, 76rem);'), 'El panel no conserva el ancho máximo auditado.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__detail-overview'), 'Falta el layout del overview.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__detail-services'), 'Falta el layout de pago y entrega.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__detail-item-content'), 'Falta el layout estructural de productos.');
+assertCustomerPanelFrontend(! str_contains($css, '!important'), 'El CSS introduce !important.');
+assertCustomerPanelFrontend(! preg_match('/url\s*\(|@font-face/i', $css), 'El CSS introduce URLs o fuentes externas.');
+$cssSelectors = preg_replace('/@media[^\{]+\{/', '', $css) ?? $css;
+foreach (preg_split('/}\s*/', $cssSelectors) ?: [] as $rule) {
     $selector = trim((string) strstr($rule, '{', true));
 
     if ($selector === '') {

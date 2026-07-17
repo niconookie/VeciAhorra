@@ -4,7 +4,10 @@
 
 .veciahorra-frontend .va-customer-panel__main {
     display: grid;
-    gap: 1rem;
+    gap: var(--va-space-4, 1rem);
+    inline-size: min(100%, 76rem);
+    margin-inline: auto;
+    padding-inline: clamp(0.75rem, 3vw, 2rem);
 }
 
 .veciahorra-frontend .va-customer-panel__header,
@@ -26,9 +29,21 @@
     padding: 0;
 }
 
+.veciahorra-frontend .va-customer-panel__content {
+    display: grid;
+    gap: var(--va-space-4, 1rem);
+    min-inline-size: 0;
+}
+
 .veciahorra-frontend .va-customer-panel__purchase {
     display: grid;
     gap: var(--va-space-2);
+}
+
+.veciahorra-frontend .va-customer-panel__purchase-link {
+    display: grid;
+    gap: var(--va-space-2, 0.5rem) var(--va-space-4, 1rem);
+    min-inline-size: 0;
 }
 
 .veciahorra-frontend .va-customer-panel__purchase p,
@@ -46,11 +61,120 @@
     font-weight: 700;
 }
 
+.veciahorra-frontend .va-customer-panel__detail-heading-row {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--va-space-2, 0.5rem) var(--va-space-4, 1rem);
+    justify-content: space-between;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-title,
+.veciahorra-frontend .va-customer-panel__detail-section h3,
+.veciahorra-frontend .va-customer-panel__detail-order h4,
+.veciahorra-frontend .va-customer-panel__detail-order h5 {
+    margin-block: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-overview {
+    display: grid;
+    gap: var(--va-space-4, 1rem);
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.veciahorra-frontend .va-customer-panel__detail-header,
+.veciahorra-frontend .va-customer-panel__detail-section {
+    background: var(--va-color-surface, #fff);
+    border: 1px solid var(--va-color-border, #d7dce2);
+    border-radius: var(--va-radius-lg, 0.75rem);
+    min-inline-size: 0;
+    padding: clamp(0.875rem, 2vw, 1.25rem);
+}
+
+.veciahorra-frontend .va-customer-panel__detail-values {
+    display: grid;
+    gap: var(--va-space-3, 0.75rem);
+    margin: 0;
+    min-inline-size: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-row {
+    min-inline-size: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-row dt {
+    color: var(--va-color-muted);
+    font-size: 0.8125rem;
+    line-height: 1.3;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-row dd {
+    margin: 0.2rem 0 0;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-row--status dd,
+.veciahorra-frontend .va-customer-panel__detail-row--total dd {
+    font-size: clamp(1.15rem, 2vw, 1.4rem);
+    font-weight: 700;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-row--identifier dd {
+    color: var(--va-color-muted);
+    font-size: 0.875rem;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-summary {
+    display: grid;
+    gap: var(--va-space-3, 0.75rem);
+}
+
+.veciahorra-frontend .va-customer-panel__detail-summary > .va-customer-panel__detail-values {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.veciahorra-frontend .va-customer-panel__detail-orders,
+.veciahorra-frontend .va-customer-panel__detail-items {
+    display: grid;
+    gap: var(--va-space-3, 0.75rem);
+    list-style: none;
+    margin: var(--va-space-3, 0.75rem) 0 0;
+    padding: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-order {
+    display: grid;
+    gap: var(--va-space-3, 0.75rem);
+}
+
+.veciahorra-frontend .va-customer-panel__detail-order-header {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--va-space-2, 0.5rem) var(--va-space-4, 1rem);
+    justify-content: space-between;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-order-subtotal {
+    font-weight: 700;
+    margin: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-item {
+    border-block-start: 1px solid var(--va-color-border, #d7dce2);
+    padding-block-start: var(--va-space-3, 0.75rem);
+}
+
 .veciahorra-frontend .va-customer-panel__detail-item-content {
     align-items: start;
     display: grid;
     gap: var(--va-space-3);
     grid-template-columns: 4rem minmax(0, 1fr);
+}
+
+.veciahorra-frontend .va-customer-panel__detail-item-content > .va-customer-panel__detail-values {
+    grid-template-columns: minmax(8rem, 2fr) repeat(3, minmax(6rem, 1fr));
 }
 
 .veciahorra-frontend .va-customer-panel__detail-image,
@@ -71,6 +195,19 @@
     padding: 0;
 }
 
+.veciahorra-frontend .va-customer-panel__detail-services {
+    display: grid;
+    gap: var(--va-space-4, 1rem);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.veciahorra-frontend .va-customer-panel__detail-payment,
+.veciahorra-frontend .va-customer-panel__detail-delivery,
+.veciahorra-frontend .va-customer-panel__timeline {
+    display: grid;
+    gap: var(--va-space-3, 0.75rem);
+}
+
 .veciahorra-frontend .va-customer-panel__timeline-entry {
     border-inline-start: 0.25rem solid var(--va-color-border, currentColor);
     padding-inline-start: var(--va-space-3);
@@ -87,4 +224,42 @@
 
 .veciahorra-frontend .va-customer-panel__timeline-time {
     color: var(--va-color-muted);
+}
+
+@media (min-width: 48rem) {
+    .veciahorra-frontend .va-customer-panel__purchase-link {
+        align-items: center;
+        grid-template-columns: minmax(10rem, 1fr) minmax(14rem, 2fr) auto;
+    }
+
+    .veciahorra-frontend .va-customer-panel__detail-overview {
+        grid-template-columns: minmax(16rem, 0.9fr) minmax(22rem, 1.4fr);
+    }
+
+    .veciahorra-frontend .va-customer-panel__detail-summary > .va-customer-panel__detail-values {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 63.99rem) {
+    .veciahorra-frontend .va-customer-panel__detail-item-content > .va-customer-panel__detail-values {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 39.99rem) {
+    .veciahorra-frontend .va-customer-panel__main {
+        padding-inline: 0.75rem;
+    }
+
+    .veciahorra-frontend .va-customer-panel__detail-services,
+    .veciahorra-frontend .va-customer-panel__detail-item-content,
+    .veciahorra-frontend .va-customer-panel__detail-item-content > .va-customer-panel__detail-values {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .veciahorra-frontend .va-customer-panel__detail-image,
+    .veciahorra-frontend .va-customer-panel__detail-image-placeholder {
+        inline-size: 3.5rem;
+    }
 }
