@@ -179,6 +179,20 @@
                     'El valor de Marca se perdió durante el error.'
                 );
                 assert(fetchCalls === 0, 'La View realizó una llamada REST directa.');
+                const selectImage = document.querySelector(
+                    '.veciahorra-products-admin__media-actions .button-secondary'
+                );
+                assert(
+                    selectImage instanceof HTMLButtonElement && !selectImage.disabled,
+                    'An isolated catalog failure disabled the media selector.'
+                );
+                selectImage.click();
+                assert(
+                    document.querySelector(
+                        '.veciahorra-products-admin__media-status[role="alert"]'
+                    ) instanceof HTMLElement,
+                    'The media control did not respond after an isolated catalog failure.'
+                );
             } finally {
                 window.fetch = originalFetch;
             }

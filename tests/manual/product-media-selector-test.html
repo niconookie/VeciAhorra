@@ -62,6 +62,8 @@
             let mediaCreations = 0;
             let openCalls = 0;
             let mediaOptions = null;
+            let mediaOpened = false;
+            let selectionAvailable = true;
             const handlers = {};
             const selection = {
                 first: () => selectedAttachment,
@@ -78,8 +80,13 @@
                 },
                 open() {
                     openCalls++;
+                    mediaOpened = true;
                 },
                 state() {
+                    if (!mediaOpened || !selectionAvailable) {
+                        return undefined;
+                    }
+
                     return {
                         get: () => selection,
                     };
@@ -169,6 +176,11 @@
                     'wp.media no está restringido a una imagen.'
                 );
 
+                selectionAvailable = false;
+                button('Seleccionar imagen').click();
+                assert(openCalls === 2, 'wp.media did not open without a selection state.');
+                selectionAvailable = true;
+
                 selectedAttachment = attachment({
                     id: 44,
                     filename: 'primera.jpg',
@@ -183,7 +195,7 @@
                 assert(filename.textContent === 'primera.jpg', 'No se mostró el nombre del archivo.');
 
                 button('Cambiar imagen').click();
-                assert(mediaCreations === 1 && openCalls === 2, 'No se reutilizó la instancia de wp.media.');
+                assert(mediaCreations === 1 && openCalls === 3, 'No se reutilizó la instancia de wp.media.');
                 selectedAttachment = attachment({
                     id: 55,
                     filename: 'segunda.png',

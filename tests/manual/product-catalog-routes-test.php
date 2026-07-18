@@ -6,6 +6,7 @@ use VeciAhorra\Exceptions\CatalogUnavailableException;
 use VeciAhorra\Modules\ProductCatalogs\Controllers\CatalogController;
 use VeciAhorra\Modules\ProductCatalogs\Repositories\TaxonomyCatalogRepository;
 use VeciAhorra\Modules\ProductCatalogs\Services\CatalogService;
+use VeciAhorra\Modules\ProductCatalogs\UnitTaxonomy;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -86,6 +87,13 @@ $catalogs = [
     '/veciahorra/v1/brands' => 'product_brand',
     '/veciahorra/v1/units' => 'pa_unidad',
 ];
+
+test('00. Unit taxonomy is available', function (): void {
+    assertTrue(
+        taxonomy_exists(UnitTaxonomy::NAME),
+        'The taxonomy used by the unit catalog was not registered.'
+    );
+});
 
 test('01. Las tres rutas están registradas', function () use ($catalogs): void {
     $routes = rest_get_server()->get_routes();

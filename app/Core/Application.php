@@ -9,6 +9,7 @@ use VeciAhorra\Modules\Inventory\Admin\InventoryPage;
 use VeciAhorra\Modules\ProductCatalogs\Routes\BrandRoutes;
 use VeciAhorra\Modules\ProductCatalogs\Routes\CategoryRoutes;
 use VeciAhorra\Modules\ProductCatalogs\Routes\UnitRoutes;
+use VeciAhorra\Modules\ProductCatalogs\UnitTaxonomy;
 use VeciAhorra\Modules\Inventory\Routes\InventoryRoutes;
 use VeciAhorra\Modules\Cart\Routes\CartRoutes;
 use VeciAhorra\Modules\Checkout\Routes\CheckoutRoutes;
@@ -132,6 +133,9 @@ final class Application
      */
     public function run(): void
     {
+        $unitTaxonomy = $this->container->make(UnitTaxonomy::class);
+        add_action('init', [$unitTaxonomy, 'register'], 20);
+
         (new DurableCompletionOrchestration())->register();
         (new WebpayCreateRecovery())->register();
         (new WebpayReturnRecovery())->register();

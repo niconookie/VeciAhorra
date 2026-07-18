@@ -705,12 +705,15 @@ function createMediaPicker(actions) {
             frame.on('select', selectAttachment);
         }
 
-        prepareSelection(control.input.value);
         frame.open();
+        prepareSelection(control.input.value);
     }
 
     function selectAttachment() {
-        const attachment = frame.state().get('selection').first();
+        const selection = currentSelection();
+        const attachment = typeof selection?.first === 'function'
+            ? selection.first()
+            : null;
         const data = normalizeAttachment(attachment);
 
         if (activeControl === null || data === null) {
@@ -723,12 +726,32 @@ function createMediaPicker(actions) {
     }
 
     function prepareSelection(value) {
-        const selection = frame.state().get('selection');
+        const selection = currentSelection();
+
+        if (selection === null) {
+            return;
+        }
+
         selection.reset();
 
         if (value !== '' && typeof window.wp.media.attachment === 'function') {
             selection.add(window.wp.media.attachment(Number(value)));
         }
+    }
+
+    function currentSelection() {
+        const state = typeof frame?.state === 'function'
+            ? frame.state()
+            : null;
+        const selection = typeof state?.get === 'function'
+            ? state.get('selection')
+            : null;
+
+        return selection
+            && typeof selection.reset === 'function'
+            && typeof selection.add === 'function'
+            ? selection
+            : null;
     }
 
     function render(control, value, disabled) {
