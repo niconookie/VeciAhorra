@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Frontend;
 
 use VeciAhorra\Modules\Frontend\Assets\FrontendAssets;
+use VeciAhorra\Modules\Frontend\Components\PublicRouteLink;
 use VeciAhorra\Modules\Frontend\Controller\FrontendController;
 use VeciAhorra\Modules\Frontend\Support\CartSession;
+use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 
 /**
  * Registers the public frontend infrastructure without business features.
@@ -18,7 +20,8 @@ final class FrontendModule
     public function __construct(
         private FrontendAssets $assets,
         private FrontendController $controller,
-        private ?CartSession $cartSession = null
+        private ?CartSession $cartSession = null,
+        private ?PublicRouteLink $publicRouteLink = null
     ) {
     }
 
@@ -49,6 +52,13 @@ final class FrontendModule
         add_shortcode(
             FrontendController::CUSTOMER_PANEL_SHORTCODE,
             [$this->controller, 'renderCustomerPanel']
+        );
+        add_shortcode(
+            PublicRouteLink::SHORTCODE,
+            [
+                $this->publicRouteLink ?? new PublicRouteLink(new PublicRouteResolver()),
+                'render',
+            ]
         );
         add_action(
             'wp',
