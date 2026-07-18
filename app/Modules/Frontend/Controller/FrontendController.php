@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Frontend\Controller;
 
 use VeciAhorra\Modules\Frontend\Assets\FrontendAssets;
+use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 use VeciAhorra\Modules\Frontend\Support\ViewRenderer;
 
 /**
@@ -22,7 +23,8 @@ final class FrontendController
 
     public function __construct(
         private FrontendAssets $assets,
-        private ViewRenderer $views
+        private ViewRenderer $views,
+        private ?PublicRouteResolver $routes = null
     ) {
     }
 
@@ -51,10 +53,7 @@ final class FrontendController
             $page = $this->views->render('product-detail', [
                 'instanceId' => $instanceId,
                 'productId' => $productId,
-                'cartUrl' => (string) apply_filters(
-                    'veciahorra_frontend_cart_url',
-                    home_url('/carrito-veciahorra/')
-                ),
+                'cartUrl' => $this->routeResolver()->cart(),
             ]);
         } else {
             $this->assets->enqueueCatalog();
@@ -116,7 +115,7 @@ final class FrontendController
         $instanceId = 'va-cart-' . $this->instance;
         $page = $this->views->render('cart', [
             'instanceId' => $instanceId,
-            'checkoutUrl' => $this->assets->checkoutUrl(),
+            'checkoutUrl' => $this->routeResolver()->checkout(),
         ]);
 
         return $this->views->render('layout', [
@@ -164,17 +163,26 @@ final class FrontendController
 
         if ($this->customerPanelInstance > 1) {
             return $this->views->render('customer-panel-duplicate', [
-                'ordersUrl' => esc_url_raw(home_url('/mis-pedidos/')),
+                'ordersUrl' => esc_url_raw(
+                    $this->routeResolver()->customerPurchases()
+                ),
             ]);
         }
 
         $instanceId = 'va-customer-panel-1';
-        $ordersUrl = esc_url_raw(home_url('/mis-pedidos/'));
+        $ordersUrl = esc_url_raw(
+            $this->routeResolver()->customerPurchases()
+        );
 
         return $this->views->render('customer-panel', [
             'instanceId' => $instanceId,
             'loggedIn' => $loggedIn,
             'loginUrl' => wp_login_url($ordersUrl),
         ]);
+    }
+
+    private function routeResolver(): PublicRouteResolver
+    {
+        return $this->routes ??= new PublicRouteResolver();
     }
 }

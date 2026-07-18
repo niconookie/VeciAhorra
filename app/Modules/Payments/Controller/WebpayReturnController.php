@@ -7,13 +7,16 @@ namespace VeciAhorra\Modules\Payments\Controller;
 use InvalidArgumentException;
 use Throwable;
 use VeciAhorra\Exceptions\PersistenceException;
+use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 use VeciAhorra\Modules\Payments\Requests\WebpayReturnRequest;
 use VeciAhorra\Modules\Payments\Service\WebpayReturnService;
 
 final class WebpayReturnController
 {
-    public function __construct(private WebpayReturnService $service)
-    {
+    public function __construct(
+        private WebpayReturnService $service,
+        private ?PublicRouteResolver $routes = null
+    ) {
     }
 
     public function process(array $payload): array
@@ -41,7 +44,7 @@ final class WebpayReturnController
             if ($result->publicCheckoutId !== null) {
                 $data['redirect_url'] = add_query_arg(
                     ['checkout_id' => $result->publicCheckoutId],
-                    home_url('/checkout/')
+                    ($this->routes ??= new PublicRouteResolver())->checkout()
                 );
             }
 

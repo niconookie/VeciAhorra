@@ -8,6 +8,7 @@ use VeciAhorra\Modules\Checkout\Service\FulfillmentPolicy;
 
 use VeciAhorra\Core\Config;
 use VeciAhorra\Modules\Frontend\Support\CartSession;
+use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 
 /**
  * Registers and enqueues assets only for a rendered VeciAhorra mount point.
@@ -28,8 +29,10 @@ final class FrontendAssets
     private bool $enqueued = false;
     private bool $customerPanelConfigured = false;
 
-    public function __construct(private ?CartSession $cartSession = null)
-    {
+    public function __construct(
+        private ?CartSession $cartSession = null,
+        private ?PublicRouteResolver $routes = null
+    ) {
     }
 
     public function registerAssets(): void
@@ -217,12 +220,11 @@ final class FrontendAssets
             'timeZone' => sanitize_text_field(wp_timezone_string() ?: 'UTC'),
             'currency' => 'CLP',
             'pages' => [
-                'cart' => esc_url_raw((string) apply_filters(
-                    'veciahorra_frontend_cart_url',
-                    home_url('/carrito-veciahorra/')
-                )),
-                'checkout' => esc_url_raw($this->checkoutUrl()),
-                'orders' => esc_url_raw(home_url('/mis-pedidos/')),
+                'cart' => esc_url_raw($this->routeResolver()->cart()),
+                'checkout' => esc_url_raw($this->routeResolver()->checkout()),
+                'orders' => esc_url_raw(
+                    $this->routeResolver()->customerPurchases()
+                ),
             ],
             'checkout' => [
                 'minimumDeliveryAmount' => max(0, $minimumDeliveryAmount),
@@ -236,16 +238,9 @@ final class FrontendAssets
         ];
     }
 
-    public function checkoutUrl(): string
+    private function routeResolver(): PublicRouteResolver
     {
-        $page = get_page_by_path('checkout');
-        $default = $page instanceof \WP_Post
-            && has_shortcode($page->post_content, 'veciahorra_checkout')
-            ? (string) get_permalink($page)
-            : '';
-        $url = apply_filters('veciahorra_frontend_checkout_url', $default);
-
-        return is_string($url) ? $url : '';
+        return $this->routes ??= new PublicRouteResolver();
     }
 
 }

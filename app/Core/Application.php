@@ -35,6 +35,7 @@ use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Products\Admin\ProductsPage;
 use VeciAhorra\Modules\Products\Routes\ProductRoutes;
 use VeciAhorra\Modules\Frontend\FrontendModule;
+use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 use VeciAhorra\Modules\Catalog\CatalogModule;
 use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionOrchestration;
 use VeciAhorra\Modules\Payments\Orchestration\WebpayCreateRecovery;
@@ -58,6 +59,10 @@ final class Application
     public function __construct()
     {
         $this->container = new Container();
+        $this->container->singleton(
+            PublicRouteResolver::class,
+            static fn (): PublicRouteResolver => new PublicRouteResolver()
+        );
         $this->registerPaymentGateway();
         $this->container->singleton(
             WebpayReturnContextRepositoryInterface::class,
