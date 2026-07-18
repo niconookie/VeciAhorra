@@ -7,6 +7,8 @@ namespace VeciAhorra\Modules\Frontend;
 use VeciAhorra\Modules\Frontend\Assets\FrontendAssets;
 use VeciAhorra\Modules\Frontend\Components\PublicRouteLink;
 use VeciAhorra\Modules\Frontend\Controller\FrontendController;
+use VeciAhorra\Modules\Frontend\Search\PublicSearchIsolation;
+use VeciAhorra\Modules\Frontend\Search\PublicSearchIsolationPolicy;
 use VeciAhorra\Modules\Frontend\Support\CartSession;
 use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 
@@ -21,7 +23,8 @@ final class FrontendModule
         private FrontendAssets $assets,
         private FrontendController $controller,
         private ?CartSession $cartSession = null,
-        private ?PublicRouteLink $publicRouteLink = null
+        private ?PublicRouteLink $publicRouteLink = null,
+        private ?PublicSearchIsolation $publicSearchIsolation = null
     ) {
     }
 
@@ -64,5 +67,8 @@ final class FrontendModule
             'wp',
             [($this->cartSession ?? new CartSession()), 'prepareForRequest']
         );
+        ($this->publicSearchIsolation ?? new PublicSearchIsolation(
+            new PublicSearchIsolationPolicy()
+        ))->register();
     }
 }
