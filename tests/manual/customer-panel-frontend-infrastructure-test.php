@@ -157,6 +157,13 @@ assertCustomerPanelFrontend(
         && substr_count($javascript, 'api.get(DETAIL_ENDPOINT + encodeURIComponent(publicId), options)') === 1,
     'El JavaScript no conserva una única invocación por endpoint.'
 );
+assertCustomerPanelFrontend(str_contains($javascript, "svg.setAttribute('aria-hidden', 'true')"), 'Los iconos no son decorativos.');
+assertCustomerPanelFrontend(str_contains($javascript, "svg.setAttribute('focusable', 'false')"), 'Los iconos pueden recibir foco.');
+assertCustomerPanelFrontend(str_contains($javascript, "STATUS_DECORATION[status.code] || 'neutral'"), 'Los estados desconocidos no usan variante neutral.');
+assertCustomerPanelFrontend(
+    ! preg_match('/checkout_public_id[^;\n]*(?:slice|substring|substr)\s*\(/', $javascript),
+    'El JavaScript trunca el identificador público.'
+);
 assertCustomerPanelFrontend(
     substr_count($javascript, "document.querySelector('[data-va-customer-panel-mount]')") === 1,
     'JavaScript busca mas de un mount funcional.'
@@ -172,8 +179,21 @@ assertCustomerPanelFrontend(str_contains($css, 'inline-size: min(100%, 76rem);')
 assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__detail-overview'), 'Falta el layout del overview.');
 assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__detail-services'), 'Falta el layout de pago y entrega.');
 assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__detail-item-content'), 'Falta el layout estructural de productos.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__status-badge'), 'Faltan los badges de estado.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__purchase-action'), 'Falta la acción visual de la tarjeta.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__purchase-main'), 'Falta el área principal compacta del listado.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__purchase-aside'), 'Falta el área lateral del listado.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__purchase-metadata'), 'Falta la cuadrícula responsive de metadatos.');
+assertCustomerPanelFrontend(str_contains($css, 'overflow-wrap: anywhere;'), 'Los identificadores largos no tienen wrapping seguro.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__detail-row--total'), 'Falta la jerarquía visual del total.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__detail-primary-card'), 'Falta la tarjeta visual principal del detalle.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__detail-order-header'), 'Falta la cabecera visual del minimarket.');
+assertCustomerPanelFrontend(str_contains($css, '.va-customer-panel__timeline-entry::before'), 'Faltan nodos visuales del timeline.');
+assertCustomerPanelFrontend(str_contains($css, 'object-fit: contain;'), 'Las imágenes de producto no usan contain.');
 assertCustomerPanelFrontend(! str_contains($css, '!important'), 'El CSS introduce !important.');
 assertCustomerPanelFrontend(! preg_match('/url\s*\(|@font-face/i', $css), 'El CSS introduce URLs o fuentes externas.');
+assertCustomerPanelFrontend(! preg_match('/font-awesome|material-icons|bootstrap|tailwind/i', $css . $javascript), 'Se introdujo una librería visual externa.');
+assertCustomerPanelFrontend(! preg_match('/(?:block|inline-)?size\s*:\s*\d+(?:px|rem)\s*;[^}]*overflow\s*:\s*hidden/is', $css), 'El layout combina altura rígida con recorte.');
 $cssSelectors = preg_replace('/@media[^\{]+\{/', '', $css) ?? $css;
 foreach (preg_split('/}\s*/', $cssSelectors) ?: [] as $rule) {
     $selector = trim((string) strstr($rule, '{', true));

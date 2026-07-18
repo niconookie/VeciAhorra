@@ -38,12 +38,56 @@
 .veciahorra-frontend .va-customer-panel__purchase {
     display: grid;
     gap: var(--va-space-2);
+    transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
 .veciahorra-frontend .va-customer-panel__purchase-link {
+    color: inherit;
     display: grid;
     gap: var(--va-space-2, 0.5rem) var(--va-space-4, 1rem);
     min-inline-size: 0;
+    text-decoration: none;
+}
+
+.veciahorra-frontend .va-customer-panel__purchase:hover,
+.veciahorra-frontend .va-customer-panel__purchase:focus-within {
+    border-color: var(--va-color-primary, #17643a);
+    box-shadow: 0 0.5rem 1.25rem rgb(15 23 42 / 10%);
+    transform: translateY(-0.1rem);
+}
+
+.veciahorra-frontend .va-customer-panel__purchase-link:focus-visible,
+.veciahorra-frontend .va-customer-panel__back-link:focus-visible {
+    outline: 0.1875rem solid var(--va-color-primary, #17643a);
+    outline-offset: 0.2rem;
+}
+
+.veciahorra-frontend .va-customer-panel__purchase-main {
+    display: grid;
+    gap: var(--va-space-3, 0.75rem);
+    min-inline-size: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__purchase-aside {
+    align-items: start;
+    display: grid;
+    gap: var(--va-space-3, 0.75rem);
+    justify-items: start;
+    min-inline-size: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__purchase-metadata {
+    align-items: start;
+    display: grid;
+    gap: var(--va-space-2, 0.5rem) var(--va-space-4, 1rem);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-inline-size: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__purchase-status {
+    display: grid;
+    gap: var(--va-space-2, 0.5rem);
+    justify-items: start;
 }
 
 .veciahorra-frontend .va-customer-panel__purchase p,
@@ -57,8 +101,118 @@
 }
 
 .veciahorra-frontend .va-customer-panel__total {
-    font-size: 1.125rem;
+    font-size: clamp(1.25rem, 2.5vw, 1.65rem);
     font-weight: 700;
+}
+
+.veciahorra-frontend .va-customer-panel__public-id,
+.veciahorra-frontend .va-customer-panel__fulfillment,
+.veciahorra-frontend .va-customer-panel__stores {
+    overflow-wrap: anywhere;
+}
+
+.veciahorra-frontend .va-customer-panel__public-id {
+    color: var(--va-color-muted);
+    display: grid;
+    font-size: 0.75rem;
+    gap: 0.15rem;
+}
+
+.veciahorra-frontend .va-customer-panel__public-id-label {
+    font-weight: 700;
+}
+
+.veciahorra-frontend .va-customer-panel__public-id-value {
+    overflow-wrap: anywhere;
+}
+
+.veciahorra-frontend .va-customer-panel__purchase-action {
+    align-items: center;
+    color: var(--va-color-primary, #17643a);
+    display: inline-flex;
+    font-weight: 700;
+    gap: 0.35rem;
+    justify-self: start;
+    padding: 0.55rem 0.8rem;
+    border: 1px solid currentColor;
+    border-radius: var(--va-radius-md, 0.5rem);
+    transition: background-color 160ms ease, color 160ms ease;
+}
+
+.veciahorra-frontend .va-customer-panel__purchase-link:hover .va-customer-panel__purchase-action,
+.veciahorra-frontend .va-customer-panel__purchase-link:focus-visible .va-customer-panel__purchase-action {
+    background: var(--va-color-primary, #17643a);
+    color: #fff;
+}
+
+.veciahorra-frontend .va-customer-panel__date,
+.veciahorra-frontend .va-customer-panel__fulfillment,
+.veciahorra-frontend .va-customer-panel__quantities,
+.veciahorra-frontend .va-customer-panel__stores {
+    align-items: start;
+    display: flex;
+    gap: 0.4rem;
+    min-inline-size: 0;
+}
+
+.veciahorra-frontend .va-customer-panel__icon {
+    block-size: 1.15em;
+    flex: 0 0 auto;
+    inline-size: 1.15em;
+}
+
+.veciahorra-frontend .va-customer-panel__visual-heading {
+    align-items: center;
+    display: inline-flex;
+    gap: var(--va-space-2, 0.5rem);
+}
+
+.veciahorra-frontend .va-customer-panel__status-badge {
+    align-items: center;
+    background: #f1f5f9;
+    border: 1px solid #94a3b8;
+    border-radius: 999px;
+    color: #334155;
+    display: inline-flex;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1.25;
+    padding: 0.3rem 0.65rem;
+}
+
+.veciahorra-frontend .va-customer-panel__status-badge--positive {
+    background: #e8f6ee;
+    border-color: #4e9b70;
+    color: #155d36;
+}
+
+.veciahorra-frontend .va-customer-panel__status-badge--info,
+.veciahorra-frontend .va-customer-panel__status-badge--info-strong {
+    background: #eaf3fb;
+    border-color: #5b91bd;
+    color: #174f7a;
+}
+
+.veciahorra-frontend .va-customer-panel__status-badge--info-strong {
+    border-width: 2px;
+}
+
+.veciahorra-frontend .va-customer-panel__status-badge--warning {
+    background: #fff5d9;
+    border-color: #b58a20;
+    color: #6b4b00;
+}
+
+.veciahorra-frontend .va-customer-panel__status-badge--critical {
+    background: #fdecec;
+    border-color: #bd5a5a;
+    color: #842828;
+}
+
+.veciahorra-frontend .va-customer-panel__status-badge--critical-neutral {
+    background: #f8fafc;
+    border-color: #bd5a5a;
+    color: #5c3030;
 }
 
 .veciahorra-frontend .va-customer-panel__detail-heading-row {
@@ -67,6 +221,33 @@
     flex-wrap: wrap;
     gap: var(--va-space-2, 0.5rem) var(--va-space-4, 1rem);
     justify-content: space-between;
+}
+
+.veciahorra-frontend .va-customer-panel__back-link {
+    align-items: center;
+    align-self: center;
+    border: 1px solid var(--va-color-border, #d7dce2);
+    border-radius: var(--va-radius-md, 0.5rem);
+    color: var(--va-color-primary, #17643a);
+    display: inline-flex;
+    font-weight: 700;
+    gap: 0.4rem;
+    padding: 0.55rem 0.8rem;
+    text-decoration: none;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.veciahorra-frontend .va-customer-panel__back-link::before {
+    content: '←';
+    font-size: 1.05em;
+    line-height: 1;
+}
+
+.veciahorra-frontend .va-customer-panel__back-link:hover,
+.veciahorra-frontend .va-customer-panel__back-link:focus-visible {
+    background: var(--va-color-primary, #17643a);
+    border-color: var(--va-color-primary, #17643a);
+    color: #fff;
 }
 
 .veciahorra-frontend .va-customer-panel__detail-title,
@@ -82,6 +263,23 @@
     grid-template-columns: minmax(0, 1fr);
 }
 
+.veciahorra-frontend .va-customer-panel__detail-primary-card {
+    background: var(--va-color-surface, #fff);
+    border: 1px solid var(--va-color-border, #d7dce2);
+    border-block-start: 0.3rem solid var(--va-color-primary, #17643a);
+    border-radius: var(--va-radius-lg, 0.75rem);
+    box-shadow: 0 0.5rem 1.4rem rgb(15 23 42 / 9%);
+    padding: clamp(1rem, 2.5vw, 1.5rem);
+}
+
+.veciahorra-frontend .va-customer-panel__detail-primary-card > .va-customer-panel__detail-header,
+.veciahorra-frontend .va-customer-panel__detail-primary-card > .va-customer-panel__detail-summary {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+}
+
 .veciahorra-frontend .va-customer-panel__detail-header,
 .veciahorra-frontend .va-customer-panel__detail-section {
     background: var(--va-color-surface, #fff);
@@ -89,6 +287,24 @@
     border-radius: var(--va-radius-lg, 0.75rem);
     min-inline-size: 0;
     padding: clamp(0.875rem, 2vw, 1.25rem);
+}
+
+.veciahorra-frontend .va-customer-panel__detail-summary,
+.veciahorra-frontend .va-customer-panel__detail-payment,
+.veciahorra-frontend .va-customer-panel__detail-delivery {
+    box-shadow: 0 0.35rem 1rem rgb(15 23 42 / 7%);
+}
+
+.veciahorra-frontend .va-customer-panel__detail-summary {
+    border-block-start: 0.25rem solid var(--va-color-primary, #17643a);
+}
+
+.veciahorra-frontend .va-customer-panel__detail-payment {
+    border-block-start: 0.25rem solid #5b91bd;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-delivery {
+    border-block-start: 0.25rem solid #4e9b70;
 }
 
 .veciahorra-frontend .va-customer-panel__detail-values {
@@ -120,6 +336,17 @@
     font-weight: 700;
 }
 
+.veciahorra-frontend .va-customer-panel__detail-row--total dd {
+    font-size: clamp(1.6rem, 4vw, 2.25rem);
+    line-height: 1.1;
+}
+
+.veciahorra-frontend .va-customer-panel__detail-term-with-icon {
+    align-items: center;
+    display: flex;
+    gap: 0.35rem;
+}
+
 .veciahorra-frontend .va-customer-panel__detail-row--identifier dd {
     color: var(--va-color-muted);
     font-size: 0.875rem;
@@ -146,6 +373,7 @@
 .veciahorra-frontend .va-customer-panel__detail-order {
     display: grid;
     gap: var(--va-space-3, 0.75rem);
+    padding: clamp(0.875rem, 2vw, 1.25rem);
 }
 
 .veciahorra-frontend .va-customer-panel__detail-order-header {
@@ -154,6 +382,8 @@
     flex-wrap: wrap;
     gap: var(--va-space-2, 0.5rem) var(--va-space-4, 1rem);
     justify-content: space-between;
+    padding-block-end: var(--va-space-3, 0.75rem);
+    border-block-end: 1px solid var(--va-color-border, #d7dce2);
 }
 
 .veciahorra-frontend .va-customer-panel__detail-order-subtotal {
@@ -162,8 +392,10 @@
 }
 
 .veciahorra-frontend .va-customer-panel__detail-item {
-    border-block-start: 1px solid var(--va-color-border, #d7dce2);
-    padding-block-start: var(--va-space-3, 0.75rem);
+    background: var(--va-color-surface-muted, #f8fafc);
+    border: 1px solid var(--va-color-border, #d7dce2);
+    border-radius: var(--va-radius-md, 0.5rem);
+    padding: var(--va-space-3, 0.75rem);
 }
 
 .veciahorra-frontend .va-customer-panel__detail-item-content {
@@ -177,6 +409,11 @@
     grid-template-columns: minmax(8rem, 2fr) repeat(3, minmax(6rem, 1fr));
 }
 
+.veciahorra-frontend .va-customer-panel__detail-item-content .va-customer-panel__detail-row:first-child dd {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
 .veciahorra-frontend .va-customer-panel__detail-image,
 .veciahorra-frontend .va-customer-panel__detail-image-placeholder {
     aspect-ratio: 1;
@@ -184,7 +421,7 @@
     border-radius: var(--va-radius-md, 0.5rem);
     display: block;
     inline-size: 4rem;
-    object-fit: cover;
+    object-fit: contain;
 }
 
 .veciahorra-frontend .va-customer-panel__timeline-list {
@@ -196,6 +433,7 @@
 }
 
 .veciahorra-frontend .va-customer-panel__detail-services {
+    align-items: start;
     display: grid;
     gap: var(--va-space-4, 1rem);
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -208,9 +446,28 @@
     gap: var(--va-space-3, 0.75rem);
 }
 
+.veciahorra-frontend .va-customer-panel__detail-delivery {
+    align-content: start;
+}
+
 .veciahorra-frontend .va-customer-panel__timeline-entry {
     border-inline-start: 0.25rem solid var(--va-color-border, currentColor);
-    padding-inline-start: var(--va-space-3);
+    min-inline-size: 0;
+    padding-block-end: var(--va-space-4, 1rem);
+    padding-inline-start: var(--va-space-4, 1rem);
+    position: relative;
+}
+
+.veciahorra-frontend .va-customer-panel__timeline-entry::before {
+    background: var(--va-color-surface, #fff);
+    border: 0.15rem solid currentColor;
+    border-radius: 50%;
+    content: '';
+    inline-size: 0.55rem;
+    block-size: 0.55rem;
+    inset-block-start: 0.2rem;
+    inset-inline-start: -0.4rem;
+    position: absolute;
 }
 
 .veciahorra-frontend .va-customer-panel__timeline-entry--completed {
@@ -222,18 +479,37 @@
     margin: 0;
 }
 
+.veciahorra-frontend .va-customer-panel__timeline-label {
+    font-weight: 700;
+}
+
 .veciahorra-frontend .va-customer-panel__timeline-time {
     color: var(--va-color-muted);
+    display: inline-block;
+    font-size: 0.8125rem;
+    margin-block-start: 0.25rem;
 }
 
 @media (min-width: 48rem) {
     .veciahorra-frontend .va-customer-panel__purchase-link {
-        align-items: center;
-        grid-template-columns: minmax(10rem, 1fr) minmax(14rem, 2fr) auto;
+        align-items: stretch;
+        grid-template-columns: minmax(0, 1fr) minmax(10rem, 14rem);
+    }
+
+    .veciahorra-frontend .va-customer-panel__purchase-aside {
+        align-content: space-between;
+        border-inline-start: 1px solid var(--va-color-border, #d7dce2);
+        justify-items: end;
+        padding-inline-start: var(--va-space-4, 1rem);
     }
 
     .veciahorra-frontend .va-customer-panel__detail-overview {
         grid-template-columns: minmax(16rem, 0.9fr) minmax(22rem, 1.4fr);
+    }
+
+    .veciahorra-frontend .va-customer-panel__detail-primary-card > .va-customer-panel__detail-summary {
+        border-inline-start: 1px solid var(--va-color-border, #d7dce2);
+        padding-inline-start: var(--va-space-4, 1rem);
     }
 
     .veciahorra-frontend .va-customer-panel__detail-summary > .va-customer-panel__detail-values {
@@ -253,6 +529,7 @@
     }
 
     .veciahorra-frontend .va-customer-panel__detail-services,
+    .veciahorra-frontend .va-customer-panel__purchase-metadata,
     .veciahorra-frontend .va-customer-panel__detail-item-content,
     .veciahorra-frontend .va-customer-panel__detail-item-content > .va-customer-panel__detail-values {
         grid-template-columns: minmax(0, 1fr);
@@ -261,5 +538,23 @@
     .veciahorra-frontend .va-customer-panel__detail-image,
     .veciahorra-frontend .va-customer-panel__detail-image-placeholder {
         inline-size: 3.5rem;
+    }
+
+    .veciahorra-frontend .va-customer-panel__detail-primary-card > .va-customer-panel__detail-summary {
+        border-block-start: 1px solid var(--va-color-border, #d7dce2);
+        padding-block-start: var(--va-space-4, 1rem);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .veciahorra-frontend .va-customer-panel__purchase,
+    .veciahorra-frontend .va-customer-panel__purchase-action,
+    .veciahorra-frontend .va-customer-panel__back-link {
+        transition: none;
+    }
+
+    .veciahorra-frontend .va-customer-panel__purchase:hover,
+    .veciahorra-frontend .va-customer-panel__purchase:focus-within {
+        transform: none;
     }
 }

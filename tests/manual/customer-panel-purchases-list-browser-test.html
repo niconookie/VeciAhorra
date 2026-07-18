@@ -86,7 +86,7 @@
     function detailFixture(publicId, payment) {
         return {success: true, data: {
             checkout_public_id: publicId, created_at: '2026-02-03T12:30:00Z',
-            visible_status: {code: 'preparing', label: 'Preparando', message: 'Mensaje resuelto'},
+            visible_status: {code: 'preparing_order', label: 'Preparando', message: 'Mensaje resuelto'},
             requires_review: false,
             fulfillment: {method: 'delivery', label: 'Despacho'},
             summary: {subtotal: '3300.00', total: '3300.00', currency: 'CLP', product_quantity: 3, line_count: 2, order_count: 2, minimarket_count: 2},
@@ -216,13 +216,15 @@
                 checkout_public_id: 'chk_' + 'P'.repeat(43), created_at: '2026-01-01T10:00:00Z',
                 total: {amount: '1111.00', currency: 'CLP'}, product_quantity: 7,
                 order_count: 3, minimarket_count: 1, minimarkets: ['Mercado Uno'],
-                visible_status: {label: 'Estado Primero', message: 'Mensaje Primero'}
+                fulfillment_method: 'delivery',
+                visible_status: {code: 'pending_payment', label: 'Estado Primero', message: 'Mensaje Primero'}
             },
             {
                 checkout_public_id: 'chk_' + 'S'.repeat(43), created_at: '2026-01-02T10:00:00Z',
-                total: {amount: '2222.00', currency: 'CLP'}, product_quantity: 2,
-                order_count: 1, minimarket_count: 1, minimarkets: ['Mercado Dos'],
-                visible_status: {label: 'Estado Segundo', message: 'Mensaje Segundo'}
+                total: {amount: '2222.00', currency: 'CLP'}, product_quantity: 0,
+                order_count: 0, minimarket_count: 0, minimarkets: ['Mercado Dos'],
+                fulfillment_method: 'pickup',
+                visible_status: {code: 'future_status', label: 'Estado Segundo', message: 'Mensaje Segundo'}
             }
         ];
         var navigationCalls = [];
@@ -247,7 +249,17 @@
         assert(items[0].textContent.includes('Mercado Uno') && items[1].textContent.includes('Mercado Dos'), 'orden alterado');
         assert(items[0].textContent.includes('Estado Primero') && items[0].textContent.includes('Mensaje Primero'), 'estado o mensaje alterado');
         assert(items[0].textContent.includes('7 productos') && items[0].textContent.includes('3 pedidos'), 'cantidades alteradas');
+        assert(items[0].textContent.includes('1 minimarket') && items[0].textContent.includes('Despacho'), 'presentación visual del listado incompleta');
         assert(items[0].textContent.includes('1.111'), 'total no representado');
+        assert(items[0].querySelector('.va-customer-panel__status-badge--warning'), 'estado conocido no recibió badge permitido');
+        assert(items[1].querySelector('.va-customer-panel__status-badge--neutral'), 'estado desconocido no conservó badge neutral');
+        assert(items[0].querySelector('.va-customer-panel__purchase-action .va-customer-panel__icon[aria-hidden="true"][focusable="false"]'), 'acción visual sin icono decorativo accesible');
+        assert(items[0].querySelector('.va-customer-panel__purchase-main') && items[0].querySelector('.va-customer-panel__purchase-aside'), 'tarjeta sin layout compacto de dos áreas');
+        assert(items[0].querySelector('.va-customer-panel__purchase-metadata'), 'tarjeta sin cuadrícula de metadatos');
+        assert(items[0].querySelector('.va-customer-panel__public-id-label').textContent === 'ID de compra', 'falta etiqueta visual del ID');
+        assert(items[0].querySelector('.va-customer-panel__public-id-value').textContent === purchases[0].checkout_public_id, 'ID público fue alterado');
+        assert(items[1].textContent.includes('0 productos · 0 pedidos · 0 minimarkets'), 'los valores cero fueron ocultados o reinterpretados');
+        assert(items[0].querySelector('.va-customer-panel__date .va-customer-panel__icon[aria-hidden="true"][focusable="false"]'), 'metadatos sin iconografía decorativa');
         assert(resultState.busy === 'false' && resultState.loaderHidden, 'resultados no terminales');
         scenarios.results = failures.length === 0;
 
@@ -399,11 +411,18 @@
         var detailText = terminalState().text;
         var detailOrders = Array.from(document.querySelectorAll('.va-customer-panel__detail-order'));
         assert(document.querySelector('.va-customer-panel__detail-heading-row .va-customer-panel__detail-title'), 'falta wrapper estructural de cabecera');
+        assert(document.querySelector('.va-customer-panel__detail-primary-card'), 'falta tarjeta visual principal del detalle');
         assert(document.querySelector('.va-customer-panel__detail-overview .va-customer-panel__detail-summary'), 'falta bloque estructural de resumen');
         assert(document.querySelector('.va-customer-panel__detail-services .va-customer-panel__detail-payment'), 'falta bloque estructural de pago y entrega');
         assert(document.querySelector('.va-customer-panel__detail-services .va-customer-panel__detail-delivery'), 'falta entrega en el wrapper de servicios');
         assert(document.querySelectorAll('.va-customer-panel__detail-order-header').length === 2, 'faltan cabeceras estructurales de órdenes');
         assert(document.querySelectorAll('.va-customer-panel__detail-item > .va-customer-panel__detail-item-content > .va-customer-panel__detail-values').length === 2, 'faltan clases estructurales de productos');
+        assert(document.querySelector('.va-customer-panel__detail-row--status .va-customer-panel__status-badge--info'), 'detalle no recibió badge decorativo permitido');
+        assert(document.querySelector('.va-customer-panel__detail-row--total .va-customer-panel__icon[aria-hidden="true"][focusable="false"]'), 'total destacado sin icono decorativo');
+        assert(document.querySelectorAll('.va-customer-panel__visual-heading .va-customer-panel__icon[aria-hidden="true"][focusable="false"]').length >= 4, 'tarjetas visuales sin iconos decorativos');
+        assert(document.querySelectorAll('.va-customer-panel__detail-order-header .va-customer-panel__icon').length === 2, 'minimarkets sin iconografía decorativa');
+        assert(document.querySelector('.va-customer-panel__timeline .va-customer-panel__visual-heading'), 'timeline sin encabezado visual');
+        assert(document.querySelector('.va-customer-panel__delivery-status .va-customer-panel__status-badge--info'), 'entrega sin badge decorativo');
         assert(detailOrders.length === 2, 'detalle no renderizó todas las órdenes');
         assert(detailOrders[0].textContent.includes('Mercado Zeta') && detailOrders[1].textContent.includes('Mercado Alfa'), 'detalle alteró el orden recibido');
         assert(detailText.includes(validId) && detailText.includes('Preparando') && detailText.includes('Mensaje resuelto'), 'encabezado de detalle incompleto');
@@ -432,6 +451,7 @@
         scenarios.detail_media = true;
         scenarios.detail_image_error = true;
         scenarios.detail_layout_structure = true;
+        scenarios.visual_components = true;
 
         var unsafeImageDetail = detailFixture(validId, null);
         unsafeImageDetail.data.orders[1].items[0].image = 'javascript:alert(1)';
@@ -447,6 +467,7 @@
         await tick();
         detailText = terminalState().text;
         assert(detailText.includes('Pago recibido') && detailText.includes('Webpay Plus') && detailText.includes('3.300'), 'pago presente incompleto');
+        assert(document.querySelector('.va-customer-panel__detail-payment .va-customer-panel__status-badge--positive'), 'pago presente sin badge decorativo');
         scenarios.detail_payment = true;
 
         await directDetail(validId, function () { return Promise.reject({status: 404}); });

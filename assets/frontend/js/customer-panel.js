@@ -5,6 +5,22 @@
     var DETAIL_ENDPOINT = ENDPOINT + '/';
     var TIMEOUT_MS = 12000;
     var PUBLIC_ID_PATTERN = /^chk_[A-Za-z0-9_-]{43}$/;
+    var STATUS_DECORATION = {
+        pending_payment: 'warning',
+        processing_payment: 'info',
+        payment_rejected: 'critical',
+        payment_received: 'positive',
+        preparing_order: 'info',
+        preparing_delivery: 'info',
+        out_for_delivery: 'info-strong',
+        delivered: 'positive',
+        cancelled: 'critical-neutral',
+        under_review: 'warning',
+        received: 'positive',
+        pending: 'warning',
+        assigned: 'info',
+        picked_up: 'info-strong'
+    };
     var TIMELINE_DECORATION = {
         checkout_created: 'completed',
         payment_confirmed: 'completed',
@@ -276,6 +292,63 @@
         return node;
     }
 
+    function decorativeIcon(name) {
+        var paths = {
+            purchase: 'M5 7h14l-1 12H6L5 7Zm3 0a4 4 0 0 1 8 0',
+            summary: 'M4 5h16v14H4V5Zm4 4h8M8 13h5',
+            payment: 'M3 7h18v12H3V7Zm0 4h18M7 15h3',
+            delivery: 'M3 6h11v11H3V6Zm11 4h4l3 3v4h-7v-7Zm-8 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm12 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
+            products: 'M4 6h16v13H4V6Zm4-3h8v3H8V3',
+            calendar: 'M5 4h14v16H5V4Zm3-2v4m8-4v4M5 9h14',
+            store: 'M4 9h16l-2-5H6L4 9Zm1 0v11h14V9M9 20v-6h6v6',
+            total: 'M12 3v18m4-14.5c-1-1-2.3-1.5-4-1.5-2.2 0-4 1.2-4 3s1.5 2.7 4 3.2 4 1.4 4 3.3-1.8 3.5-4 3.5c-1.8 0-3.3-.6-4.5-1.7',
+            timeline: 'M6 5h12M6 12h12M6 19h12M3 5h.01M3 12h.01M3 19h.01'
+        };
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+        svg.setAttribute('class', 'va-customer-panel__icon');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.setAttribute('focusable', 'false');
+        path.setAttribute('d', paths[name] || paths.purchase);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', 'currentColor');
+        path.setAttribute('stroke-width', '1.75');
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        svg.append(path);
+        return svg;
+    }
+
+    function visualHeading(tag, text, iconName) {
+        var heading = element(tag, 'va-customer-panel__visual-heading');
+
+        heading.append(decorativeIcon(iconName), element('span', '', text));
+        return heading;
+    }
+
+    function visualMetadata(className, text, iconName) {
+        var metadata = element('p', className);
+
+        metadata.append(decorativeIcon(iconName), element('span', '', text));
+        return metadata;
+    }
+
+    function renderStatusBadge(status) {
+        var decoration = STATUS_DECORATION[status.code] || 'neutral';
+
+        return element(
+            'span',
+            'va-customer-panel__status-badge va-customer-panel__status-badge--' + decoration,
+            status.label
+        );
+    }
+
+    function fulfillmentLabel(method) {
+        return method === 'pickup' ? 'Retiro' : (method === 'delivery' ? 'Despacho' : 'Por confirmar');
+    }
+
     function validPurchase(item) {
         return item && typeof item === 'object'
             && typeof item.checkout_public_id === 'string'
@@ -460,6 +533,24 @@
         return row;
     }
 
+    function detailStatusValue(status) {
+        var row = element('div', 'va-customer-panel__detail-row va-customer-panel__detail-row--status');
+        var value = element('dd', '');
+
+        value.append(renderStatusBadge(status));
+        row.append(element('dt', '', 'Estado'), value);
+        return row;
+    }
+
+    function detailIconValue(label, value, modifier, iconName) {
+        var row = detailValue(label, value, modifier);
+        var term = row.querySelector('dt');
+
+        term.prepend(decorativeIcon(iconName));
+        term.classList.add('va-customer-panel__detail-term-with-icon');
+        return row;
+    }
+
     function safeImageUrl(value) {
         var url;
 
@@ -539,7 +630,7 @@
         var section = element('section', 'va-customer-panel__detail-section va-customer-panel__timeline');
         var list = element('ol', 'va-customer-panel__timeline-list');
 
-        section.append(element('h3', '', 'Timeline'));
+        section.append(visualHeading('h3', 'Timeline', 'timeline'));
         if (entries.length === 0) {
             section.append(element('p', '', 'No hay eventos para mostrar.'));
             return section;
@@ -555,9 +646,9 @@
     function renderDetailOrder(order, currency, config) {
         var listItem = element('li', 'va-customer-panel__detail-order va-card');
         var orderHeader = element('div', 'va-customer-panel__detail-order-header');
-        var heading = element('h4', '', order.minimarket.name);
+        var heading = visualHeading('h4', order.minimarket.name, 'store');
         var subtotal = element('p', 'va-customer-panel__detail-order-subtotal', 'Subtotal: ' + formatTotal({amount: order.subtotal, currency: currency}, config));
-        var productsHeading = element('h5', '', 'Productos');
+        var productsHeading = visualHeading('h5', 'Productos', 'products');
         var products = element('ul', 'va-customer-panel__detail-items');
 
         order.items.forEach(function (item) {
@@ -569,10 +660,10 @@
     }
 
     function renderDetail(state, detail) {
-        var heading = element('h2', 'va-customer-panel__detail-title', 'Detalle de compra');
+        var heading = visualHeading('h2', 'Detalle de compra', 'purchase');
         var back = element('a', 'va-customer-panel__back-link', 'Volver a mis compras');
         var headingRow = element('div', 'va-customer-panel__detail-heading-row');
-        var overview = element('div', 'va-customer-panel__detail-overview');
+        var overview = element('div', 'va-customer-panel__detail-overview va-customer-panel__detail-primary-card');
         var header = element('section', 'va-customer-panel__detail-header');
         var headerValues = element('dl', 'va-customer-panel__detail-values');
         var summarySection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-summary');
@@ -586,11 +677,12 @@
         var timelineSection;
 
         heading.tabIndex = -1;
+        heading.classList.add('va-customer-panel__detail-title');
         back.href = canonicalListUrl(state.config).href;
         headerValues.append(
             detailValue('Identificador', detail.checkout_public_id, 'identifier'),
             detailValue('Fecha', formatDate(detail.created_at, state.config), 'date'),
-            detailValue('Estado', detail.visible_status.label, 'status'),
+            detailStatusValue(detail.visible_status),
             detailValue('Información', detail.visible_status.message, 'message'),
             detailValue('Entrega', detail.fulfillment.label, 'fulfillment')
         );
@@ -599,10 +691,10 @@
         }
         header.append(headerValues);
 
-        summarySection.append(element('h3', '', 'Resumen'));
+        summarySection.append(visualHeading('h3', 'Resumen', 'summary'));
         summary.append(
             detailValue('Subtotal', formatTotal({amount: detail.summary.subtotal, currency: detail.summary.currency}, state.config)),
-            detailValue('Total', formatTotal({amount: detail.summary.total, currency: detail.summary.currency}, state.config), 'total'),
+            detailIconValue('Total', formatTotal({amount: detail.summary.total, currency: detail.summary.currency}, state.config), 'total', 'total'),
             detailValue('Moneda', detail.summary.currency),
             detailValue('Cantidad de productos', String(detail.summary.product_quantity)),
             detailValue('Líneas', String(detail.summary.line_count)),
@@ -611,19 +703,19 @@
         );
         summarySection.append(summary);
 
-        ordersSection.append(element('h3', '', 'Órdenes'));
+        ordersSection.append(visualHeading('h3', 'Órdenes', 'products'));
         detail.orders.forEach(function (order) {
             orders.append(renderDetailOrder(order, detail.summary.currency, state.config));
         });
         ordersSection.append(orders);
 
-        paymentSection.append(element('h3', '', 'Pago'));
+        paymentSection.append(visualHeading('h3', 'Pago', 'payment'));
         if (detail.payment === null) {
             paymentSection.append(element('p', '', 'Información de pago no disponible.'));
         } else {
             paymentValues = element('dl', 'va-customer-panel__detail-values');
             paymentValues.append(
-                detailValue('Estado', detail.payment.label),
+                detailStatusValue({code: detail.payment.status, label: detail.payment.label}),
                 detailValue('Monto', formatTotal({amount: detail.payment.amount, currency: detail.payment.currency}, state.config)),
                 detailValue('Moneda', detail.payment.currency)
             );
@@ -636,10 +728,9 @@
             paymentSection.append(paymentValues);
         }
 
-        deliverySection.append(
-            element('h3', '', 'Entrega'),
-            element('p', '', detail.delivery.label)
-        );
+        var deliveryStatus = element('p', 'va-customer-panel__delivery-status');
+        deliveryStatus.append(renderStatusBadge({code: detail.delivery.status, label: detail.delivery.label}));
+        deliverySection.append(visualHeading('h3', 'Entrega', 'delivery'), deliveryStatus);
         timelineSection = renderTimeline(detail.timeline, state.config);
         headingRow.append(heading, back);
         overview.append(header, summarySection);
@@ -657,25 +748,37 @@
         var listItem = element('li', 'va-customer-panel__item');
         var article = element('article', 'va-customer-panel__purchase va-card');
         var link = element('a', 'va-customer-panel__purchase-link');
-        var date = element('p', 'va-customer-panel__date', formatDate(item.created_at, config));
-        var publicId = element('p', 'va-customer-panel__public-id', item.checkout_public_id);
-        var stores = element(
-            'p',
+        var main = element('div', 'va-customer-panel__purchase-main');
+        var aside = element('div', 'va-customer-panel__purchase-aside');
+        var metadata = element('div', 'va-customer-panel__purchase-metadata');
+        var date = visualMetadata('va-customer-panel__date', formatDate(item.created_at, config), 'calendar');
+        var publicId = element('p', 'va-customer-panel__public-id');
+        var stores = visualMetadata(
             'va-customer-panel__stores',
-            item.minimarkets.length > 0 ? item.minimarkets.join(', ') : 'Minimarket no disponible'
+            item.minimarkets.length > 0 ? item.minimarkets.join(', ') : 'Minimarket no disponible',
+            'purchase'
         );
         var status = element('div', 'va-customer-panel__purchase-status');
-        var quantities = element('p', 'va-customer-panel__quantities');
+        var quantityText = item.product_quantity + (item.product_quantity === 1 ? ' producto · ' : ' productos · ')
+            + item.order_count + (item.order_count === 1 ? ' pedido · ' : ' pedidos · ')
+            + item.minimarket_count + (item.minimarket_count === 1 ? ' minimarket' : ' minimarkets');
+        var quantities = visualMetadata('va-customer-panel__quantities', quantityText, 'products');
         var total = element('p', 'va-customer-panel__total', formatTotal(item.total, config));
+        var fulfillment = visualMetadata('va-customer-panel__fulfillment', fulfillmentLabel(item.fulfillment_method), 'delivery');
+        var action = element('span', 'va-customer-panel__purchase-action');
 
-        status.append(element('strong', '', item.visible_status.label));
+        status.append(renderStatusBadge(item.visible_status));
         status.append(element('p', '', item.visible_status.message));
-        quantities.append(
-            document.createTextNode(item.product_quantity + (item.product_quantity === 1 ? ' producto · ' : ' productos · ')),
-            document.createTextNode(item.order_count + (item.order_count === 1 ? ' pedido' : ' pedidos'))
+        publicId.append(
+            element('span', 'va-customer-panel__public-id-label', 'ID de compra'),
+            element('span', 'va-customer-panel__public-id-value', item.checkout_public_id)
         );
+        action.append(element('span', '', 'Ver detalle'), decorativeIcon('purchase'));
+        metadata.append(date, fulfillment, quantities, stores);
+        main.append(status, metadata, publicId);
+        aside.append(total, action);
         link.href = canonicalDetailUrl(item.checkout_public_id, config).href;
-        link.append(date, publicId, stores, status, quantities, total);
+        link.append(main, aside);
         article.append(link);
         listItem.append(article);
 
