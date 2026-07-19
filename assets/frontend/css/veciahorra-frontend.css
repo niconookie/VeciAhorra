@@ -157,9 +157,10 @@
 .veciahorra-frontend .va-catalog-card__image-missing::before { color: #82a793; content: "◇"; font-size: 1.75rem; line-height: 1; }
 .veciahorra-frontend .va-catalog-card__body { display: flex; flex: 1; flex-direction: column; padding: clamp(1rem, 2vw, 1.25rem); }
 .veciahorra-frontend .va-catalog-card__title { display: -webkit-box; font-size: clamp(0.95rem, 2vw, 1.15rem); line-height: 1.35; margin: 0 0 var(--va-space-3); min-height: 2.7em; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-.veciahorra-frontend .va-catalog-card__store { color: var(--va-color-muted); font-size: 0.875rem; margin: 0 0 var(--va-space-4); }
-.veciahorra-frontend .va-catalog-card__price { color: var(--va-color-primary); font-size: clamp(1.15rem, 3vw, 1.5rem); font-weight: 800; letter-spacing: -0.02em; margin: auto 0 var(--va-space-2); }
-.veciahorra-frontend .va-catalog-card__stock { color: var(--va-color-muted); font-size: 0.8rem; margin: 0 0 var(--va-space-4); }
+.veciahorra-frontend .va-catalog-card__price { align-items: baseline; display: flex; flex-wrap: wrap; gap: 0.35rem; margin: auto 0 var(--va-space-2); }
+.veciahorra-frontend .va-catalog-card__price-prefix { color: var(--va-color-muted); font-size: 0.8rem; font-weight: 600; }
+.veciahorra-frontend .va-catalog-card__price-value { color: var(--va-color-primary); font-size: clamp(1.15rem, 3vw, 1.5rem); font-weight: 800; letter-spacing: -0.02em; }
+.veciahorra-frontend .va-catalog-card__availability { color: var(--va-color-muted); font-size: 0.82rem; margin: 0 0 var(--va-space-4); }
 .veciahorra-frontend .va-catalog-card__action { align-items: center; display: inline-flex; font-weight: 700; justify-content: center; margin-top: var(--va-space-2); text-decoration: none; width: 100%; }
 .veciahorra-frontend .va-catalog-card__action:hover { background: #105337; color: #fff; }
 .veciahorra-frontend .va-catalog-card__action:focus-visible { outline: 0.1875rem solid var(--va-color-secondary); outline-offset: 0.1875rem; }

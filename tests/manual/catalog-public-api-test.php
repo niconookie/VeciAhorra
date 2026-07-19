@@ -160,6 +160,10 @@ try {
     assertPublicCatalogSame('8.50', $product['min_price']);
     assertPublicCatalogSame(2, $product['available_minimarkets']);
     assertPublicCatalog(
+        is_int($product['available_minimarkets']),
+        'El conteo de minimarkets no es entero.'
+    );
+    assertPublicCatalog(
         ! str_contains($product['short_description'], '<strong>'),
         'Descripcion publica contiene HTML.'
     );

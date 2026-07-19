@@ -42,14 +42,15 @@
         return '/catalog/products?' + params.toString();
     }
 
-    function card(product, detail, urls) {
+    function card(product, urls) {
         var article = el('article', 'va-catalog-card');
         var media = el('div', 'va-catalog-card__media');
         var body = el('div', 'va-catalog-card__body');
-        var offer = detail && Array.isArray(detail.offers) ? detail.offers[0] : null;
         var url = String(urls[product.id] || urls[String(product.id)] || '');
         var name = String(product.name || 'Producto');
-        var price = offer ? offer.price : product.min_price;
+        var price = product.min_price;
+        var minimarkets = Number(product.available_minimarkets);
+        var priceLine;
         var image;
         var link;
 
@@ -65,12 +66,18 @@
         }
 
         body.appendChild(el('h2', 'va-catalog-card__title', name));
-        if (offer && offer.minimarket) { body.appendChild(el('p', 'va-catalog-card__store', String(offer.minimarket))); }
         if (price !== null && price !== undefined && price !== '' && isFinite(Number(price))) {
-            body.appendChild(el('p', 'va-catalog-card__price', money.format(Number(price))));
+            priceLine = el('p', 'va-catalog-card__price');
+            priceLine.appendChild(el('span', 'va-catalog-card__price-prefix', 'Desde'));
+            priceLine.appendChild(el('strong', 'va-catalog-card__price-value', money.format(Number(price))));
+            body.appendChild(priceLine);
         }
-        if (offer && Number.isFinite(Number(offer.stock))) {
-            body.appendChild(el('p', 'va-catalog-card__stock', 'Stock disponible: ' + Number(offer.stock)));
+        if (Number.isInteger(minimarkets) && minimarkets > 0) {
+            body.appendChild(el(
+                'p',
+                'va-catalog-card__availability',
+                'Disponible en ' + minimarkets + (minimarkets === 1 ? ' minimarket' : ' minimarkets')
+            ));
         }
 
         if (url) {
@@ -146,11 +153,7 @@
                     ? catalog
                     : (Array.isArray(catalog.items) ? catalog.items : []);
 
-                return Promise.all(items.map(function (product) {
-                    return config.api.get('/catalog/products/' + encodeURIComponent(product.id))
-                        .then(function (responseDetail) { return { product: product, detail: data(responseDetail) }; })
-                        .catch(function () { return { product: product, detail: null }; });
-                }));
+                return items;
             }).then(function (products) {
                 if (sequence !== requestSequence) { return; }
                 loading.hidden = true;
@@ -159,7 +162,7 @@
                     status.textContent = '0 productos encontrados';
                     return;
                 }
-                products.forEach(function (item) { grid.appendChild(card(item.product, item.detail, urls)); });
+                products.forEach(function (product) { grid.appendChild(card(product, urls)); });
                 grid.hidden = false;
                 status.textContent = products.length + (products.length === 1 ? ' producto encontrado' : ' productos encontrados');
             }).catch(function (reason) {
