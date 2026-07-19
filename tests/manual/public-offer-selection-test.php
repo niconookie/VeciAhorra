@@ -36,10 +36,29 @@ set_current_screen('front');
 $container = new Container();
 $controller = $container->make(FrontendController::class);
 
-$placeholder = $controller->renderPlaceholder(['product_id' => 'invalid']);
+ob_start();
+$catalog = $controller->renderPlaceholder(['product_id' => 'invalid']);
+$invalidDirectOutput = (string) ob_get_clean();
 assertOfferSelection(
-    str_contains($placeholder, 'va-placeholder'),
-    'Un product_id invalido no conserva el placeholder.'
+    $invalidDirectOutput === '',
+    'Un product_id invalido produjo salida directa.'
+);
+assertOfferSelection(
+    str_contains($catalog, 'data-va-catalog'),
+    'Un product_id invalido no renderiza el catalogo publico vigente.'
+);
+foreach ([
+    'data-va-product-detail', 'data-product-id=', 'data-va-offer-list',
+    'product_id="invalid"', 'woocommerce', 'wp-json/wc',
+] as $forbiddenInvalidOutput) {
+    assertOfferSelection(
+        ! str_contains(strtolower($catalog), strtolower($forbiddenInvalidOutput)),
+        "Un product_id invalido expuso contenido no permitido: {$forbiddenInvalidOutput}."
+    );
+}
+assertOfferSelection(
+    wp_script_is(FrontendAssets::CATALOG_SCRIPT_HANDLE, 'enqueued'),
+    'Un product_id invalido no encolo el catalogo publico.'
 );
 assertOfferSelection(
     ! wp_script_is(FrontendAssets::OFFER_SCRIPT_HANDLE, 'enqueued'),

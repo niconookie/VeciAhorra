@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Catalog\Service;
 
+use VeciAhorra\Exceptions\CatalogUnavailableException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 use VeciAhorra\Modules\ProductCatalogs\Services\BrandService;
@@ -14,6 +15,7 @@ use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
 use VeciAhorra\Modules\Stores\Models\Store;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
+use WP_Term;
 
 final class CatalogService
 {
@@ -113,6 +115,56 @@ final class CatalogService
                 'related_products' => count($related),
             ],
         ]);
+    }
+
+    /** @return list<array{id: int, name: string, slug: string, products_count: int}> */
+    public function categories(): array
+    {
+        $publicInventory = $this->publicInventory();
+        $counts = [];
+
+        foreach ($this->productCandidates(null) as $product) {
+            if (! $this->isVisible($product, $publicInventory['summaries'])) {
+                continue;
+            }
+
+            $categoryId = (int) ($product->category_id ?? 0);
+
+            if ($categoryId > 0) {
+                $counts[$categoryId] = ($counts[$categoryId] ?? 0) + 1;
+            }
+        }
+
+        $categories = [];
+
+        foreach ($counts as $categoryId => $productsCount) {
+            $term = get_term($categoryId, 'product_cat');
+
+            if (is_wp_error($term)) {
+                throw new CatalogUnavailableException(
+                    'Public catalog categories are temporarily unavailable.'
+                );
+            }
+
+            if (! $term instanceof WP_Term || trim($term->name) === '' || trim($term->slug) === '') {
+                continue;
+            }
+
+            $categories[] = [
+                'id' => $categoryId,
+                'name' => trim($term->name),
+                'slug' => trim($term->slug),
+                'products_count' => $productsCount,
+            ];
+        }
+
+        usort($categories, static function (array $left, array $right): int {
+            $name = strcasecmp($left['name'], $right['name']);
+
+            return $name !== 0 ? $name : $left['id'] <=> $right['id'];
+        });
+
+        return $categories;
     }
 
     /**

@@ -13,6 +13,7 @@ final class CatalogRoutes
 {
     private const NAMESPACE = 'veciahorra/v1';
     private const RESOURCE = '/catalog/products';
+    private const CATEGORIES_RESOURCE = '/catalog/categories';
 
     public function __construct(private CatalogController $controller)
     {
@@ -23,6 +24,11 @@ final class CatalogRoutes
         register_rest_route(self::NAMESPACE, self::RESOURCE, [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'index'],
+            'permission_callback' => '__return_true',
+        ]);
+        register_rest_route(self::NAMESPACE, self::CATEGORIES_RESOURCE, [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'categories'],
             'permission_callback' => '__return_true',
         ]);
         register_rest_route(
@@ -54,6 +60,11 @@ final class CatalogRoutes
         return $this->response($this->controller->show(
             (int) ($request->get_url_params()['id'] ?? 0)
         ));
+    }
+
+    public function categories(WP_REST_Request $request): WP_REST_Response
+    {
+        return $this->response($this->controller->categories());
     }
 
     private function response(array $result): WP_REST_Response

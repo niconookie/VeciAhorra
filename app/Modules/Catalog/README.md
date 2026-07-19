@@ -4,6 +4,7 @@ Public read-only endpoints:
 
 - `GET /wp-json/veciahorra/v1/catalog/products`
 - `GET /wp-json/veciahorra/v1/catalog/products/{id}`
+- `GET /wp-json/veciahorra/v1/catalog/categories`
 
 The list accepts `category`, `brand`, `search`, `page`, `per_page` (maximum 100)
 and `order_by` (`name`, `price`, `newest`). Only active products with at
@@ -24,3 +25,9 @@ products and non-sensitive response metadata. Offers require active inventory,
 positive stock and price, and an active minimarket. They are ordered by price,
 stock descending and inventory ID. The detail is read-only and uses the existing
 `GET /catalog/products/{id}` route.
+
+The public categories endpoint returns only categories that have at least one
+publicly visible product under the same Product, Inventory and Store rules used
+by the catalog. Each item contains `id`, `name`, `slug` and `products_count`;
+the count is the number of distinct public Products, regardless of how many
+minimarkets offer each Product. The endpoint is public and read-only.

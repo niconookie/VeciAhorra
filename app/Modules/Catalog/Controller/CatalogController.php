@@ -43,6 +43,15 @@ final class CatalogController
         }
     }
 
+    public function categories(): array
+    {
+        try {
+            return ['success' => true, 'data' => $this->service->categories()];
+        } catch (Throwable $exception) {
+            return $this->error($exception);
+        }
+    }
+
     private function error(Throwable $exception): array
     {
         if ($exception instanceof RecordNotFoundException) {
