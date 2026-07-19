@@ -6,6 +6,7 @@ use VeciAhorra\Core\Application;
 use VeciAhorra\Modules\Frontend\FrontendModule;
 use VeciAhorra\Modules\Frontend\Search\PublicSearchIsolation;
 use VeciAhorra\Modules\Frontend\Search\PublicSearchIsolationPolicy;
+use VeciAhorra\Modules\Frontend\Search\WooCommercePublicPageResolver;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -81,6 +82,21 @@ foreach ($transformations as [$input, $expected]) {
     );
 }
 
+$mergeCases = [
+    [[], [11, 12], [11, 12]],
+    [[7], [11, 12], [7, 11, 12]],
+    [[7, 11, 7], [11, 12], [7, 11, 12]],
+    [7, [11, 12], [7, 11, 12]],
+    ['invalid', [0, 11, -2, 12], [11, 12]],
+    [null, [], []],
+];
+foreach ($mergeCases as [$existing, $additional, $expected]) {
+    assertPublicSearchIsolation(
+        $policy->mergesExcludedPostIds($existing, $additional) === $expected,
+        'La combinacion de post__not_in no fue segura o determinista.'
+    );
+}
+
 $allowedContext = [
     'is_admin' => false,
     'is_ajax' => false,
@@ -129,7 +145,19 @@ foreach (
     );
 }
 
-$isolation = new PublicSearchIsolation($policy);
+$fakeWooPosts = [
+    91001 => new WP_Post((object) ['ID' => 91001, 'post_type' => 'page']),
+    91002 => new WP_Post((object) ['ID' => 91002, 'post_type' => 'page']),
+];
+$fakeWooPages = new WooCommercePublicPageResolver(
+    static fn (string $type): int => match ($type) {
+        'shop' => 91001,
+        'cart' => 91002,
+        default => 0,
+    },
+    static fn (int $id): mixed => $fakeWooPosts[$id] ?? null
+);
+$isolation = new PublicSearchIsolation($policy, $fakeWooPages);
 $isolation->register();
 $preGetPostsPriority = has_action(
     'pre_get_posts',
@@ -188,6 +216,10 @@ assertPublicSearchIsolation(
     $mainSearch->get('post_type') === ['post', 'page', 'event'],
     'La consulta principal publica no fue aislada.'
 );
+assertPublicSearchIsolation(
+    $mainSearch->get('post__not_in') === [91001, 91002],
+    'La consulta principal no excluyo las paginas comerciales oficiales.'
+);
 
 $expectedSearchableTypes = array_values(array_filter(
     get_post_types([
@@ -211,53 +243,77 @@ foreach (['', 'any', null] as $implicitPostType) {
 $productMainSearch = new WP_Query();
 $productMainSearch->is_search = true;
 $productMainSearch->set('post_type', 'product');
+$productMainSearch->set('post__not_in', [66]);
 $wp_the_query = $productMainSearch;
 $isolation->filterMainSearch($productMainSearch);
 assertPublicSearchIsolation(
     $productMainSearch->get('post_type') === 'product',
     'La consulta tradicional product-only fue alterada.'
 );
+assertPublicSearchIsolation(
+    $productMainSearch->get('post__not_in') === [66],
+    'La consulta tradicional product-only recibio exclusiones de paginas.'
+);
+
+$duplicateProductSearch = new WP_Query();
+$duplicateProductSearch->is_search = true;
+$duplicateProductSearch->set('post_type', ['product', 'product']);
+$wp_the_query = $duplicateProductSearch;
+$isolation->filterMainSearch($duplicateProductSearch);
+assertPublicSearchIsolation(
+    $duplicateProductSearch->get('post_type') === ['product', 'product']
+        && $duplicateProductSearch->get('post__not_in') === '',
+    'Una consulta product-only duplicada fue alterada.'
+);
 
 $secondarySearch = new WP_Query();
 $secondarySearch->is_search = true;
 $secondarySearch->set('post_type', ['page', 'product']);
+$secondarySearch->set('post__not_in', [88]);
 $wp_the_query = $mainSearch;
 $isolation->filterMainSearch($secondarySearch);
 assertPublicSearchIsolation(
     $secondarySearch->get('post_type') === ['page', 'product'],
     'Una consulta secundaria fue alterada.'
 );
+assertPublicSearchIsolation($secondarySearch->get('post__not_in') === [88], 'Consulta secundaria perdio exclusiones.');
 
 $notSearch = new WP_Query();
 $notSearch->set('post_type', ['page', 'product']);
+$notSearch->set('post__not_in', [88]);
 $wp_the_query = $notSearch;
 $isolation->filterMainSearch($notSearch);
 assertPublicSearchIsolation(
     $notSearch->get('post_type') === ['page', 'product'],
     'Una consulta que no es busqueda fue alterada.'
 );
+assertPublicSearchIsolation($notSearch->get('post__not_in') === [88], 'Consulta no-search perdio exclusiones.');
 
 $commercialArchive = new WP_Query();
 $commercialArchive->is_search = true;
 $commercialArchive->is_post_type_archive = true;
 $commercialArchive->set('post_type', ['product', 'page']);
+$commercialArchive->set('post__not_in', [88]);
 $wp_the_query = $commercialArchive;
 $isolation->filterMainSearch($commercialArchive);
 assertPublicSearchIsolation(
     $commercialArchive->get('post_type') === ['product', 'page'],
     'Un archivo comercial fue alterado.'
 );
+assertPublicSearchIsolation($commercialArchive->get('post__not_in') === [88], 'Archivo comercial perdio exclusiones.');
 
 set_current_screen('edit-product');
 $adminSearch = new WP_Query();
 $adminSearch->is_search = true;
 $adminSearch->set('post_type', ['page', 'product']);
+$adminSearch->set('post__not_in', [88]);
 $wp_the_query = $adminSearch;
 $isolation->filterMainSearch($adminSearch);
 assertPublicSearchIsolation(
     $adminSearch->get('post_type') === ['page', 'product'],
     'Una busqueda administrativa fue alterada.'
 );
+assertPublicSearchIsolation($adminSearch->get('post__not_in') === [88], 'Busqueda admin perdio exclusiones.');
 set_current_screen('front');
 $wp_the_query = $originalMainQuery;
 
@@ -266,14 +322,23 @@ $request->set_param('type', 'post');
 $request->set_param('ct_live_search', 'true');
 $mixed = $isolation->filterLiveSearch([
     'post_type' => ['post', 'page', 'product', 'event'],
+    'post__not_in' => [77, 91001, 77],
 ], $request);
 assertPublicSearchIsolation(
     $mixed['post_type'] === ['post', 'page', 'event'],
     'El live search no retiro product del conjunto mixto.'
 );
-$productOnly = $isolation->filterLiveSearch(['post_type' => 'product'], $request);
 assertPublicSearchIsolation(
-    $productOnly['post_type'] === 'product',
+    $mixed['post__not_in'] === [77, 91001, 91002],
+    'El live search no preservo exclusiones previas.'
+);
+$productOnly = $isolation->filterLiveSearch([
+    'post_type' => 'product',
+    'post__not_in' => [66],
+], $request);
+assertPublicSearchIsolation(
+    $productOnly['post_type'] === 'product'
+        && $productOnly['post__not_in'] === [66],
     'El live search altero una busqueda product-only.'
 );
 $request->set_param('ct_live_search', 'false');
@@ -281,6 +346,13 @@ $untouched = ['post_type' => ['page', 'product']];
 assertPublicSearchIsolation(
     $isolation->filterLiveSearch($untouched, $request) === $untouched,
     'Una busqueda REST ajena fue modificada.'
+);
+$otherRequest = new WP_REST_Request('GET', '/wc/store/v1/products');
+$otherRequest->set_param('type', 'post');
+$otherRequest->set_param('ct_live_search', 'true');
+assertPublicSearchIsolation(
+    $isolation->filterLiveSearch($untouched, $otherRequest) === $untouched,
+    'Otro endpoint REST fue modificado.'
 );
 
 $application = new Application();

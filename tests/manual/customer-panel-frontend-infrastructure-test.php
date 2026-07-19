@@ -78,7 +78,7 @@ $queryVariants = [
 
 foreach ($queryVariants as $query) {
     parse_str($query, $_GET);
-    $_SERVER['REQUEST_URI'] = '/mis-pedidos/' . ($query === '' ? '' : '?' . $query);
+    $_SERVER['REQUEST_URI'] = '/mis-compras/' . ($query === '' ? '' : '?' . $query);
     $variantController = new FrontendController(new FrontendAssets(), $container->make(ViewRenderer::class));
     assertCustomerPanelFrontend(
         $variantController->renderCustomerPanel() === $anonymousHtml,
@@ -101,10 +101,14 @@ assertCustomerPanelFrontend(
 );
 $loginHref = html_entity_decode($loginMatch[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
 assertCustomerPanelFrontend(
-    $loginHref === wp_login_url(home_url('/mis-pedidos/')),
+    $loginHref === wp_login_url(home_url('/mis-compras/')),
     'El retorno de login no apunta a la lista canonica.'
 );
-assertCustomerPanelFrontend(! str_contains($loginHref, 'compra'), 'El retorno de login propaga compra.');
+assertCustomerPanelFrontend(
+    ! str_contains($loginHref, 'compra=')
+        && ! str_contains($loginHref, 'compra%3D'),
+    'El retorno de login propaga el parametro compra.'
+);
 
 $wp_scripts->remove(FrontendAssets::CUSTOMER_PANEL_SCRIPT_HANDLE);
 wp_dequeue_style(FrontendAssets::CUSTOMER_PANEL_STYLE_HANDLE);

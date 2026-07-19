@@ -18,7 +18,8 @@ final class PublicSearchIsolation
     private bool $registered = false;
 
     public function __construct(
-        private PublicSearchIsolationPolicy $policy
+        private PublicSearchIsolationPolicy $policy,
+        private ?WooCommercePublicPageResolver $wooCommercePages = null
     ) {
     }
 
@@ -52,6 +53,10 @@ final class PublicSearchIsolation
         }
 
         $postTypes = $query->get('post_type');
+        if ($this->policy->isProductOnly($postTypes)) {
+            return;
+        }
+
         if ($postTypes === '' || $postTypes === 'any' || $postTypes === null) {
             $postTypes = array_values(get_post_types([
                 'public' => true,
@@ -63,6 +68,8 @@ final class PublicSearchIsolation
         if ($filtered !== $postTypes) {
             $query->set('post_type', $filtered);
         }
+
+        $this->excludeWooCommercePagesFromQuery($query);
     }
 
     /**
@@ -82,13 +89,45 @@ final class PublicSearchIsolation
         }
 
         $postTypes = $args['post_type'] ?? null;
+        if ($this->policy->isProductOnly($postTypes)) {
+            return $args;
+        }
+
         $filtered = $this->policy->excludesProduct($postTypes);
 
         if ($filtered !== $postTypes) {
             $args['post_type'] = $filtered;
         }
 
+        $excludedIds = $this->wooCommercePageIds();
+        if ($excludedIds !== []) {
+            $args['post__not_in'] = $this->policy->mergesExcludedPostIds(
+                $args['post__not_in'] ?? [],
+                $excludedIds
+            );
+        }
+
         return $args;
+    }
+
+    private function excludeWooCommercePagesFromQuery(WP_Query $query): void
+    {
+        $excludedIds = $this->wooCommercePageIds();
+        if ($excludedIds === []) {
+            return;
+        }
+
+        $query->set('post__not_in', $this->policy->mergesExcludedPostIds(
+            $query->get('post__not_in'),
+            $excludedIds
+        ));
+    }
+
+    /** @return list<int> */
+    private function wooCommercePageIds(): array
+    {
+        return ($this->wooCommercePages ??= new WooCommercePublicPageResolver())
+            ->pageIds();
     }
 
     /** @return array<string, bool> */

@@ -71,4 +71,45 @@ final class PublicSearchIsolationPolicy
             static fn (mixed $postType): bool => $postType !== 'product'
         ));
     }
+
+    public function isProductOnly(mixed $postTypes): bool
+    {
+        if ($postTypes === 'product') {
+            return true;
+        }
+
+        return is_array($postTypes)
+            && $postTypes !== []
+            && count(array_filter(
+                $postTypes,
+                static fn (mixed $postType): bool => $postType === 'product'
+            )) === count($postTypes);
+    }
+
+    /**
+     * @param list<int> $additionalIds
+     * @return list<int>
+     */
+    public function mergesExcludedPostIds(
+        mixed $existingIds,
+        array $additionalIds
+    ): array {
+        $values = is_array($existingIds)
+            ? $existingIds
+            : [$existingIds];
+        $merged = [];
+
+        foreach (array_merge($values, $additionalIds) as $value) {
+            $id = is_int($value) && $value > 0
+                ? $value
+                : (is_string($value) && ctype_digit($value)
+                    ? (int) $value
+                    : 0);
+            if ($id > 0 && ! isset($merged[$id])) {
+                $merged[$id] = $id;
+            }
+        }
+
+        return array_values($merged);
+    }
 }

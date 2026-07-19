@@ -9,6 +9,7 @@ use VeciAhorra\Modules\Frontend\Components\PublicRouteLink;
 use VeciAhorra\Modules\Frontend\Controller\FrontendController;
 use VeciAhorra\Modules\Frontend\Search\PublicSearchIsolation;
 use VeciAhorra\Modules\Frontend\Search\PublicSearchIsolationPolicy;
+use VeciAhorra\Modules\Frontend\Search\WooCommercePublicPageResolver;
 use VeciAhorra\Modules\Frontend\Support\CartSession;
 use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 
@@ -68,7 +69,8 @@ final class FrontendModule
             [($this->cartSession ?? new CartSession()), 'prepareForRequest']
         );
         ($this->publicSearchIsolation ?? new PublicSearchIsolation(
-            new PublicSearchIsolationPolicy()
+            new PublicSearchIsolationPolicy(),
+            new WooCommercePublicPageResolver()
         ))->register();
     }
 }
