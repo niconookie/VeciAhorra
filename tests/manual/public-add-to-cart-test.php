@@ -83,11 +83,13 @@ $css = (string) file_get_contents(
 
 foreach ([
     'isAddingToCart', 'if (isAddingToCart || !selectedExists)',
+    'store.setSelectionLocked(true)', 'store.setSelectionLocked(false)',
+    'operationSelection', 'Producto agregado al carrito desde ',
     "config.api.post('/cart/items'", 'inventory_id: selectedId',
     'quantity: 1', 'Object.keys(payload).length !== 2',
     'payload.inventory_id !== selectedId', 'cartRequestOptions',
     'cart.sessionHeader', "setAttribute('aria-busy'",
-    '.finally(function ()', 'Producto agregado al carrito.',
+    '.finally(function ()',
     'viewCart.hidden = false',
     'No fue posible agregar el producto al carrito. Intenta nuevamente.',
 ] as $contract) {

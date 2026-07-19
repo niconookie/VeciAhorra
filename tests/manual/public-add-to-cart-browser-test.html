@@ -4,7 +4,7 @@
 <body>
 <div class="veciahorra-frontend">
     <article data-va-product-detail data-product-id="10">
-        <h1 data-va-product-name></h1><p data-va-product-description></p>
+        <h1 data-va-product-name></h1><p data-va-product-description></p><img data-va-product-image alt="" hidden><span data-va-product-image-missing></span>
         <div data-va-product-loading></div><div data-va-product-error hidden></div>
         <section data-va-offer-section hidden>
             <div role="radiogroup" data-va-offer-list></div><div data-va-offers-empty hidden></div>
@@ -23,7 +23,8 @@
 <pre id="result">RUNNING</pre>
 <script>
     var product = { id: 10, name: 'Producto', offers: [
-        { inventory_id: 101, minimarket_id: 1, minimarket: 'Uno', price: '1000.00', stock: 1 }
+        { inventory_id: 101, minimarket_id: 1, minimarket: 'Uno', price: '1000.00', stock: 1 },
+        { inventory_id: 102, minimarket_id: 2, minimarket: 'Dos', price: '1100.00', stock: 2 }
     ] };
     var postCalls = [];
     var pending = null;
@@ -77,6 +78,10 @@
             assert(button.disabled, 'boton activo durante peticion');
             assert(button.getAttribute('aria-busy') === 'true', 'aria-busy durante peticion');
             assert(root.vaOfferSelector.isAddingToCart(), 'estado isAddingToCart');
+            assert(root.vaOfferSelector.getState().selectionLocked, 'seleccion bloqueada durante POST');
+            assert(Array.from(root.querySelectorAll('[role="radio"]')).every(function (radio) { return radio.disabled; }), 'radios bloqueados durante POST');
+            root.vaOfferSelector.select(102);
+            assert(root.vaOfferSelector.getState().selectedInventoryId === 101, 'seleccion no cambia durante POST');
             assert(postCalls[0].path === '/cart/items', 'endpoint real');
             assert(JSON.stringify(Object.keys(postCalls[0].payload).sort()) === JSON.stringify(['inventory_id', 'quantity']), 'payload exacto');
             assert(postCalls[0].payload.inventory_id === 101 && postCalls[0].payload.quantity === 1, 'valores payload');
@@ -85,8 +90,11 @@
             return wait();
         }).then(function () {
             assert(!button.disabled && !root.vaOfferSelector.isAddingToCart(), 'restablece tras exito');
+            assert(!root.vaOfferSelector.getState().selectionLocked, 'seleccion restaurada tras exito');
+            assert(Array.from(root.querySelectorAll('[role="radio"]')).every(function (radio) { return !radio.disabled; }), 'radios restaurados tras exito');
             assert(root.vaOfferSelector.getState().selectedInventoryId === 101, 'conserva seleccion');
             assert(!root.querySelector('[data-va-cart-success]').hidden, 'mensaje exito');
+            assert(root.querySelector('[data-va-cart-success]').textContent.includes('Uno'), 'mensaje asociado a la operacion');
             assert(!root.querySelector('[data-va-view-cart]').hidden, 'acceso al carrito tras exito');
             assert(root.querySelector('[data-va-selected-stock]').textContent === '1', 'no descuenta stock visual');
             window.VeciAhorra.currentUser = { id: 7, loggedIn: true };
@@ -99,6 +107,7 @@
             return clickAndReject({ status: 422, code: 'validation_error', message: 'Stock insuficiente.', data: null });
         }).then(function () {
             assert(!button.disabled, 'reactiva tras 4xx');
+            assert(!root.vaOfferSelector.getState().selectionLocked, 'radios restaurados tras error');
             assert(root.querySelector('[data-va-cart-error]').textContent === 'Stock insuficiente.', 'mensaje publico 4xx');
             return clickAndReject({ status: 500, code: 'internal_error', message: 'SQL private', data: null });
         }).then(function () {

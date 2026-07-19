@@ -8,9 +8,15 @@ $selectionTitleId = $instanceId . '-selection-title';
 ?>
 <article class="va-product-detail" data-va-product-detail data-product-id="<?php echo esc_attr((string) $productId); ?>" aria-labelledby="<?php echo esc_attr($titleId); ?>">
     <header class="va-product-detail__header">
+        <div class="va-product-detail__media">
+            <img class="va-product-detail__image" data-va-product-image alt="" hidden>
+            <span class="va-product-detail__image-missing" data-va-product-image-missing><?php esc_html_e('Imagen no disponible', 'veciahorra'); ?></span>
+        </div>
+        <div class="va-product-detail__intro">
         <p class="va-product-detail__eyebrow"><?php esc_html_e('Producto', 'veciahorra'); ?></p>
         <h1 id="<?php echo esc_attr($titleId); ?>" data-va-product-name><?php esc_html_e('Cargando producto…', 'veciahorra'); ?></h1>
         <p class="va-product-detail__description" data-va-product-description></p>
+        </div>
     </header>
 
     <div class="va-loader" role="status" data-va-product-loading>
@@ -20,8 +26,8 @@ $selectionTitleId = $instanceId . '-selection-title';
     <div class="va-alert va-alert--error" role="alert" data-va-product-error hidden></div>
 
     <section class="va-offer-section" data-va-offer-section hidden>
-        <h2 id="<?php echo esc_attr($offersLabelId); ?>"><?php esc_html_e('Elige un minimarket', 'veciahorra'); ?></h2>
-        <p class="va-help-text"><?php esc_html_e('Selecciona una sola oferta. El precio y stock serán validados nuevamente por el servidor en futuras operaciones.', 'veciahorra'); ?></p>
+        <h2 id="<?php echo esc_attr($offersLabelId); ?>"><?php esc_html_e('Ofertas disponibles', 'veciahorra'); ?></h2>
+        <p class="va-help-text"><?php esc_html_e('Selecciona el minimarket donde deseas comprar.', 'veciahorra'); ?></p>
         <div class="va-offer-grid" role="radiogroup" aria-labelledby="<?php echo esc_attr($offersLabelId); ?>" data-va-offer-list></div>
         <div class="va-empty-state" data-va-offers-empty hidden>
             <h3 class="va-empty-state__title"><?php esc_html_e('Producto sin ofertas', 'veciahorra'); ?></h3>

@@ -10,6 +10,8 @@
     <article data-va-product-detail data-product-id="10">
         <h1 data-va-product-name></h1>
         <p data-va-product-description></p>
+        <img data-va-product-image alt="" hidden>
+        <span data-va-product-image-missing>Imagen no disponible</span>
         <div data-va-product-loading></div>
         <div data-va-product-error hidden></div>
         <section data-va-offer-section hidden>
@@ -36,10 +38,19 @@
 </div>
 <pre id="result">RUNNING</pre>
 <script>
+    var getHandler = function () {
+        return Promise.resolve({ success: true, data: product });
+    };
+    function deferred() {
+        var item = {};
+        item.promise = new Promise(function (resolve) { item.resolve = resolve; });
+        return item;
+    }
     var product = {
         id: 10,
         name: 'Producto de prueba',
         description: 'Detalle',
+        image: 'https://example.test/producto.png',
         offers: [
             { inventory_id: 101, minimarket_id: 1, minimarket: 'Uno', price: '1000.00', stock: 1 }
         ]
@@ -49,7 +60,7 @@
         currency: 'CLP',
         api: {
             get: function () {
-                return Promise.resolve({ success: true, data: product });
+                return getHandler();
             }
         }
     };
@@ -87,8 +98,12 @@
 
             assert(firstState.offers.length === 1, 'producto con una oferta');
             assert(firstState.selectedInventoryId === null, 'estado inicial sin seleccion');
+            assert(!root.querySelector('[data-va-product-image]').hidden, 'imagen visible');
+            assert(root.querySelector('[data-va-product-image]').alt === 'Producto de prueba', 'alt de imagen');
+            assert(root.querySelector('.va-offer-card__choice').textContent.includes('Seleccionar'), 'estado seleccionar');
             selector.select(101);
             assert(selector.getState().selection.available_stock === 1, 'stock uno');
+            assert(root.querySelector('.va-offer-card__choice').textContent.includes('Seleccionado'), 'estado seleccionado');
             selector.select(101);
             assert(selector.getState().selectedInventoryId === 101, 'seleccion repetida');
 
@@ -139,6 +154,31 @@
                 bubbles: true
             }));
             assert(root.vaOfferSelector.getState().selectedInventoryId === 102, 'seleccion por teclado');
+            var older = deferred();
+            var newer = deferred();
+            var queue = [older, newer];
+            var olderRequest;
+            var newerRequest;
+
+            getHandler = function () { return queue.shift().promise; };
+            olderRequest = root.vaOfferSelector.reload();
+            newerRequest = root.vaOfferSelector.reload();
+            newer.resolve({ success: true, data: {
+                id: 10,
+                name: 'Producto reciente',
+                offers: [{ inventory_id: 102, minimarket_id: 2, minimarket: 'Dos', price: '900.00', stock: 4 }]
+            } });
+
+            return newerRequest.then(function () {
+                older.resolve({ success: true, data: {
+                    id: 10,
+                    name: 'Producto obsoleto',
+                    offers: [{ inventory_id: 101, minimarket_id: 1, minimarket: 'Uno', price: '1000.00', stock: 1 }]
+                } });
+                return olderRequest;
+            });
+        }).then(function () {
+            assert(root.querySelector('[data-va-product-name]').textContent === 'Producto reciente', 'respuesta GET obsoleta ignorada');
             document.body.setAttribute('data-result', 'PASS');
             result.textContent = 'PASS public-offer-selection-browser-test';
         }).catch(function (error) {
