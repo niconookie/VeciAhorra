@@ -138,6 +138,7 @@
             empty.hidden = true;
             grid.hidden = true;
             grid.replaceChildren();
+            status.textContent = 'Actualizando resultados…';
 
             return config.api.get(catalogPath(filters)).then(function (response) {
                 var catalog = data(response) || {};
@@ -155,12 +156,12 @@
                 loading.hidden = true;
                 if (! products.length) {
                     empty.hidden = false;
-                    status.textContent = 'No hay productos disponibles para los filtros seleccionados.';
+                    status.textContent = '0 productos encontrados';
                     return;
                 }
                 products.forEach(function (item) { grid.appendChild(card(item.product, item.detail, urls)); });
                 grid.hidden = false;
-                status.textContent = products.length + (products.length === 1 ? ' producto disponible.' : ' productos disponibles.');
+                status.textContent = products.length + (products.length === 1 ? ' producto encontrado' : ' productos encontrados');
             }).catch(function (reason) {
                 if (sequence !== requestSequence) { return; }
                 loading.hidden = true;
