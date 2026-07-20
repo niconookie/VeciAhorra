@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>RUNNING</title></head>
+<body>
+<input id="veciahorra-inventory-minimarketId" value="77">
+<main id="fixture"></main>
+<pre id="test-results" data-status="running">RUNNING</pre>
+<script type="module">
+import {
+    createStoreSelector,
+    STORE_SEARCH_DEBOUNCE,
+    STORE_SEARCH_MINIMUM,
+} from '../../assets/admin/js/modules/inventory/store-selector.js';
+import { createInventoryApi } from '../../assets/admin/js/modules/inventory/api.js';
+
+const output = document.querySelector('#test-results');
+const fixture = document.querySelector('#fixture');
+const manualField = document.querySelector('#veciahorra-inventory-minimarketId');
+const scenarios = {};
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const deferred = () => {
+    let resolve;
+    let reject;
+    const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+    return { promise, resolve, reject };
+};
+const store = (id, name, status = 'active') => ({
+    id, name, status, onboarding_status: 'complete', approved_at: null,
+    location: { commune: null, city: null, region: null },
+});
+const response = (data) => ({
+    success: true,
+    data,
+    meta: { page: 1, per_page: 10, total: data.length, total_pages: data.length ? 1 : 0, has_next: false },
+});
+
+function elements(parent = fixture) {
+    const wrapper = document.createElement('section');
+    const input = document.createElement('input');
+    const results = document.createElement('div');
+    const status = document.createElement('p');
+    wrapper.append(input, results, status);
+    parent.append(wrapper);
+    return { wrapper, input, results, status };
+}
+
+function type(input, value) {
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+async function run() {
+    assert(STORE_SEARCH_MINIMUM === 2 && STORE_SEARCH_DEBOUNCE === 300, 'Contrato de debounce incorrecto.');
+    scenarios.constants = true;
+
+    let invalid = 0;
+    try { createStoreSelector({ searchStores: null, elements: elements() }); } catch (error) { invalid++; }
+    try { createStoreSelector({ searchStores: async () => response([]), elements: {} }); } catch (error) { invalid++; }
+    assert(invalid === 2, 'Dependencias invalidas no fueron rechazadas.');
+    scenarios.invalid_dependencies = true;
+
+    const calls = [];
+    const selected = [];
+    const dom = elements();
+    let search = async (term, options) => {
+        calls.push({ term, options });
+        return response([
+            store(1, '<script>Almacén & Uno</' + 'script>', 'pending'),
+            store(2, 'Mercado Dos', 'inactive'),
+            store(3, 'Rechazado', 'rejected'),
+            store(1, 'Duplicado', 'active'),
+        ]);
+    };
+    const selector = createStoreSelector({
+        searchStores: (term, options) => search(term, options),
+        onStoreSelected: (value) => selected.push(value),
+        elements: dom,
+    });
+    const sameSelector = createStoreSelector({
+        searchStores: () => { throw new Error('listener duplicado'); },
+        elements: dom,
+    });
+    assert(selector === sameSelector, 'La reinicializacion duplico la instancia.');
+    assert(dom.input.getAttribute('role') === 'combobox'
+        && dom.input.getAttribute('aria-autocomplete') === 'list'
+        && dom.results.getAttribute('role') === 'listbox'
+        && dom.input.getAttribute('aria-controls') === dom.results.id,
+    'Semantica inicial incorrecta.');
+    assert(dom.results.hidden && dom.input.getAttribute('aria-expanded') === 'false', 'Estado inicial abierto.');
+    scenarios.initialization = true;
+
+    type(dom.input, 'a');
+    await wait(350);
+    assert(calls.length === 0 && dom.status.textContent.includes('al menos 2'), 'Busco bajo el umbral.');
+    type(dom.input, '   ');
+    await wait(350);
+    assert(calls.length === 0 && dom.status.textContent.includes('Escriba'), 'Consulta vacia ambigua.');
+    scenarios.empty_and_minimum = true;
+
+    type(dom.input, '  mercado  ');
+    type(dom.input, ' mercado ');
+    type(dom.input, 'mercado');
+    await wait(350);
+    assert(calls.length === 1 && calls[0].term === 'mercado', 'Debounce o normalizacion incorrectos.');
+    assert(calls[0].options.signal instanceof AbortSignal, 'No entrego señal de aborto.');
+    assert(dom.input.value === 'mercado', 'Alteró el texto visible.');
+    assert(!dom.input.hasAttribute('aria-busy') && dom.results.children.length === 3, 'Estado de resultados incorrecto.');
+    assert(dom.results.querySelectorAll('[role="option"]').length === 3, 'No deduplico resultados.');
+    assert(dom.results.querySelector('script') === null
+        && dom.results.querySelector('strong').textContent === '<script>Almacén & Uno</' + 'script>',
+    'Renderizado inseguro.');
+    scenarios.debounce_results_safe_dom = true;
+
+    const firstActive = dom.input.getAttribute('aria-activedescendant');
+    dom.input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    assert(dom.input.getAttribute('aria-activedescendant') !== firstActive
+        && dom.results.children[1].getAttribute('aria-selected') === 'true',
+    'ArrowDown no activo la siguiente opcion.');
+    dom.input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    assert(dom.results.children[0].getAttribute('aria-selected') === 'true', 'ArrowUp no retrocedio.');
+    dom.input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    assert(selected.length === 1 && selected[0].id === 1 && dom.results.hidden, 'Enter no selecciono Store durable.');
+    assert(manualField.value === '77', 'La seleccion modifico minimarket_id productivo.');
+    scenarios.keyboard_selection_isolated = true;
+
+    search = async () => response([]);
+    type(dom.input, 'nada');
+    assert(dom.input.getAttribute('aria-busy') === null, 'Carga inicio antes del debounce.');
+    await wait(310);
+    assert(dom.status.textContent.includes('No se encontraron') && dom.results.hidden, 'Estado sin coincidencias incorrecto.');
+    scenarios.no_results = true;
+
+    search = async () => { throw new Error('stack secreto'); };
+    type(dom.input, 'error');
+    await wait(310);
+    assert(dom.status.getAttribute('role') === 'alert'
+        && dom.status.textContent.includes('Intente nuevamente')
+        && !dom.status.textContent.includes('stack secreto'),
+    'Error tecnico expuesto o no anunciado.');
+    search = async () => response([store(8, 'Recuperado')]);
+    type(dom.input, 'recuperado');
+    await wait(310);
+    assert(dom.status.getAttribute('role') === 'status' && dom.results.children.length === 1, 'No recupero tras error.');
+    scenarios.error_recovery = true;
+
+    const old = deferred();
+    const recent = deferred();
+    search = (term) => term === 'antigua' ? old.promise : recent.promise;
+    type(dom.input, 'antigua');
+    await wait(310);
+    assert(dom.input.getAttribute('aria-busy') === 'true'
+        && dom.results.getAttribute('aria-busy') === 'true'
+        && dom.status.textContent.includes('Buscando'),
+    'Estado de carga o aria-busy incorrecto.');
+    type(dom.input, 'nueva');
+    await wait(310);
+    recent.resolve(response([store(20, 'Nueva')]));
+    await wait(0);
+    old.resolve(response([store(21, 'Antigua')]));
+    await wait(0);
+    assert(dom.results.textContent.includes('Nueva') && !dom.results.textContent.includes('Antigua'), 'Respuesta obsoleta reemplazo resultados.');
+    scenarios.stale_response = true;
+
+    let aborted = false;
+    search = (term, { signal }) => new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => {
+            aborted = true;
+            reject(new DOMException('Aborted', 'AbortError'));
+        });
+    });
+    type(dom.input, 'cancelar');
+    await wait(310);
+    type(dom.input, 'x');
+    await wait(0);
+    assert(aborted && dom.status.getAttribute('role') !== 'alert', 'Aborto deliberado mostro error.');
+    scenarios.abort = true;
+
+    search = async () => response([store(30, 'Escape')]);
+    type(dom.input, 'escape');
+    await wait(310);
+    dom.input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert(dom.results.hidden && dom.input.getAttribute('aria-expanded') === 'false'
+        && !dom.input.hasAttribute('aria-activedescendant'), 'Escape no cerro resultados.');
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    dom.input.dispatchEvent(tab);
+    assert(!tab.defaultPrevented, 'Tab fue capturado.');
+    scenarios.escape_tab = true;
+
+    const otherDom = elements();
+    const other = createStoreSelector({ searchStores: async () => response([store(40, 'Otra')]), elements: otherDom });
+    type(otherDom.input, 'otra');
+    await wait(310);
+    assert(otherDom.results.id !== dom.results.id && otherDom.results.children.length === 1, 'Instancias colisionaron.');
+    scenarios.multiple_instances = true;
+
+    const pending = deferred();
+    search = () => pending.promise;
+    type(dom.input, 'destruir');
+    await wait(310);
+    const beforeDestroy = dom.status.textContent;
+    selector.destroy();
+    pending.resolve(response([store(50, 'Tardia')]));
+    await wait(0);
+    assert(dom.results.children.length === 0 && !dom.status.textContent.includes('Tardia'), 'Respuesta posterior a destroy modifico DOM.');
+    type(dom.input, 'sin-listener');
+    await wait(350);
+    assert(dom.status.textContent === beforeDestroy, 'Destroy no retiro listeners.');
+    other.destroy();
+    scenarios.destroy = true;
+
+    const originalFetch = window.fetch;
+    let requestedUrl = '';
+    window.fetch = async (url, options) => {
+        requestedUrl = String(url);
+        assert(options.method === 'GET'
+            && options.credentials === 'same-origin'
+            && options.headers.get('X-WP-Nonce') === 'nonce',
+        'Transporte perdio metodo, nonce o credenciales.');
+        return { ok: true, status: 200, text: async () => JSON.stringify(response([store(60, 'API')])) };
+    };
+    const api = createInventoryApi({ restUrl: 'https://example.test/wp-json/veciahorra/v1', nonce: 'nonce' });
+    const apiResponse = await api.searchStores('  tienda  ');
+    assert(apiResponse.data[0].id === 60
+        && requestedUrl.includes('/stores?search=tienda&page=1&per_page=10&order_by=business_name&direction=ASC'),
+    'Contrato real de Store incorrecto.');
+    window.fetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify(response([{ ...store(61, 'Mal'), status: 'draft' }])) });
+    let invalidResponse = false;
+    try { await api.searchStores('mala'); } catch (error) { invalidResponse = error.code === 'invalid_response'; }
+    assert(invalidResponse, 'API acepto DTO Store invalido.');
+    const abortController = new AbortController();
+    window.fetch = async (url, options) => new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    });
+    const abortedRequest = api.searchStores('abortar', { signal: abortController.signal }).catch((error) => error.name);
+    abortController.abort();
+    assert(await abortedRequest === 'AbortError', 'API tradujo incorrectamente AbortError.');
+    window.fetch = originalFetch;
+    scenarios.real_api = true;
+
+    assert(manualField.value === '77' && document.querySelectorAll('form').length === 0, 'El selector altero formulario productivo.');
+    scenarios.no_inventory_mutation = true;
+    output.dataset.status = 'pass';
+    output.textContent = JSON.stringify({ scenarios });
+    document.title = 'PASS';
+}
+
+run().catch((error) => {
+    output.dataset.status = 'fail';
+    output.textContent = JSON.stringify({ error: error.message, scenarios });
+    document.title = 'FAIL';
+});
+</script></body></html>

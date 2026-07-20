@@ -40,6 +40,10 @@ export function createInventoryApi({ restUrl, nonce }) {
                 { ...options, headers, credentials: 'same-origin' }
             );
         } catch (error) {
+            if (error?.name === 'AbortError') {
+                throw error;
+            }
+
             throw new InventoryApiError({
                 type: 'network',
                 code: 'network_error',
@@ -141,6 +145,29 @@ export function createInventoryApi({ restUrl, nonce }) {
             .then((response) => assertResponse(response, isProductSearchResponse));
     }
 
+    function searchStores(term, { page = 1, perPage = 10, signal } = {}) {
+        const normalizedTerm = String(term ?? '').trim();
+
+        if (normalizedTerm.length < 2) {
+            throw new InventoryApiError({
+                type: 'invalid_request',
+                code: 'invalid_store_search',
+                message: 'La busqueda requiere al menos dos caracteres.',
+            });
+        }
+
+        const params = new URLSearchParams({
+            search: normalizedTerm,
+            page: String(page),
+            per_page: String(perPage),
+            order_by: 'business_name',
+            direction: 'ASC',
+        });
+
+        return request(`/stores?${params.toString()}`, { method: 'GET', signal })
+            .then((response) => assertResponse(response, isStoreSearchResponse));
+    }
+
     function createInventory(payload) {
         return request('/inventory', jsonOptions('POST', payload))
             .then((response) => assertResponse(response, isCreateResponse));
@@ -156,6 +183,7 @@ export function createInventoryApi({ restUrl, nonce }) {
         getInventoryItem,
         getProduct,
         searchProducts,
+        searchStores,
         createInventory,
         updateInventory,
     };
@@ -230,6 +258,35 @@ function isProductSearchResponse(payload) {
         && ['page', 'per_page', 'total', 'total_pages'].every(
             (field) => Number.isInteger(payload.meta[field])
         );
+}
+
+function isStoreSearchResponse(payload) {
+    return isObject(payload)
+        && payload.success === true
+        && Array.isArray(payload.data)
+        && payload.data.every((store) => (
+            isObject(store)
+            && isPositiveInteger(store.id)
+            && typeof store.name === 'string'
+            && store.name.trim() !== ''
+            && ['pending', 'active', 'inactive', 'rejected'].includes(store.status)
+            && typeof store.onboarding_status === 'string'
+            && store.onboarding_status.trim() !== ''
+            && (store.approved_at === null || typeof store.approved_at === 'string')
+            && isStoreLocation(store.location)
+        ))
+        && isObject(payload.meta)
+        && ['page', 'per_page', 'total', 'total_pages'].every(
+            (field) => Number.isInteger(payload.meta[field])
+        )
+        && typeof payload.meta.has_next === 'boolean';
+}
+
+function isStoreLocation(location) {
+    return isObject(location)
+        && ['commune', 'city', 'region'].every((field) => (
+            location[field] === null || typeof location[field] === 'string'
+        ));
 }
 
 function isCreateResponse(payload) {
