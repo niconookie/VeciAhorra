@@ -6,6 +6,10 @@ namespace VeciAhorra\Core;
 
 use VeciAhorra\Admin\Menu;
 use VeciAhorra\Modules\Inventory\Admin\InventoryPage;
+use VeciAhorra\Modules\Inventory\Contracts\InventoryRepositoryInterface;
+use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
+use VeciAhorra\Modules\Inventory\Services\InventoryReferenceValidator;
+use VeciAhorra\Modules\Inventory\Services\InventoryService;
 use VeciAhorra\Modules\ProductCatalogs\Routes\BrandRoutes;
 use VeciAhorra\Modules\ProductCatalogs\Routes\CategoryRoutes;
 use VeciAhorra\Modules\ProductCatalogs\Routes\UnitRoutes;
@@ -60,6 +64,17 @@ final class Application
     public function __construct()
     {
         $this->container = new Container();
+        $this->container->bind(
+            InventoryRepositoryInterface::class,
+            static fn (): InventoryRepository => new InventoryRepository()
+        );
+        $this->container->bind(
+            InventoryService::class,
+            fn (): InventoryService => new InventoryService(
+                $this->container->make(InventoryRepositoryInterface::class),
+                new InventoryReferenceValidator()
+            )
+        );
         $this->container->singleton(
             PublicRouteResolver::class,
             static fn (): PublicRouteResolver => new PublicRouteResolver()

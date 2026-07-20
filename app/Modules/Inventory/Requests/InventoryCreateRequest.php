@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Inventory\Requests;
 
 use InvalidArgumentException;
+use VeciAhorra\Modules\Inventory\Exceptions\InventoryValidationException;
 
 /**
  * Valida y normaliza la creacion de inventario.
@@ -20,6 +21,8 @@ final class InventoryCreateRequest
 
     /** @var list<string> */
     private array $errors = [];
+
+    private ?string $referenceErrorField = null;
 
     public function __construct(array $input)
     {
@@ -38,6 +41,7 @@ final class InventoryCreateRequest
     public function validated(): array
     {
         $this->errors = [];
+        $this->referenceErrorField = null;
 
         $data = [
             'product_id' => $this->validatedRequiredId('product_id'),
@@ -65,6 +69,7 @@ final class InventoryCreateRequest
     private function validatedRequiredId(string $field): int
     {
         if (! $this->has($field)) {
+            $this->rememberReferenceError($field);
             $this->errors[] = sprintf(
                 'El campo %s es obligatorio.',
                 $field
@@ -76,6 +81,7 @@ final class InventoryCreateRequest
         $value = $this->value($field);
 
         if (! $this->isInteger($value, 1)) {
+            $this->rememberReferenceError($field);
             $this->errors[] = sprintf(
                 'El campo %s debe ser un entero positivo.',
                 $field
@@ -205,9 +211,30 @@ final class InventoryCreateRequest
     private function throwIfInvalid(): void
     {
         if ($this->errors !== []) {
+            if ($this->referenceErrorField !== null) {
+                throw new InventoryValidationException(
+                    implode(' ', $this->errors),
+                    $this->referenceErrorField,
+                    $this->referenceErrorField === 'product_id'
+                        ? 'inventory_invalid_product_id'
+                        : 'inventory_invalid_store_id'
+                );
+            }
+
             throw new InvalidArgumentException(
                 implode(' ', $this->errors)
             );
         }
+    }
+
+    private function rememberReferenceError(string $field): void
+    {
+        if ($this->referenceErrorField !== null) {
+            return;
+        }
+
+        $this->referenceErrorField = $field === 'minimarket_id'
+            ? 'store_id'
+            : 'product_id';
     }
 }

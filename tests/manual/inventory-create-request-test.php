@@ -11,7 +11,10 @@ if (! function_exists('wp_unslash')) {
     }
 }
 
-require_once dirname(__DIR__, 2)
+$root = dirname(__DIR__, 2);
+require_once $root
+    . '/app/Modules/Inventory/Exceptions/InventoryValidationException.php';
+require_once $root
     . '/app/Modules/Inventory/Requests/InventoryCreateRequest.php';
 
 function assertCreateSame(mixed $expected, mixed $actual): void

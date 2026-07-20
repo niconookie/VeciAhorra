@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use VeciAhorra\Modules\Products\Models\Product;
+use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
+
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
 function assertInventoryRouteTrue(bool $condition, string $message): void
@@ -98,8 +102,28 @@ try {
         );
     }
 
-    $productId = random_int(5000000, 5999999);
-    $minimarketId = random_int(6000000, 6999999);
+    $now = current_time('mysql');
+    $suffix = bin2hex(random_bytes(6));
+    $productId = (new ProductRepository())->create([
+        'name' => 'Inventory routes ' . $suffix,
+        'slug' => 'inventory-routes-' . $suffix,
+        'status' => Product::STATUS_ACTIVE,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+    $minimarketId = (new StoreRepository())->create([
+        'business_name' => 'Inventory routes ' . $suffix,
+        'legal_name' => 'Inventory routes legal ' . $suffix,
+        'owner_name' => 'Inventory routes owner',
+        'rut' => '1-9',
+        'email' => $suffix . '@example.test',
+        'phone' => '000000000',
+        'status' => 'active',
+        'onboarding_status' => 'draft',
+        'approved_at' => null,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
     $created = inventoryRestRequest('POST', $collection, [
         'product_id' => $productId,
         'minimarket_id' => $minimarketId,

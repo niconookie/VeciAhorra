@@ -8,6 +8,9 @@ use InvalidArgumentException;
 use RuntimeException;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
+use VeciAhorra\Modules\Inventory\Contracts\InventoryRepositoryInterface;
+use VeciAhorra\Modules\Inventory\Exceptions\InventoryDuplicateException;
+use VeciAhorra\Modules\Inventory\Exceptions\InventoryValidationException;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 
 /**
@@ -20,13 +23,18 @@ final class InventoryService
         'inactive',
     ];
 
-    private InventoryRepository $repository;
+    private InventoryRepositoryInterface $repository;
+
+    private InventoryReferenceValidator $referenceValidator;
 
     public function __construct(
-        ?InventoryRepository $repository = null
+        ?InventoryRepositoryInterface $repository = null,
+        ?InventoryReferenceValidator $referenceValidator = null
     ) {
         $this->repository = $repository
             ?? new InventoryRepository();
+        $this->referenceValidator = $referenceValidator
+            ?? new InventoryReferenceValidator();
     }
 
     public function paginate(array $filters): array
@@ -52,19 +60,38 @@ final class InventoryService
         $stock = $data['stock'] ?? 0;
         $status = $data['status'] ?? 'active';
 
-        $this->assertPositiveId($productId, 'producto');
-        $this->assertPositiveId($minimarketId, 'minimarket');
+        $this->assertPositiveId(
+            $productId,
+            'product_id',
+            'El identificador de producto debe ser positivo.',
+            'inventory_invalid_product_id'
+        );
+        $this->assertPositiveId(
+            $minimarketId,
+            'store_id',
+            'El identificador de minimarket debe ser positivo.',
+            'inventory_invalid_store_id'
+        );
+        $this->referenceValidator->validate($productId, $minimarketId);
         $this->assertPrice($price);
         $this->assertStock($stock);
         $this->assertAllowedStatus($status);
 
-        if ($this->repository->findByProductAndMinimarket(
-            $productId,
-            $minimarketId
-        ) !== null) {
-            throw new InvalidArgumentException(
-                'Ya existe inventario para el producto y minimarket indicados.'
+        try {
+            $existing = $this->repository->findByProductAndMinimarket(
+                $productId,
+                $minimarketId
             );
+        } catch (PersistenceException $exception) {
+            throw new RuntimeException(
+                'No fue posible crear el inventario.',
+                0,
+                $exception
+            );
+        }
+
+        if ($existing !== null) {
+            throw $this->duplicateException();
         }
 
         $now = current_time('mysql');
@@ -80,6 +107,8 @@ final class InventoryService
 
         try {
             return $this->repository->create($payload);
+        } catch (InventoryDuplicateException $exception) {
+            throw $this->duplicateException($exception);
         } catch (PersistenceException $exception) {
             throw new RuntimeException(
                 'No fue posible crear el inventario.',
@@ -106,7 +135,7 @@ final class InventoryService
 
     public function update(int $id, array $data): bool
     {
-        $this->requireInventory($id);
+        $inventory = $this->requireInventory($id);
         $payload = [];
 
         foreach (['product_id', 'minimarket_id'] as $field) {
@@ -116,6 +145,11 @@ final class InventoryService
                 );
             }
         }
+
+        $this->referenceValidator->validate(
+            (int) $inventory['product_id'],
+            (int) $inventory['minimarket_id']
+        );
 
         if (array_key_exists('price', $data)) {
             $this->assertPrice($data['price']);
@@ -179,14 +213,20 @@ final class InventoryService
         return $inventory;
     }
 
-    private function assertPositiveId(int $id, string $label): void
-    {
+    private function assertPositiveId(
+        int $id,
+        string $field,
+        string $message,
+        string $reason
+    ): void {
         if ($id > 0) {
             return;
         }
 
-        throw new InvalidArgumentException(
-            "El identificador de {$label} debe ser positivo."
+        throw new InventoryValidationException(
+            $message,
+            $field,
+            $reason
         );
     }
 
@@ -227,5 +267,16 @@ final class InventoryService
                 'El estado del inventario no es valido.'
             );
         }
+    }
+
+    private function duplicateException(
+        ?\Throwable $previous = null
+    ): InventoryValidationException {
+        return new InventoryValidationException(
+            'Ya existe una oferta para este producto y minimarket.',
+            'store_id',
+            'inventory_duplicate',
+            $previous
+        );
     }
 }

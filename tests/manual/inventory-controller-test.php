@@ -3,7 +3,11 @@
 declare(strict_types=1);
 
 use VeciAhorra\Modules\Inventory\Controllers\InventoryController;
+use VeciAhorra\Modules\Inventory\Services\InventoryReferenceValidator;
 use VeciAhorra\Modules\Inventory\Services\InventoryService;
+use VeciAhorra\Modules\Products\Models\Product;
+use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -36,8 +40,28 @@ assertControllerTrue(
 );
 
 try {
-    $productId = random_int(3000000, 3999999);
-    $minimarketId = random_int(4000000, 4999999);
+    $now = current_time('mysql');
+    $suffix = bin2hex(random_bytes(6));
+    $productId = (new ProductRepository())->create([
+        'name' => 'Inventory controller ' . $suffix,
+        'slug' => 'inventory-controller-' . $suffix,
+        'status' => Product::STATUS_ACTIVE,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+    $minimarketId = (new StoreRepository())->create([
+        'business_name' => 'Inventory controller ' . $suffix,
+        'legal_name' => 'Inventory controller legal ' . $suffix,
+        'owner_name' => 'Inventory controller owner',
+        'rut' => '1-9',
+        'email' => $suffix . '@example.test',
+        'phone' => '000000000',
+        'status' => 'active',
+        'onboarding_status' => 'draft',
+        'approved_at' => null,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
     $create = $controller->create([
         'product_id' => $productId,
         'minimarket_id' => $minimarketId,
@@ -124,7 +148,15 @@ try {
 
     try {
         $wpdb->prefix = 'missing_inventory_controller_' . uniqid() . '_';
-        $persistence = $controller->create([
+        $availableReferences = new InventoryReferenceValidator(
+            static fn (int $id): object => (object) ['status' => 'active'],
+            static fn (int $id): object => (object) ['status' => 'active']
+        );
+        $failingController = new InventoryController(new InventoryService(
+            null,
+            $availableReferences
+        ));
+        $persistence = $failingController->create([
             'product_id' => $productId + 1,
             'minimarket_id' => $minimarketId + 1,
             'price' => 1.0,

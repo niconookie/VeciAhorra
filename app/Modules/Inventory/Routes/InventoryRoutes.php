@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Inventory\Routes;
 
 use InvalidArgumentException;
+use VeciAhorra\Modules\Inventory\Exceptions\InventoryValidationException;
 use VeciAhorra\Modules\Inventory\Controllers\InventoryController;
 use VeciAhorra\Modules\Inventory\Requests\InventoryCreateRequest;
 use VeciAhorra\Modules\Inventory\Requests\InventoryListRequest;
@@ -209,6 +210,12 @@ final class InventoryRoutes
 
         try {
             return (new $requestClass($body))->validated();
+        } catch (InventoryValidationException $exception) {
+            return $this->validationError(
+                $exception->getMessage(),
+                $exception->field(),
+                $exception->reason()
+            );
         } catch (InvalidArgumentException $exception) {
             return $this->validationError($exception->getMessage());
         }
@@ -268,15 +275,27 @@ final class InventoryRoutes
             );
     }
 
-    private function validationError(string $message): WP_REST_Response
-    {
+    private function validationError(
+        string $message,
+        ?string $field = null,
+        ?string $reason = null
+    ): WP_REST_Response {
+        $error = [
+            'code' => 'validation_error',
+            'message' => $message,
+        ];
+
+        if ($field !== null && $reason !== null) {
+            $error['details'] = [
+                'field' => $field,
+                'reason' => $reason,
+            ];
+        }
+
         return new WP_REST_Response(
             [
                 'success' => false,
-                'error' => [
-                    'code' => 'validation_error',
-                    'message' => $message,
-                ],
+                'error' => $error,
             ],
             422
         );

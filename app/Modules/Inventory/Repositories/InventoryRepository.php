@@ -6,11 +6,13 @@ namespace VeciAhorra\Modules\Inventory\Repositories;
 
 use VeciAhorra\Database\Repository;
 use VeciAhorra\Exceptions\PersistenceException;
+use VeciAhorra\Modules\Inventory\Contracts\InventoryRepositoryInterface;
+use VeciAhorra\Modules\Inventory\Exceptions\InventoryDuplicateException;
 
 /**
  * Persistencia del inventario del marketplace.
  */
-final class InventoryRepository extends Repository
+final class InventoryRepository extends Repository implements InventoryRepositoryInterface
 {
     private const TABLE = 'inventory';
 
@@ -95,8 +97,9 @@ final class InventoryRepository extends Repository
         int $productId,
         int $minimarketId
     ): ?array {
-        $row = $this->db()->get_row(
-            $this->db()->prepare(
+        $database = $this->db();
+        $row = $database->get_row(
+            $database->prepare(
                 sprintf(
                     'SELECT *
                      FROM %s
@@ -110,6 +113,12 @@ final class InventoryRepository extends Repository
             ),
             ARRAY_A
         );
+
+        if ($database->last_error !== '') {
+            throw new PersistenceException(
+                'No fue posible consultar la oferta de inventario.'
+            );
+        }
 
         return $row === null ? null : $row;
     }
@@ -157,6 +166,22 @@ final class InventoryRepository extends Repository
         );
 
         if ($result === false) {
+            $productId = (int) ($payload['product_id'] ?? 0);
+            $minimarketId = (int) ($payload['minimarket_id'] ?? 0);
+
+            if (
+                $productId > 0
+                && $minimarketId > 0
+                && $this->findByProductAndMinimarket(
+                    $productId,
+                    $minimarketId
+                ) !== null
+            ) {
+                throw new InventoryDuplicateException(
+                    'La oferta de inventario ya existe.'
+                );
+            }
+
             throw new PersistenceException(
                 'No fue posible crear el inventario.'
             );

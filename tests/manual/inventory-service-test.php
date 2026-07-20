@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
+use VeciAhorra\Modules\Inventory\Services\InventoryReferenceValidator;
 use VeciAhorra\Modules\Inventory\Services\InventoryService;
+use VeciAhorra\Modules\Inventory\Exceptions\InventoryDuplicateException;
+use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
+use VeciAhorra\Modules\Products\Models\Product;
+use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -48,8 +54,28 @@ assertServiceTrue(
 );
 
 try {
-    $productId = random_int(1000000, 1999999);
-    $minimarketId = random_int(2000000, 2999999);
+    $now = current_time('mysql');
+    $suffix = bin2hex(random_bytes(6));
+    $productId = (new ProductRepository())->create([
+        'name' => 'Inventory service ' . $suffix,
+        'slug' => 'inventory-service-' . $suffix,
+        'status' => Product::STATUS_ACTIVE,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+    $minimarketId = (new StoreRepository())->create([
+        'business_name' => 'Inventory service ' . $suffix,
+        'legal_name' => 'Inventory service legal ' . $suffix,
+        'owner_name' => 'Inventory service owner',
+        'rut' => '1-9',
+        'email' => $suffix . '@example.test',
+        'phone' => '000000000',
+        'status' => 'active',
+        'onboarding_status' => 'draft',
+        'approved_at' => null,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
     $id = $service->create([
         'product_id' => $productId,
         'minimarket_id' => $minimarketId,
@@ -66,6 +92,26 @@ try {
         'stock' => 2,
         'status' => 'active',
     ]));
+
+    $errorsSuppressed = $wpdb->suppress_errors(true);
+
+    try {
+        (new InventoryRepository())->create([
+            'product_id' => $productId,
+            'minimarket_id' => $minimarketId,
+            'price' => 1100.0,
+            'stock' => 2,
+            'status' => 'active',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        throw new RuntimeException(
+            'Se esperaba InventoryDuplicateException desde el UNIQUE.'
+        );
+    } catch (InventoryDuplicateException) {
+    } finally {
+        $wpdb->suppress_errors($errorsSuppressed);
+    }
 
     $found = $service->find($id);
     assertServiceTrue(is_array($found), 'Find no retorno el registro.');
@@ -133,8 +179,17 @@ try {
     try {
         $wpdb->prefix = 'missing_inventory_' . uniqid() . '_';
 
+        $availableReferences = new InventoryReferenceValidator(
+            static fn (int $id): object => (object) ['status' => 'active'],
+            static fn (int $id): object => (object) ['status' => 'active']
+        );
+        $failingService = new InventoryService(
+            null,
+            $availableReferences
+        );
+
         try {
-            $service->create([
+            $failingService->create([
                 'product_id' => $productId + 1,
                 'minimarket_id' => $minimarketId + 1,
                 'price' => 1.0,

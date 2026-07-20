@@ -53,8 +53,9 @@ abstract protected function model(): string;
      */
     public function find(int $id): ?Model
 {
-    $row = $this->db()->get_row(
-        $this->db()->prepare(
+    $database = $this->db();
+    $row = $database->get_row(
+        $database->prepare(
             sprintf(
                 'SELECT * FROM %s WHERE id = %%d',
                 $this->table($this->table)
@@ -63,6 +64,12 @@ abstract protected function model(): string;
         ),
         ARRAY_A
     );
+
+    if ($database->last_error !== '') {
+        throw new PersistenceException(
+            'No fue posible consultar el registro.'
+        );
+    }
 
     if ($row === null) {
         return null;

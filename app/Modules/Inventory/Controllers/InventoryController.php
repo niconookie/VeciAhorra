@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Throwable;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
+use VeciAhorra\Modules\Inventory\Exceptions\InventoryValidationException;
 use VeciAhorra\Modules\Inventory\Services\InventoryService;
 
 /**
@@ -184,6 +185,20 @@ final class InventoryController
                 'error' => [
                     'code' => 'inventory_not_found',
                     'message' => $exception->getMessage(),
+                ],
+            ];
+        }
+
+        if ($exception instanceof InventoryValidationException) {
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => 'validation_error',
+                    'message' => $exception->getMessage(),
+                    'details' => [
+                        'field' => $exception->field(),
+                        'reason' => $exception->reason(),
+                    ],
                 ],
             ];
         }
