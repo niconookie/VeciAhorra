@@ -109,7 +109,7 @@ assertInventoryForm(
     'Falta feedback accesible para carga inicial o focus del formulario.'
 );
 assertInventoryForm(
-    str_contains($store, "errors.productId = 'Ingrese un Product ID positivo.'")
+    str_contains($store, "errors.productId = 'Seleccione un producto.'")
         && str_contains($store, "errors.minimarketId = 'Ingrese un Minimarket ID positivo.'"),
     'Faltan errores frontend para IDs invalidos.'
 );

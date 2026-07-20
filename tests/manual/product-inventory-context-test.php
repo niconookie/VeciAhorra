@@ -104,7 +104,7 @@ assertProductInventoryContext(
 );
 assertProductInventoryContext(
     str_contains($inventoryStore, '{ ...DEFAULT_FILTERS, productId }')
-        && str_contains($inventoryStore, 'openCreateForm(normalizedProduct)')
+        && str_contains($inventoryStore, 'form.contextProduct = { ...normalizedProduct }')
         && str_contains($inventoryStore, 'form.productLocked = true'),
     'Inventory no aplica filtro o precarga contextual.'
 );

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>RUNNING</title></head>
+<body><main id="fixture"></main><pre id="test-results" data-status="running">RUNNING</pre>
+<script type="module">
+import {
+    createProductSelector,
+    PRODUCT_SEARCH_DEBOUNCE,
+    PRODUCT_SEARCH_MINIMUM,
+} from '../../assets/admin/js/modules/inventory/product-selector.js';
+import { createInventoryStore } from '../../assets/admin/js/modules/inventory/store.js';
+import { createInventoryApi } from '../../assets/admin/js/modules/inventory/api.js';
+import { createInventoryView } from '../../assets/admin/js/modules/inventory/view.js';
+
+const output = document.querySelector('#test-results');
+const fixture = document.querySelector('#fixture');
+const scenarios = {};
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const product = (id, name, status = 'active') => ({ id, name, status, sku: null, updated_at: '2026-07-20 12:00:00' });
+const response = (data) => ({ data, meta: { page: 1, per_page: 10, total: data.length, total_pages: data.length ? 1 : 0 } });
+const form = (changes = {}) => ({
+    mode: 'create', isSaving: false, productLocked: false, selectedProduct: null,
+    fieldErrors: {}, values: { productId: '', minimarketId: '', price: '', stock: '0', status: 'active' },
+    ...changes,
+});
+
+async function run() {
+    assert(PRODUCT_SEARCH_MINIMUM === 2 && PRODUCT_SEARCH_DEBOUNCE === 300, 'Contrato de umbral/debounce incorrecto.');
+    const calls = [];
+    let currentForm = form();
+    let selectedCount = 0;
+    let search = async (term) => { calls.push(term); return response([
+        product(1, '<Cacao & leche>', 'active'), product(2, 'Leche larga '.repeat(8), 'inactive'), product(3, 'Borrador', 'draft'),
+    ]); };
+    const selector = createProductSelector({
+        searchProducts: (term) => search(term),
+        onProductSelected: (value) => {
+            selectedCount++;
+            currentForm = form({ selectedProduct: value, values: { ...currentForm.values, productId: String(value.id) } });
+            selector.render(currentForm);
+        },
+        onProductCleared: () => {
+            currentForm = form();
+            selector.render(currentForm);
+        },
+    });
+    fixture.append(selector.element);
+    selector.render(currentForm);
+    const input = selector.element.querySelector('input');
+    const type = (value) => { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); };
+
+    type('a'); await wait(350);
+    assert(calls.length === 0, 'Buscó bajo el mínimo.'); scenarios.minimum = true;
+    type('  '); await wait(350);
+    assert(calls.length === 0, 'Buscó espacios vacíos.'); scenarios.trimmed_minimum = true;
+    input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    input.value = 'té'; input.dispatchEvent(new Event('input', { bubbles: true })); await wait(350);
+    assert(calls.length === 0, 'Buscó durante composición IME.');
+    input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'té' })); await wait(350);
+    assert(calls.length === 1 && calls[0] === 'té', 'No buscó al finalizar composición IME.'); scenarios.ime = true;
+    calls.length = 0;
+    type('ca'); await wait(100); type('cac'); await wait(100); type('cacao'); await wait(350);
+    assert(calls.length === 1 && calls[0] === 'cacao', 'Debounce produjo requests duplicadas.'); scenarios.debounce = true;
+    const options = [...selector.element.querySelectorAll('[role="option"]')];
+    assert(options.length === 3 && options.map((node) => node.textContent).join(' ').includes('Activo')
+        && options.map((node) => node.textContent).join(' ').includes('Inactivo')
+        && options.map((node) => node.textContent).join(' ').includes('Borrador'), 'No renderizó los tres estados.');
+    assert(!selector.element.innerHTML.includes('<Cacao & leche>'), 'Interpretó el nombre HTML como markup.'); scenarios.statuses_and_safe_dom = true;
+    type('nuevo término');
+    assert(selector.element.querySelectorAll('[role="option"]').length === 0, 'Reutilizó resultados durante debounce.');
+    await wait(350); scenarios.old_results_cleared = true;
+    search = async () => response([
+        product(20, 'Primero'), product(20, 'Duplicado'), product(0, 'Cero'),
+        product(-1, 'Negativo'), product(2.5, 'Float'),
+        product(Number.MAX_SAFE_INTEGER + 1, 'Overflow'), product(21, '', 'active'),
+        product(22, 'Desconocido', 'pending'),
+    ]);
+    type('normalizar'); await wait(350);
+    const normalizedOptions = [...selector.element.querySelectorAll('[role="option"]')];
+    assert(normalizedOptions.length === 1 && normalizedOptions[0].id.endsWith('-20'), 'No filtró DTO inválido o IDs duplicados.'); scenarios.normalization = true;
+    search = async (term) => { calls.push(term); return response([
+        product(1, '<Cacao & leche>', 'active'), product(2, 'Leche larga '.repeat(8), 'inactive'), product(3, 'Borrador', 'draft'),
+    ]); };
+    type('cacao'); await wait(350);
+    selector.element.querySelectorAll('[role="option"]')[0].click();
+    assert(currentForm.values.productId === '1' && selector.element.textContent.includes('<Cacao & leche>'), 'Selección no guardó ID/resumen.'); scenarios.select = true;
+    selector.element.querySelector('.button-link-delete').click();
+    assert(currentForm.values.productId === '' && currentForm.selectedProduct === null, 'Limpiar no eliminó selección.'); scenarios.clear = true;
+    type('leche'); await wait(350); selector.element.querySelectorAll('[role="option"]')[1].click();
+    assert(currentForm.values.productId === '2', 'Cambio no reemplazó Product ID.'); scenarios.change = true;
+
+    selector.element.querySelector('.button-link-delete').click();
+    const deferred = {};
+    search = (term) => new Promise((resolve) => { deferred[term] = resolve; });
+    type('coca'); await wait(320); type('leche'); await wait(320);
+    deferred.leche(response([product(4, 'Leche nueva')])); await wait(0);
+    deferred.coca(response([product(5, 'Coca antigua')])); await wait(0);
+    assert(selector.element.textContent.includes('Leche nueva') && !selector.element.textContent.includes('Coca antigua'), 'Respuesta obsoleta reemplazó resultados.'); scenarios.stale = true;
+
+    const late = {};
+    search = () => new Promise((resolve, reject) => { late.resolve = resolve; late.reject = reject; });
+    type('pendiente'); await wait(320); selector.render(form({ mode: 'edit' }));
+    late.reject(new Error('Error tardío')); await wait(0);
+    assert(selector.element.hidden && !selector.element.textContent.includes('Error tardío'), 'Error obsoleto alteró selector cerrado.'); scenarios.stale_mode_change = true;
+    currentForm = form(); selector.render(currentForm);
+
+    search = async () => response([]); type('vacío'); await wait(350);
+    assert(selector.element.textContent.includes('No se encontraron'), 'Falta estado vacío.'); scenarios.empty = true;
+    search = async () => { throw new Error('Fallo técnico recuperable'); }; type('error'); await wait(350);
+    assert(selector.element.textContent.includes('Fallo técnico recuperable') && selector.element.querySelector('[role="alert"]'), 'Falta error recuperable.'); scenarios.technical_error = true;
+
+    search = async () => response([product(6, 'Teclado'), product(7, 'Segundo')]); type('teclado'); await wait(350);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    assert(currentForm.values.productId === '7', 'Teclado no seleccionó opción activa.'); scenarios.keyboard = true;
+    selector.element.querySelector('.button-link-delete').click(); type('escape'); await wait(350);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert(input.getAttribute('aria-expanded') === 'false', 'Escape no cerró resultados.'); scenarios.escape = true;
+
+    search = async () => response([product(23, 'Tab')]); type('tabular'); await wait(350);
+    const afterSelector = document.createElement('button'); fixture.append(afterSelector); afterSelector.focus(); await wait(0);
+    assert(input.getAttribute('aria-expanded') === 'false', 'Foco externo no cerró resultados.'); scenarios.tab_blur = true;
+
+    currentForm = form({ productLocked: true, selectedProduct: product(8, 'Contextual'), values: { ...form().values, productId: '8' } });
+    selector.render(currentForm); assert(selector.element.hidden, 'Contexto mostró selector editable.'); scenarios.context = true;
+    currentForm = form({ mode: 'edit' }); selector.render(currentForm); assert(selector.element.hidden, 'Edición mostró selector.'); scenarios.edit = true;
+    currentForm = form(); selector.render(currentForm); assert(input.value === '' && input.getAttribute('aria-expanded') === 'false', 'Reapertura conservó estado anterior.'); scenarios.cancel_reopen = true;
+
+    const createdPayloads = [];
+    const storeApi = {
+        createInventory: async (payload) => { createdPayloads.push(payload); return { data: { id: 90 } }; },
+        getInventoryItem: async () => ({ data: { id: 90, product_id: 9, minimarket_id: 2, price: 10, stock: 3, status: 'active', updated_at: 'now' } }),
+        updateInventory: async () => ({ data: { id: 90, updated: true } }),
+        getInventory: async () => response([]),
+    };
+    const store = createInventoryStore(storeApi); store.openCreateForm();
+    store.openCreateForm(product(999, 'No autorizado'));
+    store.setFormField('productId', '998');
+    assert(store.getState().form.values.productId === '', 'Un escritor no autorizado estableció productId.'); scenarios.authority = true;
+    assert(store.selectProduct(product(9, 'Contrato', 'draft')), 'Store rechazó Product draft.');
+    store.setFormField('minimarketId', '2'); store.setFormField('price', '10'); store.setFormField('stock', '3');
+    assert(await store.save(), 'No guardó selección válida.');
+    assert(createdPayloads[0].product_id === 9 && !Object.hasOwn(createdPayloads[0], 'product'), 'Payload no preservó product_id contractual.'); scenarios.payload = true;
+
+    const removedStore = createInventoryStore({ ...storeApi, createInventory: async () => { const error = new Error('Product eliminado'); error.code = 'inventory_product_not_found'; throw error; } });
+    removedStore.openCreateForm(); removedStore.selectProduct(product(10, 'Eliminado')); removedStore.setFormField('minimarketId', '2'); removedStore.setFormField('price', '5');
+    await removedStore.save();
+    assert(removedStore.getState().form.values.productId === '' && removedStore.getState().form.values.minimarketId === '2', 'Product eliminado no limpió solo la selección.'); scenarios.removed = true;
+    const duplicateStore = createInventoryStore({ ...storeApi, createInventory: async () => { const error = new Error('Duplicado'); error.code = 'inventory_duplicate'; error.field = 'product_id'; error.reason = 'duplicate_reference'; throw error; } });
+    duplicateStore.openCreateForm(); duplicateStore.selectProduct(product(11, 'Duplicado')); duplicateStore.setFormField('minimarketId', '3'); duplicateStore.setFormField('price', '7'); duplicateStore.setFormField('stock', '4'); await duplicateStore.save();
+    const duplicateForm = duplicateStore.getState().form;
+    assert(duplicateForm.selectedProduct.id === 11 && duplicateForm.values.minimarketId === '3' && duplicateForm.values.price === '7' && duplicateForm.error.reason === 'duplicate_reference', 'Duplicado perdió valores o detalles.'); scenarios.duplicate = true;
+
+    const technicalStore = createInventoryStore({ ...storeApi, createInventory: async () => { const error = new Error('Servicio no disponible'); error.code = 'http_503'; error.retryable = true; throw error; } });
+    technicalStore.openCreateForm(); technicalStore.selectProduct(product(24, 'Preservado')); technicalStore.setFormField('minimarketId', '4'); technicalStore.setFormField('price', '8'); await technicalStore.save();
+    assert(technicalStore.getState().form.selectedProduct.id === 24 && technicalStore.getState().form.values.minimarketId === '4', 'Error técnico perdió selección o formulario.'); scenarios.save_technical_error = true;
+
+    const contextualStore = createInventoryStore({ ...storeApi, createInventory: async () => { const error = new Error('Product contextual eliminado'); error.code = 'inventory_product_not_found'; throw error; } });
+    contextualStore.applyContext({ intent: 'create' }, product(25, 'Contextual eliminado'));
+    contextualStore.setFormField('minimarketId', '5'); contextualStore.setFormField('price', '9'); await contextualStore.save();
+    assert(contextualStore.getState().form.values.productId === '25' && contextualStore.getState().form.contextProduct.id === 25 && contextualStore.getState().form.productLocked, 'Error contextual borró o desbloqueó Product.'); scenarios.contextual_removed = true;
+
+    const editStore = createInventoryStore({ ...storeApi, getInventoryItem: async () => ({ data: { id: 91, product_id: 27, minimarket_id: 2, price: 10, stock: 3, status: 'active', updated_at: 'now' } }) });
+    await editStore.applyContext({ intent: 'list' }, product(26, 'Contexto A'));
+    await editStore.openEditForm(91);
+    assert(editStore.getState().form.values.productId === '27' && editStore.getState().form.mode === 'edit', 'Contexto A sobrescribió Product durable B.'); scenarios.edit_context_precedence = true;
+
+    search = async () => response([product(12, 'Único')]);
+    selector.render(form()); type('único'); await wait(350); const before = selectedCount;
+    selector.element.querySelector('[role="option"]').click();
+    assert(selectedCount === before + 1, 'Reapertura duplicó listeners.'); scenarios.listeners = true;
+    selector.element.querySelector('.button-link-delete').click();
+    search = async () => response([product(13, 'Primera'), product(14, 'Segunda')]);
+    type('doble'); await wait(350); selector.element.querySelectorAll('[role="option"]')[0].click();
+    selector.element.querySelector('.button-link-delete').click(); type('doble'); await wait(350); selector.element.querySelectorAll('[role="option"]')[1].click();
+    assert(currentForm.selectedProduct.id === 14 && currentForm.values.productId === '14', 'Selecciones consecutivas divergieron.'); scenarios.consecutive_selection = true;
+
+    const originalFetch = window.fetch;
+    let requestedUrl = '';
+    window.fetch = async (url, options) => {
+        requestedUrl = String(url);
+        assert(options.credentials === 'same-origin' && options.headers.get('X-WP-Nonce') === 'nonce', 'Transporte perdió nonce o credenciales.');
+        return { ok: true, status: 200, text: async () => JSON.stringify(response([{ id: 0, name: 'Inválido', status: 'active' }])) };
+    };
+    const realApi = createInventoryApi({ restUrl: 'https://example.test/wp-json/veciahorra/v1', nonce: 'nonce' });
+    let malformedRejected = false;
+    try { await realApi.searchProducts('  leche  '); } catch (error) { malformedRejected = error.code === 'invalid_response'; }
+    assert(malformedRejected && requestedUrl.includes('/products/search?term=leche&page=1&per_page=10'), 'API aceptó DTO malformado o construyó parámetros incorrectos.'); scenarios.real_api = true;
+    window.fetch = async () => ({ ok: false, status: 500, text: async () => JSON.stringify({ error: { code: 'internal_error', message: 'Fallo controlado' } }) });
+    let httpRejected = false;
+    try { await realApi.searchProducts('leche'); } catch (error) { httpRejected = error.status === 500 && error.code === 'internal_error' && error.retryable; }
+    window.fetch = async () => ({ ok: true, status: 200, text: async () => '<html>no-json</html>' });
+    let jsonRejected = false;
+    try { await realApi.searchProducts('leche'); } catch (error) { jsonRejected = error.code === 'invalid_json'; }
+    window.fetch = originalFetch;
+    assert(httpRejected && jsonRejected, 'API no diferenció HTTP 500 y JSON inválido.'); scenarios.api_technical_errors = true;
+    assert(typeof createInventoryView === 'function', 'No importó módulos productivos.'); scenarios.modules = true;
+
+    output.dataset.status = 'pass'; output.textContent = JSON.stringify({ scenarios }); document.title = 'PASS';
+}
+
+run().catch((error) => { output.dataset.status = 'fail'; output.textContent = JSON.stringify({ error: error.message, scenarios }); document.title = 'FAIL'; });
+</script></body></html>

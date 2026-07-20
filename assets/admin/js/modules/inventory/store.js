@@ -120,21 +120,13 @@ export function createInventoryStore(api) {
         return execute({ ...state.query, page }, state.inputs);
     }
 
-    function openCreateForm(product = null) {
+    function openCreateForm() {
         if (state.form.isSaving) {
             return false;
         }
 
         latestFormRequest++;
-        const form = initialForm(FORM_CREATE);
-
-        if (product !== null) {
-            form.values.productId = String(product.id);
-            form.contextProduct = { ...product };
-            form.productLocked = true;
-        }
-
-        setState({ currentView: VIEW_FORM, form });
+        setState({ currentView: VIEW_FORM, form: initialForm(FORM_CREATE) });
         return true;
     }
 
@@ -181,7 +173,7 @@ export function createInventoryStore(api) {
             state.currentView !== VIEW_FORM
             || state.form.isSaving
             || !Object.hasOwn(DEFAULT_VALUES, field)
-            || (field === 'productId' && state.form.productLocked)
+            || field === 'productId'
             || (
                 state.form.mode === FORM_EDIT
                 && ['productId', 'minimarketId'].includes(field)
@@ -197,6 +189,53 @@ export function createInventoryStore(api) {
             error: null,
             message: null,
         });
+    }
+
+    function selectProduct(product) {
+        const normalizedProduct = normalizeAdministrativeProduct(product);
+
+        if (
+            state.currentView !== VIEW_FORM
+            || state.form.mode !== FORM_CREATE
+            || state.form.productLocked
+            || normalizedProduct === null
+        ) {
+            return false;
+        }
+
+        setForm({
+            ...state.form,
+            values: {
+                ...state.form.values,
+                productId: String(normalizedProduct.id),
+            },
+            selectedProduct: normalizedProduct,
+            fieldErrors: { ...state.form.fieldErrors, productId: undefined },
+            error: null,
+            message: null,
+        });
+        return true;
+    }
+
+    function clearSelectedProduct() {
+        if (
+            state.currentView !== VIEW_FORM
+            || state.form.mode !== FORM_CREATE
+            || state.form.productLocked
+            || state.form.isSaving
+        ) {
+            return false;
+        }
+
+        setForm({
+            ...state.form,
+            values: { ...state.form.values, productId: '' },
+            selectedProduct: null,
+            fieldErrors: { ...state.form.fieldErrors, productId: undefined },
+            error: null,
+            message: null,
+        });
+        return true;
     }
 
     async function save() {
@@ -257,10 +296,28 @@ export function createInventoryStore(api) {
             });
             return true;
         } catch (error) {
+            const normalizedError = normalizeError(error);
+            const productRemoved = [
+                'inventory_invalid_product_id',
+                'inventory_product_not_found',
+            ].includes(normalizedError.code);
+            const replaceableProduct = productRemoved
+                && state.form.mode === FORM_CREATE
+                && !state.form.productLocked;
             setForm({
                 ...state.form,
+                values: replaceableProduct
+                    ? { ...state.form.values, productId: '' }
+                    : state.form.values,
+                selectedProduct: replaceableProduct ? null : state.form.selectedProduct,
+                fieldErrors: replaceableProduct
+                    ? {
+                        ...state.form.fieldErrors,
+                        productId: 'El producto seleccionado ya no esta disponible. Seleccione otro.',
+                    }
+                    : state.form.fieldErrors,
                 status: STATUS_ERROR,
-                error: normalizeError(error),
+                error: normalizedError,
             });
             return false;
         } finally {
@@ -311,17 +368,23 @@ export function createInventoryStore(api) {
     }
 
     function applyContext(context, product) {
-        const normalizedProduct = {
-            id: Number(product.id),
-            name: String(product.name),
-            status: String(product.status),
-        };
+        const normalizedProduct = normalizeAdministrativeProduct(product);
+
+        if (normalizedProduct === null) {
+            rejectContext('El Product contextual devolvio una respuesta no valida.');
+            return false;
+        }
         setState({
             context: { status: 'ready', intent: context.intent, product: normalizedProduct, message: null },
         });
 
         if (context.intent === 'create') {
-            openCreateForm(normalizedProduct);
+            const form = initialForm(FORM_CREATE);
+            form.values.productId = String(normalizedProduct.id);
+            form.contextProduct = { ...normalizedProduct };
+            form.productLocked = true;
+            latestFormRequest++;
+            setState({ currentView: VIEW_FORM, form });
             return true;
         }
 
@@ -387,6 +450,8 @@ export function createInventoryStore(api) {
         openCreateForm,
         openEditForm,
         setFormField,
+        selectProduct,
+        clearSelectedProduct,
         save,
         returnToList,
         loadContext,
@@ -408,6 +473,7 @@ function initialForm(mode = FORM_CREATE) {
         isSaving: false,
         contextProduct: null,
         productLocked: false,
+        selectedProduct: null,
     };
 }
 
@@ -436,7 +502,7 @@ function validate(values) {
     const price = nonNegativeNumber(values.price);
     const stock = nonNegativeInteger(values.stock);
 
-    if (productId === null) errors.productId = 'Ingrese un Product ID positivo.';
+    if (productId === null) errors.productId = 'Seleccione un producto.';
     if (minimarketId === null) errors.minimarketId = 'Ingrese un Minimarket ID positivo.';
     if (price === null) errors.price = 'Ingrese un precio mayor o igual a 0.';
     if (stock === null) errors.stock = 'Ingrese un stock entero mayor o igual a 0.';
@@ -459,7 +525,23 @@ function validate(values) {
 
 function positiveInteger(value) {
     const normalized = String(value).trim();
-    return /^[1-9]\d*$/.test(normalized) ? Number(normalized) : null;
+    const number = Number(normalized);
+    return /^[1-9]\d*$/.test(normalized)
+        && Number.isSafeInteger(number)
+        ? number
+        : null;
+}
+
+function normalizeAdministrativeProduct(product) {
+    const id = positiveInteger(product?.id);
+    const name = typeof product?.name === 'string' ? product.name.trim() : '';
+    const status = String(product?.status ?? '');
+
+    return id !== null
+        && name !== ''
+        && ['active', 'inactive', 'draft'].includes(status)
+        ? { id, name, status }
+        : null;
 }
 
 function nonNegativeInteger(value) {
@@ -531,6 +613,9 @@ function snapshot(source) {
             contextProduct: source.form.contextProduct === null
                 ? null
                 : { ...source.form.contextProduct },
+            selectedProduct: source.form.selectedProduct === null
+                ? null
+                : { ...source.form.selectedProduct },
         },
     };
 }

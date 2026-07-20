@@ -8,6 +8,7 @@ import {
     FORM_EDIT,
     VIEW_FORM,
 } from './store.js';
+import { createProductSelector } from './product-selector.js';
 
 export function createInventoryView(nodes, actions) {
     const newButton = nodes.root.querySelector('.page-title-action');
@@ -239,6 +240,7 @@ function createInventoryForm(actions) {
         stock: createFormInput('stock', 'Stock', 'number', '1'),
         status: createFormStatus(),
     };
+    const productSelector = createProductSelector(actions);
 
     Object.entries(controls).forEach(([name, control]) => {
         control.input.addEventListener('input', () => {
@@ -246,6 +248,7 @@ function createInventoryForm(actions) {
         });
         fields.append(control.wrapper);
     });
+    fields.insertBefore(productSelector.element, controls.productId.wrapper);
 
     const buttons = document.createElement('div');
     buttons.className = 'veciahorra-inventory-admin__form-actions';
@@ -281,6 +284,8 @@ function createInventoryForm(actions) {
             : 'Cargando inventario...';
         fields.hidden = loading || detailUnavailable;
         buttons.hidden = loading || detailUnavailable;
+        productSelector.render(form);
+        controls.productId.wrapper.hidden = form.mode === FORM_CREATE;
         productContext.hidden = form.contextProduct === null;
         productContext.textContent = form.contextProduct === null
             ? ''
@@ -308,9 +313,11 @@ function createInventoryForm(actions) {
     }
 
     function focusPrimary(mode) {
-        const control = mode === FORM_CREATE && !controls.productId.input.disabled
-            ? controls.productId
-            : controls.price;
+        if (mode === FORM_CREATE && !productSelector.element.hidden) {
+            productSelector.focus();
+            return;
+        }
+        const control = controls.price;
         if (control.input.isConnected) {
             control.input.focus();
         }

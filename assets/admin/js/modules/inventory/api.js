@@ -107,7 +107,38 @@ export function createInventoryApi({ restUrl, nonce }) {
         }
 
         return request(`/products/${String(id)}`, { method: 'GET' })
-            .then((response) => assertResponse(response, isProductResponse));
+            .then((response) => assertResponse(response, isProductResponse))
+            .then((payload) => {
+                if (Number(payload.data.id) !== Number(id)) {
+                    throw new InventoryApiError({
+                        type: 'invalid_response',
+                        code: 'invalid_response',
+                        message: 'La respuesta del servidor no tiene el formato esperado.',
+                    });
+                }
+                return payload;
+            });
+    }
+
+    function searchProducts(term, { page = 1, perPage = 10 } = {}) {
+        const normalizedTerm = String(term ?? '').trim();
+
+        if (normalizedTerm.length < 2) {
+            throw new InventoryApiError({
+                type: 'invalid_request',
+                code: 'invalid_product_search',
+                message: 'La busqueda requiere al menos dos caracteres.',
+            });
+        }
+
+        const params = new URLSearchParams({
+            term: normalizedTerm,
+            page: String(page),
+            per_page: String(perPage),
+        });
+
+        return request(`/products/search?${params.toString()}`, { method: 'GET' })
+            .then((response) => assertResponse(response, isProductSearchResponse));
     }
 
     function createInventory(payload) {
@@ -120,7 +151,14 @@ export function createInventoryApi({ restUrl, nonce }) {
             .then((response) => assertResponse(response, isUpdateResponse));
     }
 
-    return { getInventory, getInventoryItem, getProduct, createInventory, updateInventory };
+    return {
+        getInventory,
+        getInventoryItem,
+        getProduct,
+        searchProducts,
+        createInventory,
+        updateInventory,
+    };
 }
 
 export function buildInventoryUrl({
@@ -175,6 +213,23 @@ function isProductResponse(payload) {
         && typeof payload.data.name === 'string'
         && payload.data.name.trim() !== ''
         && ['draft', 'active', 'inactive'].includes(payload.data.status);
+}
+
+function isProductSearchResponse(payload) {
+    return isObject(payload)
+        && payload.success === true
+        && Array.isArray(payload.data)
+        && payload.data.every((product) => (
+            isObject(product)
+            && isPositiveInteger(product.id)
+            && typeof product.name === 'string'
+            && product.name.trim() !== ''
+            && ['draft', 'active', 'inactive'].includes(product.status)
+        ))
+        && isObject(payload.meta)
+        && ['page', 'per_page', 'total', 'total_pages'].every(
+            (field) => Number.isInteger(payload.meta[field])
+        );
 }
 
 function isCreateResponse(payload) {
@@ -238,8 +293,9 @@ function isInventoryRow(row) {
 }
 
 function isPositiveInteger(value) {
-    return (Number.isInteger(value) && value > 0)
-        || (typeof value === 'string' && /^[1-9]\d*$/.test(value));
+    if (Number.isSafeInteger(value)) return value > 0;
+    if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) return false;
+    return Number.isSafeInteger(Number(value));
 }
 
 function isNonNegativeInteger(value) {
