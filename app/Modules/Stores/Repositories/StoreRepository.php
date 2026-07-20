@@ -208,28 +208,38 @@ final class StoreRepository extends BaseRepository
             $direction = 'DESC';
         }
 
+        $orderClause = $orderBy === 'id'
+            ? sprintf('id %s', $direction)
+            : sprintf('%s %s, id ASC', $orderBy, $direction);
+
         $sql = sprintf(
             'SELECT *
              FROM %s
              %s
-             ORDER BY %s %s
+             ORDER BY %s
              LIMIT %%d OFFSET %%d',
             $this->table($this->table),
             $where,
-            $orderBy,
-            $direction
+            $orderClause
         );
 
         $params[] = $perPage;
         $params[] = $offset;
 
-        $rows = $this->db()->get_results(
-            $this->db()->prepare(
+        $database = $this->db();
+        $rows = $database->get_results(
+            $database->prepare(
                 $sql,
                 ...$params
             ),
             ARRAY_A
         );
+
+        if (! is_array($rows) || $database->last_error !== '') {
+            throw new PersistenceException(
+                'No fue posible listar los minimarkets.'
+            );
+        }
 
         $collection = new Collection();
 
@@ -285,15 +295,22 @@ final class StoreRepository extends BaseRepository
             $where
         );
 
-        if (empty($params)) {
-            return (int) $this->db()->get_var($sql);
+        $database = $this->db();
+        $value = empty($params)
+            ? $database->get_var($sql)
+            : $database->get_var(
+                $database->prepare(
+                    $sql,
+                    ...$params
+                )
+            );
+
+        if ($value === null || $database->last_error !== '') {
+            throw new PersistenceException(
+                'No fue posible contar los minimarkets.'
+            );
         }
 
-        return (int) $this->db()->get_var(
-            $this->db()->prepare(
-                $sql,
-                ...$params
-            )
-        );
+        return (int) $value;
     }
 }

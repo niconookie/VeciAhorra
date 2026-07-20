@@ -32,6 +32,7 @@ use VeciAhorra\Modules\Payments\Service\OrderPaymentConfirmationAdapter;
 use VeciAhorra\Modules\Payments\WooCommerce\WebpayGatewayRegistration;
 use VeciAhorra\Modules\Payments\WooCommerce\WooCommerceWebpayReturnGatewayResolver;
 use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
+use VeciAhorra\Modules\Stores\Routes\StoreRoutes;
 use VeciAhorra\Modules\Products\Admin\ProductsPage;
 use VeciAhorra\Modules\Products\Routes\ProductRoutes;
 use VeciAhorra\Modules\Frontend\FrontendModule;
@@ -225,6 +226,15 @@ final class Application
         add_action(
             'rest_api_init',
             [$inventoryRoutes, 'register']
+        );
+
+        $storeRoutes = $this->container->make(
+            StoreRoutes::class
+        );
+
+        add_action(
+            'rest_api_init',
+            [$storeRoutes, 'register']
         );
 
         $orderRoutes = $this->container->make(
