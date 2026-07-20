@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<title>Product Inventory context browser test</title>
+<pre id="test-results" data-status="running">RUNNING</pre>
+<script type="module">
+import {
+    buildContextUrl,
+    contextProductErrorMessage,
+    readAdminContext,
+} from '../../assets/admin/js/modules/inventory/context.js';
+import { createInventoryStore } from '../../assets/admin/js/modules/inventory/store.js';
+import { buildInventoryAdminUrl } from '../../assets/admin/products/navigation.js';
+
+const result = document.getElementById('test-results');
+const scenarios = {};
+const assert = (condition, message) => {
+    if (!condition) throw new Error(message);
+};
+
+try {
+    await Promise.all([
+        import('../../assets/admin/js/modules/inventory/api.js'),
+        import('../../assets/admin/js/modules/inventory/view.js'),
+        import('../../assets/admin/js/modules/inventory/app.js'),
+        import('../../assets/admin/products/view.js'),
+        import('../../assets/admin/products/app.js'),
+    ]);
+    scenarios.modules = true;
+
+    const cases = [
+        ['?product_id=1', 'valid', 1, 'list'],
+        ['?product_id=9007199254740991', 'valid', 9007199254740991, 'list'],
+        ['?product_id=%31%32', 'valid', 12, 'list'],
+        ['', 'none', null, 'list'],
+        ['?product_id=', 'invalid', null, 'list'],
+        ['?product_id=0', 'invalid', null, 'list'],
+        ['?product_id=-1', 'invalid', null, 'list'],
+        ['?product_id=%2B1', 'invalid', null, 'list'],
+        ['?product_id=01', 'invalid', null, 'list'],
+        ['?product_id=1.0', 'invalid', null, 'list'],
+        ['?product_id=1.5', 'invalid', null, 'list'],
+        ['?product_id=1e3', 'invalid', null, 'list'],
+        ['?product_id=1abc', 'invalid', null, 'list'],
+        ['?product_id=abc1', 'invalid', null, 'list'],
+        ['?product_id=NaN', 'invalid', null, 'list'],
+        ['?product_id=Infinity', 'invalid', null, 'list'],
+        ['?product_id=9007199254740992', 'invalid', null, 'list'],
+        ['?product_id%5B%5D=1', 'invalid', null, 'list'],
+        ['?product_id=1&product_id=2', 'invalid', null, 'list'],
+        ['?product_id=12&action=create', 'valid', 12, 'create'],
+        ['?product_id=12&action=', 'invalid', null, 'list'],
+        ['?product_id=12&action=edit', 'invalid', null, 'list'],
+        ['?product_id=12&action=CREATE', 'invalid', null, 'list'],
+        ['?product_id=12&action=create&action=create', 'invalid', null, 'list'],
+        ['?action=create', 'none', null, 'list'],
+        ['?product_id=12&unknown=value', 'valid', 12, 'list'],
+    ];
+
+    for (const [query, status, productId, intent] of cases) {
+        const context = readAdminContext(`file:///admin.php${query}`);
+        assert(
+            context.status === status && context.productId === productId && context.intent === intent,
+            `Parser: ${query} => ${JSON.stringify(context)}`
+        );
+    }
+    scenarios.parser = true;
+
+    const baseUrl = 'file:///admin.php?page=veciahorra-inventory';
+    const listUrl = buildContextUrl(baseUrl, 12);
+    const createUrl = buildContextUrl(baseUrl, 12, 'create');
+    assert(listUrl.includes('product_id=12') && !listUrl.includes('action='), 'URL list');
+    assert(createUrl.includes('product_id=12') && createUrl.includes('action=create'), 'URL create');
+    assert(
+        buildInventoryAdminUrl(baseUrl, 12, 'create').includes('action=create'),
+        'URL Product create'
+    );
+    scenarios.urls = true;
+
+    assert(
+        contextProductErrorMessage({ status: 404 })
+            !== contextProductErrorMessage({ status: 500 }),
+        'Product 404 y 500 no se distinguen'
+    );
+    scenarios.product_errors = true;
+
+    const calls = [];
+    const api = {
+        getInventory: async (query) => {
+            calls.push({ type: 'list', query: { ...query } });
+            return { data: [], meta: { page: 1, per_page: 20, total: 0, total_pages: 0 } };
+        },
+        getInventoryItem: async (id) => ({ data: {
+            id, product_id: 12, minimarket_id: 8, price: '10.00', stock: 2,
+            status: 'active', updated_at: '2026-07-20 00:00:00',
+        } }),
+        createInventory: async () => {
+            const error = new Error('Ya existe una oferta para este producto y minimarket.');
+            error.code = 'validation_error';
+            error.field = 'store_id';
+            error.reason = 'inventory_duplicate';
+            throw error;
+        },
+        updateInventory: async () => ({ data: { id: 1, updated: true } }),
+    };
+    const store = createInventoryStore(api);
+    await store.applyContext(
+        { intent: 'list' },
+        { id: 12, name: '<img src=x onerror=alert(1)>', status: 'draft' }
+    );
+    let state = store.getState();
+    assert(calls.length === 1 && calls[0].query.productId === '12', 'Filtro REST');
+    assert(calls[0].query.page === 1 && state.context.product.status === 'draft', 'Pagina/estado');
+    scenarios.filtered_list = true;
+
+    await store.applyContext(
+        { intent: 'create' },
+        { id: 12, name: 'Producto inactivo', status: 'inactive' }
+    );
+    state = store.getState();
+    assert(state.form.values.productId === '12' && state.form.productLocked, 'Precarga/bloqueo');
+    assert(state.form.values.minimarketId === '' && state.form.values.stock === '0', 'Campos preservados');
+    scenarios.create_context = true;
+
+    store.setFormField('productId', '99');
+    store.setFormField('minimarketId', '8');
+    store.setFormField('price', '10');
+    await store.save();
+    state = store.getState();
+    assert(state.form.values.productId === '12', 'Divergencia Product');
+    assert(state.form.values.minimarketId === '8' && state.form.values.price === '10', 'Valores perdidos');
+    assert(state.form.error.reason === 'inventory_duplicate', 'Duplicado no preservado');
+    scenarios.duplicate = true;
+
+    await store.returnToList();
+    state = store.getState();
+    assert(state.query.productId === '12' && state.currentView === 'list', 'Cancelacion filtrada');
+    scenarios.cancel = true;
+
+    result.dataset.status = 'pass';
+    result.textContent = JSON.stringify({ scenarios });
+} catch (error) {
+    result.dataset.status = 'fail';
+    result.textContent = JSON.stringify({ message: error.message, scenarios });
+}
+</script>
+</html>

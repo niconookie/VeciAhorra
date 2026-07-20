@@ -11,7 +11,7 @@ use VeciAhorra\Core\Config;
  */
 final class InventoryPage
 {
-    private const PAGE_SLUG = 'veciahorra-inventory';
+    public const PAGE_SLUG = 'veciahorra-inventory';
 
     private const PARENT_SLUG = 'veciahorra';
 
@@ -64,6 +64,10 @@ final class InventoryPage
             'restUrl' => esc_url_raw(rest_url('veciahorra/v1')),
             'nonce' => wp_create_nonce('wp_rest'),
             'screenSlug' => self::PAGE_SLUG,
+            'adminUrl' => esc_url_raw(add_query_arg(
+                ['page' => self::PAGE_SLUG],
+                admin_url('admin.php')
+            )),
             'version' => Config::PLUGIN_VERSION,
             'textDomain' => Config::TEXT_DOMAIN,
         ];

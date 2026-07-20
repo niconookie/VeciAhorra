@@ -212,3 +212,19 @@
         width: 100%;
     }
 }
+.veciahorra-inventory-admin__context {
+    flex-basis: 100%;
+    padding: 10px 12px;
+    border-left: 4px solid #2271b1;
+    background: #fff;
+}
+
+.veciahorra-inventory-admin__context > * {
+    margin-right: 0.75rem;
+}
+
+.veciahorra-inventory-admin__context-product {
+    padding: 10px 12px;
+    border-left: 4px solid #2271b1;
+    background: #f0f6fc;
+}

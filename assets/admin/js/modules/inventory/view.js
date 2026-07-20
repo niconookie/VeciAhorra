@@ -40,7 +40,9 @@ export function createInventoryView(nodes, actions) {
         clearButton
     );
     reloadButton.classList.add('veciahorra-inventory-admin__reload');
-    nodes.toolbar.replaceChildren(form, reloadButton);
+    const contextPanel = document.createElement('div');
+    contextPanel.className = 'veciahorra-inventory-admin__context';
+    nodes.toolbar.replaceChildren(contextPanel, form, reloadButton);
 
     const controls = { search, productId, minimarketId, status, perPage };
 
@@ -102,6 +104,7 @@ export function createInventoryView(nodes, actions) {
         ));
 
         nodes.toolbar.hidden = false;
+        renderContext(contextPanel, state.context, actions);
         setButtonDisabled(newButton, loading);
 
         Object.entries(controls).forEach(([name, control]) => {
@@ -111,7 +114,9 @@ export function createInventoryView(nodes, actions) {
                 control.element.value = value;
             }
 
-            control.element.disabled = loading;
+            control.element.disabled = loading || (
+                name === 'productId' && state.context.status === 'ready'
+            );
         });
 
         searchButton.disabled = loading;
@@ -128,6 +133,16 @@ export function createInventoryView(nodes, actions) {
 }
 
 function renderContent(nodes, state, actions) {
+    if (state.context.status === 'error') {
+        renderContextError(nodes.table, state.context.message, actions.allInventoryUrl);
+        return;
+    }
+
+    if (state.context.status === 'loading') {
+        renderState(nodes.table, 'Cargando producto seleccionado...');
+        return;
+    }
+
     switch (state.status) {
         case STATUS_LOADING:
             renderState(nodes.table, 'Cargando inventario...');
@@ -138,9 +153,20 @@ function renderContent(nodes, state, actions) {
         case STATUS_EMPTY:
             renderState(
                 nodes.table,
-                'No hay registros de inventario para mostrar.',
+                state.context.status === 'ready'
+                    ? 'Este producto todavia no tiene ofertas.'
+                    : 'No hay registros de inventario para mostrar.',
                 'veciahorra-inventory-admin__state--empty'
             );
+            if (state.context.status === 'ready') {
+                nodes.table.firstElementChild.append(
+                    createLink(
+                        'Crear primera oferta',
+                        actions.contextualCreateUrl(state.context.product.id),
+                        'button button-primary'
+                    )
+                );
+            }
             break;
         case STATUS_ERROR:
             renderError(nodes, state.error, actions.onReload);
@@ -228,7 +254,9 @@ function createInventoryForm(actions) {
     save.classList.add('button-primary');
     const cancel = createButton('Cancelar', actions.onCancel);
     buttons.append(save, cancel);
-    element.append(header, formState, fields, buttons);
+    const productContext = document.createElement('p');
+    productContext.className = 'veciahorra-inventory-admin__context-product';
+    element.append(header, productContext, formState, fields, buttons);
     element.addEventListener('submit', (event) => {
         event.preventDefault();
         actions.onSave();
@@ -253,6 +281,10 @@ function createInventoryForm(actions) {
             : 'Cargando inventario...';
         fields.hidden = loading || detailUnavailable;
         buttons.hidden = loading || detailUnavailable;
+        productContext.hidden = form.contextProduct === null;
+        productContext.textContent = form.contextProduct === null
+            ? ''
+            : `Producto: ${form.contextProduct.name} (#${form.contextProduct.id}) â€” ${statusLabel(form.contextProduct.status)}`;
 
         Object.entries(controls).forEach(([name, control]) => {
             const value = String(form.values[name]);
@@ -262,6 +294,8 @@ function createInventoryForm(actions) {
             }
 
             control.input.disabled = disabled || (
+                name === 'productId' && form.productLocked
+            ) || (
                 form.mode === FORM_EDIT
                 && ['productId', 'minimarketId'].includes(name)
             );
@@ -274,7 +308,7 @@ function createInventoryForm(actions) {
     }
 
     function focusPrimary(mode) {
-        const control = mode === FORM_CREATE
+        const control = mode === FORM_CREATE && !controls.productId.input.disabled
             ? controls.productId
             : controls.price;
         if (control.input.isConnected) {
@@ -283,6 +317,39 @@ function createInventoryForm(actions) {
     }
 
     return { element, render, focusPrimary };
+}
+
+function renderContext(container, context, actions) {
+    if (context.status !== 'ready') {
+        container.replaceChildren();
+        container.hidden = true;
+        return;
+    }
+
+    const label = document.createElement('strong');
+    label.textContent = `Ofertas de: ${context.product.name} (#${context.product.id})`;
+    const status = document.createElement('span');
+    status.textContent = ` Estado: ${statusLabel(context.product.status)}. `;
+    const all = createLink('Ver todas las ofertas', actions.allInventoryUrl);
+    const create = createLink(
+        'Crear oferta',
+        actions.contextualCreateUrl(context.product.id),
+        'button button-secondary'
+    );
+    container.hidden = false;
+    container.replaceChildren(label, status, all, create);
+}
+
+function renderContextError(container, message, allInventoryUrl) {
+    const state = document.createElement('div');
+    state.className = 'notice notice-error inline veciahorra-inventory-admin__notice';
+    state.setAttribute('role', 'alert');
+    state.tabIndex = -1;
+    const text = document.createElement('p');
+    text.textContent = message;
+    state.append(text, createLink('Ver todas las ofertas', allInventoryUrl));
+    container.replaceChildren(state);
+    queueMicrotask(() => state.focus());
 }
 
 function createFormInput(name, label, type, step) {
@@ -339,9 +406,18 @@ function renderFormMessage(container, form) {
         ? 'notice notice-error inline veciahorra-inventory-admin__notice'
         : 'notice notice-success inline veciahorra-inventory-admin__notice';
     const message = document.createElement('p');
+    notice.setAttribute('role', form.error ? 'alert' : 'status');
+
+    if (form.error) {
+        notice.tabIndex = -1;
+    }
     message.textContent = form.error?.message || form.message;
     notice.append(message);
     container.replaceChildren(notice);
+
+    if (form.error) {
+        queueMicrotask(() => notice.focus());
+    }
 }
 
 function renderPagination(container, state, actions) {
@@ -468,6 +544,14 @@ function createButton(label, callback = null) {
     return button;
 }
 
+function createLink(label, href, className = 'button-link') {
+    const link = document.createElement('a');
+    link.href = href;
+    link.className = className;
+    link.textContent = label;
+    return link;
+}
+
 function setButtonDisabled(button, disabled) {
     if (!button) return;
     button.disabled = disabled;
@@ -488,5 +572,6 @@ function formatPrice(value) {
 }
 
 function statusLabel(status) {
-    return status === 'active' ? 'Activo' : 'Inactivo';
+    return ({ active: 'Activo', inactive: 'Inactivo', draft: 'Borrador' })[status]
+        || status;
 }

@@ -1,6 +1,11 @@
 import { createInventoryApi } from './api.js';
 import { createInventoryStore } from './store.js';
 import { createInventoryView } from './view.js';
+import {
+    buildContextUrl,
+    contextProductErrorMessage,
+    readAdminContext,
+} from './context.js';
 
 try {
     initialize();
@@ -19,16 +24,62 @@ function initialize() {
         onClear: () => store.clearFilters(),
         onReload: () => store.reload(),
         onPage: (page) => store.goToPage(page),
-        onNew: () => store.openCreateForm(),
+        onNew: () => openCreateForm(store, config.adminUrl),
         onEdit: (id) => store.openEditForm(id),
         onFormField: (field, value) => store.setFormField(field, value),
         onSave: () => store.save(),
-        onCancel: () => store.returnToList(),
+        onCancel: () => returnToList(store, config.adminUrl),
+        allInventoryUrl: config.adminUrl,
+        contextualListUrl: (id) => buildContextUrl(config.adminUrl, id),
+        contextualCreateUrl: (id) => buildContextUrl(config.adminUrl, id, 'create'),
     });
 
     store.subscribe(view.render);
     view.render(store.getState());
-    store.reload();
+    initializeContext(store, api, readAdminContext(window.location.href));
+}
+
+function openCreateForm(store, adminUrl) {
+    const context = store.getState().context;
+
+    if (context.status === 'ready') {
+        window.location.assign(buildContextUrl(adminUrl, context.product.id, 'create'));
+        return;
+    }
+
+    store.openCreateForm();
+}
+
+function returnToList(store, adminUrl) {
+    const context = store.getState().context;
+
+    if (context.status === 'ready') {
+        window.location.assign(buildContextUrl(adminUrl, context.product.id));
+        return;
+    }
+
+    store.returnToList();
+}
+
+async function initializeContext(store, api, context) {
+    if (context.status === 'none') {
+        store.reload();
+        return;
+    }
+
+    if (context.status === 'invalid') {
+        store.rejectContext('El contexto de producto indicado no es valido.');
+        return;
+    }
+
+    store.loadContext(context);
+
+    try {
+        const response = await api.getProduct(context.productId);
+        store.applyContext(context, response.data);
+    } catch (error) {
+        store.rejectContext(contextProductErrorMessage(error));
+    }
 }
 
 function readConfig() {
@@ -50,7 +101,11 @@ function readConfig() {
         throw new Error('La configuracion de Inventory no es valida.');
     }
 
-    return { restUrl: config.restUrl, nonce: config.nonce };
+    if (typeof config.adminUrl !== 'string' || config.adminUrl.trim() === '') {
+        throw new Error('La configuracion no contiene la URL administrativa.');
+    }
+
+    return { restUrl: config.restUrl, nonce: config.nonce, adminUrl: config.adminUrl };
 }
 
 function findRequiredNodes() {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Products\Admin;
 
 use VeciAhorra\Core\Config;
+use VeciAhorra\Modules\Inventory\Admin\InventoryPage;
 
 /**
  * Registra y renderiza la pantalla administrativa de Products.
@@ -94,6 +95,10 @@ final class ProductsPage
             ),
             'nonce' => wp_create_nonce('wp_rest'),
             'screenSlug' => self::PAGE_SLUG,
+            'inventoryUrl' => esc_url_raw(add_query_arg(
+                ['page' => InventoryPage::PAGE_SLUG],
+                admin_url('admin.php')
+            )),
             'version' => Config::PLUGIN_VERSION,
             'textDomain' => Config::TEXT_DOMAIN,
         ];

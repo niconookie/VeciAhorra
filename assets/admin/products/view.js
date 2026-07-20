@@ -264,15 +264,32 @@ function appendProductNameCell(row, product, actions) {
     name.textContent = product.name;
     cell.append(name);
 
-    if (typeof actions.onEdit === 'function') {
+    const canEdit = typeof actions.onEdit === 'function';
+    const canNavigateInventory = (
+        typeof actions.inventoryListUrl === 'function'
+        && typeof actions.inventoryCreateUrl === 'function'
+    );
+
+    if (canEdit || canNavigateInventory) {
         const rowActions = document.createElement('div');
         rowActions.className = 'row-actions';
-        const edit = createButton(
-            'Editar',
-            () => emit(actions.onEdit, product.id)
-        );
-        edit.classList.add('button-link');
-        rowActions.append(edit);
+
+        if (canEdit) {
+            const edit = createButton(
+                'Editar',
+                () => emit(actions.onEdit, product.id)
+            );
+            edit.classList.add('button-link');
+            rowActions.append(edit);
+        }
+
+        if (canNavigateInventory) {
+            rowActions.append(
+                createLink('Ver ofertas', actions.inventoryListUrl(product.id)),
+                createLink('Crear oferta', actions.inventoryCreateUrl(product.id))
+            );
+        }
+
         cell.append(rowActions);
     }
 
@@ -424,7 +441,9 @@ function createProductForm(actions) {
     back.classList.add('button');
 
     primaryActions.append(save);
-    secondaryActions.append(back, activate, deactivate);
+    const viewOffers = createLink('Ver ofertas', '#');
+    const createOffer = createLink('Crear oferta', '#', 'button button-secondary');
+    secondaryActions.append(back, viewOffers, createOffer, activate, deactivate);
     buttons.append(primaryActions, secondaryActions);
     element.append(header, loading, fields, buttons);
     element.addEventListener('submit', (event) => {
@@ -454,6 +473,17 @@ function createProductForm(actions) {
         status.textContent = statusLabel(form.productStatus);
         status.dataset.status = form.productStatus;
         status.hidden = !hasReliableStatus;
+        const hasProduct = Number.isInteger(form.productId) && form.productId > 0;
+        const canNavigateInventory = hasProduct
+            && typeof actions.inventoryListUrl === 'function'
+            && typeof actions.inventoryCreateUrl === 'function';
+        viewOffers.hidden = !canNavigateInventory;
+        createOffer.hidden = !canNavigateInventory;
+
+        if (canNavigateInventory) {
+            viewOffers.href = actions.inventoryListUrl(form.productId);
+            createOffer.href = actions.inventoryCreateUrl(form.productId);
+        }
         loading.hidden = !isLoading;
         fields.hidden = isLoading || detailUnavailable;
 
@@ -1000,6 +1030,14 @@ function createButton(label, handler) {
     }
 
     return button;
+}
+
+function createLink(label, href, className = 'button-link') {
+    const link = document.createElement('a');
+    link.href = href;
+    link.className = className;
+    link.textContent = label;
+    return link;
 }
 
 function setButtonAvailability(button, disabled) {

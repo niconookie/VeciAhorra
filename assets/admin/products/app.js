@@ -2,6 +2,7 @@ import { createProductsApi } from './api.js';
 import { createCatalogApi } from './catalogApi.js';
 import { createProductsStore } from './store.js';
 import { createProductsView } from './view.js';
+import { buildInventoryAdminUrl } from './navigation.js';
 
 try {
     initialize();
@@ -15,7 +16,7 @@ function initialize() {
     const api = createProductsApi(config);
     const catalogApi = createCatalogApi(config);
     const store = createProductsStore(api, catalogApi);
-    const view = createProductsView(nodes, {
+    const actions = {
         onInputTerm: (term) => store.setInputTerm(term),
         onSearch: () => store.search(),
         onClear: () => store.search(''),
@@ -27,7 +28,18 @@ function initialize() {
         onSave: () => store.saveProduct(),
         onStatus: (status) => store.changeProductStatus(status),
         onBack: () => returnToList(store),
-    });
+    };
+
+    if (config.inventoryUrl !== null) {
+        actions.inventoryListUrl = (id) => buildInventoryAdminUrl(config.inventoryUrl, id);
+        actions.inventoryCreateUrl = (id) => buildInventoryAdminUrl(
+            config.inventoryUrl,
+            id,
+            'create'
+        );
+    }
+
+    const view = createProductsView(nodes, actions);
 
     store.subscribe(view.render);
     registerUnsavedChangesProtection(store);
@@ -140,9 +152,24 @@ function readConfig() {
         throw new Error('La configuración no contiene un nonce REST válido.');
     }
 
+    let inventoryUrl = null;
+
+    if (typeof config.inventoryUrl === 'string' && config.inventoryUrl.trim() !== '') {
+        try {
+            inventoryUrl = new URL(config.inventoryUrl, window.location.origin);
+        } catch (error) {
+            throw new Error('La URL administrativa de Inventory no es valida.');
+        }
+
+        if (!['http:', 'https:'].includes(inventoryUrl.protocol)) {
+            throw new Error('La URL administrativa de Inventory no es valida.');
+        }
+    }
+
     return {
         restUrl: restUrl.toString(),
         nonce: config.nonce,
+        inventoryUrl: inventoryUrl?.toString() ?? null,
     };
 }
 

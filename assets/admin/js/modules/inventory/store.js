@@ -35,6 +35,7 @@ export function createInventoryStore(api) {
         items: [],
         meta: null,
         error: null,
+        context: { status: 'none', intent: 'list', product: null, message: null },
         form: initialForm(),
     };
     let latestRequest = 0;
@@ -65,7 +66,11 @@ export function createInventoryStore(api) {
     }
 
     function setFilter(name, value) {
-        if (!Object.hasOwn(DEFAULT_FILTERS, name) || name === 'page') {
+        if (
+            !Object.hasOwn(DEFAULT_FILTERS, name)
+            || name === 'page'
+            || (name === 'productId' && state.context.status === 'ready')
+        ) {
             return;
         }
 
@@ -73,10 +78,13 @@ export function createInventoryStore(api) {
     }
 
     function applyFilters() {
+        const contextualProductId = state.context.status === 'ready'
+            ? String(state.context.product.id)
+            : String(state.inputs.productId).trim();
         const query = {
             ...state.inputs,
             search: String(state.inputs.search).trim(),
-            productId: String(state.inputs.productId).trim(),
+            productId: contextualProductId,
             minimarketId: String(state.inputs.minimarketId).trim(),
             page: 1,
             perPage: Number(state.inputs.perPage),
@@ -86,7 +94,13 @@ export function createInventoryStore(api) {
     }
 
     function clearFilters() {
-        return execute({ ...DEFAULT_FILTERS }, { ...DEFAULT_FILTERS });
+        const productId = state.context.status === 'ready'
+            ? String(state.context.product.id)
+            : '';
+        return execute(
+            { ...DEFAULT_FILTERS, productId },
+            { ...DEFAULT_FILTERS, productId }
+        );
     }
 
     function reload() {
@@ -106,13 +120,21 @@ export function createInventoryStore(api) {
         return execute({ ...state.query, page }, state.inputs);
     }
 
-    function openCreateForm() {
+    function openCreateForm(product = null) {
         if (state.form.isSaving) {
             return false;
         }
 
         latestFormRequest++;
-        setState({ currentView: VIEW_FORM, form: initialForm(FORM_CREATE) });
+        const form = initialForm(FORM_CREATE);
+
+        if (product !== null) {
+            form.values.productId = String(product.id);
+            form.contextProduct = { ...product };
+            form.productLocked = true;
+        }
+
+        setState({ currentView: VIEW_FORM, form });
         return true;
     }
 
@@ -159,6 +181,7 @@ export function createInventoryStore(api) {
             state.currentView !== VIEW_FORM
             || state.form.isSaving
             || !Object.hasOwn(DEFAULT_VALUES, field)
+            || (field === 'productId' && state.form.productLocked)
             || (
                 state.form.mode === FORM_EDIT
                 && ['productId', 'minimarketId'].includes(field)
@@ -208,6 +231,8 @@ export function createInventoryStore(api) {
 
         try {
             let id = state.form.inventoryId;
+            const contextProduct = state.form.contextProduct;
+            const productLocked = state.form.productLocked;
 
             if (state.form.mode === FORM_CREATE) {
                 const created = await api.createInventory(validation.payload);
@@ -224,6 +249,8 @@ export function createInventoryStore(api) {
             listNeedsReload = true;
             setForm({
                 ...formFromItem(detail.data),
+                contextProduct,
+                productLocked,
                 message: state.form.mode === FORM_CREATE
                     ? 'Inventario creado correctamente.'
                     : 'Inventario actualizado correctamente.',
@@ -251,12 +278,58 @@ export function createInventoryStore(api) {
         latestFormRequest++;
         setState({ currentView: VIEW_LIST, form: initialForm() });
 
+        if (state.context.status === 'ready') {
+            const productId = String(state.context.product.id);
+            await execute(
+                { ...DEFAULT_FILTERS, productId },
+                { ...DEFAULT_FILTERS, productId }
+            );
+            return true;
+        }
+
         if (listNeedsReload) {
             listNeedsReload = false;
             await execute(state.query, state.inputs);
         }
 
         return true;
+    }
+
+    function loadContext(context) {
+        setState({
+            status: STATUS_LOADING,
+            context: { status: 'loading', intent: context.intent, product: null, message: null },
+        });
+    }
+
+    function rejectContext(message) {
+        setState({
+            status: STATUS_ERROR,
+            context: { status: 'error', intent: 'list', product: null, message },
+            error: { code: 'invalid_product_context', message, retryable: false },
+        });
+    }
+
+    function applyContext(context, product) {
+        const normalizedProduct = {
+            id: Number(product.id),
+            name: String(product.name),
+            status: String(product.status),
+        };
+        setState({
+            context: { status: 'ready', intent: context.intent, product: normalizedProduct, message: null },
+        });
+
+        if (context.intent === 'create') {
+            openCreateForm(normalizedProduct);
+            return true;
+        }
+
+        const productId = String(normalizedProduct.id);
+        return execute(
+            { ...DEFAULT_FILTERS, productId },
+            { ...DEFAULT_FILTERS, productId }
+        );
     }
 
     async function execute(query, inputs) {
@@ -316,6 +389,9 @@ export function createInventoryStore(api) {
         setFormField,
         save,
         returnToList,
+        loadContext,
+        rejectContext,
+        applyContext,
     };
 }
 
@@ -330,6 +406,8 @@ function initialForm(mode = FORM_CREATE) {
         error: null,
         message: null,
         isSaving: false,
+        contextProduct: null,
+        productLocked: false,
     };
 }
 
@@ -421,6 +499,8 @@ function normalizeMeta(meta) {
 function normalizeError(error) {
     return {
         code: typeof error?.code === 'string' ? error.code : 'unknown_error',
+        field: typeof error?.field === 'string' ? error.field : null,
+        reason: typeof error?.reason === 'string' ? error.reason : null,
         message: typeof error?.message === 'string' && error.message.trim() !== ''
             ? error.message
             : 'No fue posible completar la operacion.',
@@ -436,6 +516,10 @@ function snapshot(source) {
         items: source.items.map((item) => ({ ...item })),
         meta: source.meta === null ? null : { ...source.meta },
         error: source.error === null ? null : { ...source.error },
+        context: {
+            ...source.context,
+            product: source.context.product === null ? null : { ...source.context.product },
+        },
         form: {
             ...source.form,
             values: { ...source.form.values },
@@ -444,6 +528,9 @@ function snapshot(source) {
                 : { ...source.form.initialValues },
             fieldErrors: { ...source.form.fieldErrors },
             error: source.form.error === null ? null : { ...source.form.error },
+            contextProduct: source.form.contextProduct === null
+                ? null
+                : { ...source.form.contextProduct },
         },
     };
 }

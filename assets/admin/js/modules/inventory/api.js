@@ -1,10 +1,20 @@
 export class InventoryApiError extends Error {
-    constructor({ type, status = null, code = null, message, retryable = false }) {
+    constructor({
+        type,
+        status = null,
+        code = null,
+        field = null,
+        reason = null,
+        message,
+        retryable = false,
+    }) {
         super(message);
         this.name = 'InventoryApiError';
         this.type = type;
         this.status = status;
         this.code = code;
+        this.field = field;
+        this.reason = reason;
         this.retryable = retryable;
     }
 }
@@ -61,6 +71,12 @@ export function createInventoryApi({ restUrl, nonce }) {
                 code: typeof apiError?.code === 'string'
                     ? apiError.code
                     : `http_${response.status}`,
+                field: typeof apiError?.details?.field === 'string'
+                    ? apiError.details.field
+                    : null,
+                reason: typeof apiError?.details?.reason === 'string'
+                    ? apiError.details.reason
+                    : null,
                 message: typeof apiError?.message === 'string'
                     ? apiError.message
                     : 'No fue posible cargar el inventario.',
@@ -81,6 +97,19 @@ export function createInventoryApi({ restUrl, nonce }) {
             .then((response) => assertResponse(response, isDetailResponse));
     }
 
+    function getProduct(id) {
+        if (!isPositiveInteger(id)) {
+            throw new InventoryApiError({
+                type: 'invalid_request',
+                code: 'invalid_product_id',
+                message: 'El identificador del producto no es valido.',
+            });
+        }
+
+        return request(`/products/${String(id)}`, { method: 'GET' })
+            .then((response) => assertResponse(response, isProductResponse));
+    }
+
     function createInventory(payload) {
         return request('/inventory', jsonOptions('POST', payload))
             .then((response) => assertResponse(response, isCreateResponse));
@@ -91,7 +120,7 @@ export function createInventoryApi({ restUrl, nonce }) {
             .then((response) => assertResponse(response, isUpdateResponse));
     }
 
-    return { getInventory, getInventoryItem, createInventory, updateInventory };
+    return { getInventory, getInventoryItem, getProduct, createInventory, updateInventory };
 }
 
 export function buildInventoryUrl({
@@ -136,6 +165,16 @@ function isInventoryResponse(payload) {
 
 function isDetailResponse(payload) {
     return isObject(payload) && payload.success === true && isInventoryRow(payload.data);
+}
+
+function isProductResponse(payload) {
+    return isObject(payload)
+        && payload.success === true
+        && isObject(payload.data)
+        && isPositiveInteger(payload.data.id)
+        && typeof payload.data.name === 'string'
+        && payload.data.name.trim() !== ''
+        && ['draft', 'active', 'inactive'].includes(payload.data.status);
 }
 
 function isCreateResponse(payload) {

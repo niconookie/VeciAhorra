@@ -511,3 +511,11 @@
         animation: none;
     }
 }
+.veciahorra-products-admin .row-actions {
+    position: static;
+    left: auto;
+}
+
+.veciahorra-products-admin .row-actions a {
+    margin-right: 0.75rem;
+}
