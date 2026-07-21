@@ -15,6 +15,11 @@ use VeciAhorra\Modules\Stores\Models\Store;
  */
 final class StoreRepository extends BaseRepository implements StoreTransitionRepositoryInterface
 {
+    public function delete(int $id): int
+    {
+        throw new PersistenceException('La eliminacion Store requiere la politica de integridad referencial.');
+    }
+
     public function compareAndSetLifecycle(
         int $id,
         array $expected,

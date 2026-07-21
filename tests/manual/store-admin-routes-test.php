@@ -462,6 +462,11 @@ try {
         'active',
         $storeService->find($crudId)?->status
     );
+    assertStoreAdminSame(1, $wpdb->update($table, [
+        'status' => 'pending',
+        'onboarding_status' => 'draft',
+        'approved_at' => null,
+    ], ['id' => $crudId]));
     $storeService->delete($crudId);
     assertStoreAdminSame(null, $storeService->find($crudId));
 

@@ -82,6 +82,11 @@ final class StoreService extends CrudService
         parent::update($id, $data);
     }
 
+    public function delete(int $id): void
+    {
+        (new StoreDeletionService())->deleteIfUnreferenced($id);
+    }
+
     /**
      * Busca minimarkets.
      */
