@@ -37,6 +37,9 @@ use VeciAhorra\Modules\Payments\WooCommerce\WebpayGatewayRegistration;
 use VeciAhorra\Modules\Payments\WooCommerce\WooCommerceWebpayReturnGatewayResolver;
 use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Stores\Routes\StoreRoutes;
+use VeciAhorra\Modules\Stores\Contracts\StoreTransitionRepositoryInterface;
+use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
+use VeciAhorra\Modules\Stores\Services\StoreTransitionService;
 use VeciAhorra\Modules\Products\Admin\ProductsPage;
 use VeciAhorra\Modules\Products\Routes\ProductRoutes;
 use VeciAhorra\Modules\Frontend\FrontendModule;
@@ -73,6 +76,16 @@ final class Application
             fn (): InventoryService => new InventoryService(
                 $this->container->make(InventoryRepositoryInterface::class),
                 new InventoryReferenceValidator()
+            )
+        );
+        $this->container->bind(
+            StoreTransitionRepositoryInterface::class,
+            static fn (): StoreRepository => new StoreRepository()
+        );
+        $this->container->bind(
+            StoreTransitionService::class,
+            fn (): StoreTransitionService => new StoreTransitionService(
+                $this->container->make(StoreTransitionRepositoryInterface::class)
             )
         );
         $this->container->singleton(
