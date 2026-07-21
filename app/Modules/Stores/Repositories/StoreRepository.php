@@ -7,13 +7,57 @@ namespace VeciAhorra\Modules\Stores\Repositories;
 use VeciAhorra\Database\BaseRepository;
 use VeciAhorra\Database\Collection;
 use VeciAhorra\Exceptions\PersistenceException;
+use VeciAhorra\Modules\Stores\Contracts\StoreTransitionRepositoryInterface;
 use VeciAhorra\Modules\Stores\Models\Store;
 
 /**
  * Repositorio de Minimarkets.
  */
-final class StoreRepository extends BaseRepository
+final class StoreRepository extends BaseRepository implements StoreTransitionRepositoryInterface
 {
+    public function compareAndSetLifecycle(
+        int $id,
+        array $expected,
+        array $target,
+        string $updatedAt
+    ): int {
+        $approvalSet = $target['approved_at'] === null
+            ? 'approved_at = NULL'
+            : 'approved_at = %s';
+        $approvalWhere = $expected['approved_at'] === null
+            ? 'approved_at IS NULL'
+            : 'approved_at = %s';
+        $params = [$target['status'], $target['onboarding_status']];
+        if ($target['approved_at'] !== null) {
+            $params[] = $target['approved_at'];
+        }
+        $params[] = $updatedAt;
+        $params[] = $id;
+        $params[] = $expected['status'];
+        $params[] = $expected['onboarding_status'];
+        if ($expected['approved_at'] !== null) {
+            $params[] = $expected['approved_at'];
+        }
+
+        $sql = sprintf(
+            'UPDATE %s SET status = %%s, onboarding_status = %%s, %s, updated_at = %%s'
+            . ' WHERE id = %%d AND status = %%s AND onboarding_status = %%s AND %s',
+            $this->table($this->table),
+            $approvalSet,
+            $approvalWhere
+        );
+        $database = $this->db();
+        $result = $database->query($database->prepare($sql, ...$params));
+        if ($result === false) {
+            throw new PersistenceException('No fue posible aplicar la transicion Store.');
+        }
+        if ($result > 1) {
+            throw new PersistenceException('La transicion Store afecto mas de un registro.');
+        }
+
+        return (int) $result;
+    }
+
     /**
      * Returns publicly active minimarkets for a bounded ID set.
      *

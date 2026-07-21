@@ -33,7 +33,7 @@ final class StoreLifecycleContract
 
     private const ACTIONS_BY_STATE = [
         self::STATE_DRAFT => [self::ACTION_SAVE, self::ACTION_SUBMIT_FOR_REVIEW, self::ACTION_DELETE_IF_UNREFERENCED],
-        self::STATE_IN_REVIEW => [self::ACTION_SAVE, self::ACTION_APPROVE, self::ACTION_REJECT, self::ACTION_RETURN_TO_DRAFT],
+        self::STATE_IN_REVIEW => [self::ACTION_SAVE, self::ACTION_APPROVE, self::ACTION_REJECT],
         self::STATE_REJECTED => [self::ACTION_SAVE, self::ACTION_RETURN_TO_DRAFT],
         self::STATE_APPROVED_INACTIVE => [self::ACTION_SAVE, self::ACTION_ACTIVATE],
         self::STATE_ACTIVE => [self::ACTION_SAVE, self::ACTION_DEACTIVATE],
@@ -89,6 +89,41 @@ final class StoreLifecycleContract
         if (! in_array($action, self::ACTIONS_BY_STATE[$state], true)) {
             throw new StoreLifecycleException('action_not_allowed', 'La accion no esta permitida desde el estado actual.', null, $state, $action);
         }
+    }
+
+    public function transitionAuthorities(
+        string $action,
+        string $status,
+        string $onboardingStatus,
+        mixed $approvedAt,
+        ?string $approvalTimestamp = null
+    ): array {
+        $this->assertActionAllowed($action, $status, $onboardingStatus, $approvedAt);
+
+        $authorities = match ($action) {
+            self::ACTION_SUBMIT_FOR_REVIEW => [self::STATUS_PENDING, self::ONBOARDING_COMPLETE, null],
+            self::ACTION_RETURN_TO_DRAFT => [self::STATUS_PENDING, self::ONBOARDING_DRAFT, null],
+            self::ACTION_APPROVE => [self::STATUS_INACTIVE, self::ONBOARDING_COMPLETE, $approvalTimestamp],
+            self::ACTION_REJECT => [self::STATUS_REJECTED, self::ONBOARDING_COMPLETE, null],
+            self::ACTION_ACTIVATE => [self::STATUS_ACTIVE, self::ONBOARDING_COMPLETE, $approvedAt],
+            self::ACTION_DEACTIVATE => [self::STATUS_INACTIVE, self::ONBOARDING_COMPLETE, $approvedAt],
+            default => throw new StoreLifecycleException(
+                'action_not_allowed',
+                'La accion no corresponde a una transicion ejecutable.',
+                null,
+                $this->classify($status, $onboardingStatus, $approvedAt),
+                $action
+            ),
+        };
+
+        $result = [
+            'status' => $authorities[0],
+            'onboarding_status' => $authorities[1],
+            'approved_at' => $authorities[2],
+        ];
+        $this->validate($result['status'], $result['onboarding_status'], $result['approved_at']);
+
+        return $result;
     }
 
     public function statuses(): array
