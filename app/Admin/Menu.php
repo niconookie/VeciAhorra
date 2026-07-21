@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Admin;
 
+use VeciAhorra\Core\Config;
 use VeciAhorra\Modules\Stores\Controllers\StoresController;
 
 /**
@@ -11,6 +12,8 @@ use VeciAhorra\Modules\Stores\Controllers\StoresController;
  */
 final class Menu
 {
+    private ?string $storesPageHook = null;
+
     public function register(): void
     {
         add_action(
@@ -22,6 +25,8 @@ final class Menu
             'admin_head',
             [$this, 'hideSubmenus']
         );
+
+        add_action('admin_enqueue_scripts', [$this, 'enqueueStoreAssets']);
     }
     public function buildMenu(): void
     {
@@ -44,7 +49,7 @@ final class Menu
             [$this, 'dashboard']
         );
 
-        add_submenu_page(
+        $hook = add_submenu_page(
             'veciahorra',
             'Minimarkets',
             'Minimarkets',
@@ -52,6 +57,7 @@ final class Menu
             'veciahorra-stores',
             [$this, 'stores']
         );
+        $this->storesPageHook = is_string($hook) ? $hook : null;
 
         /*
         |--------------------------------------------------------------------------
@@ -102,6 +108,26 @@ add_submenu_page(
         $controller = new StoresController();
 
         $controller->index();
+    }
+
+    public function enqueueStoreAssets(string $hookSuffix): void
+    {
+        if ($this->storesPageHook === null || $hookSuffix !== $this->storesPageHook) {
+            return;
+        }
+
+        wp_enqueue_style(
+            'veciahorra-stores-admin',
+            VA_PLUGIN_URL . 'assets/admin/css/stores.css',
+            [],
+            Config::PLUGIN_VERSION
+        );
+        wp_enqueue_script_module(
+            'veciahorra-stores-admin',
+            VA_PLUGIN_URL . 'assets/admin/js/modules/stores/app.js',
+            [],
+            Config::PLUGIN_VERSION
+        );
     }
 
     /**

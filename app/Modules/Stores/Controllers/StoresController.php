@@ -12,6 +12,7 @@ use VeciAhorra\Modules\Stores\Requests\StoreRequest;
 use VeciAhorra\Modules\Stores\Services\StoreService;
 use VeciAhorra\Core\Controller;
 use VeciAhorra\Core\Flash;
+use VeciAhorra\Core\Config;
 
 /**
  * Controlador del módulo Minimarkets.
@@ -32,19 +33,24 @@ final class StoresController extends Controller
      */
     public function index(): void
     {
-        $table = new StoresTable();
-
-        if (
-            ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST'
-            && $table->current_action() !== false
-        ) {
-            $this->processBulkAction($table);
-        }
-
-        $table->prepare_items();
-
         $this->render('index', [
-            'table' => $table,
+            'config' => [
+                'restUrl' => esc_url_raw(rest_url('veciahorra/v1')),
+                'nonce' => wp_create_nonce('wp_rest'),
+                'adminUrl' => esc_url_raw(add_query_arg(
+                    ['page' => 'veciahorra-stores'],
+                    admin_url('admin.php')
+                )),
+                'createUrl' => esc_url_raw(add_query_arg(
+                    ['page' => 'veciahorra-store-create'],
+                    admin_url('admin.php')
+                )),
+                'editUrl' => esc_url_raw(add_query_arg(
+                    ['page' => 'veciahorra-store-edit'],
+                    admin_url('admin.php')
+                )),
+                'version' => Config::PLUGIN_VERSION,
+            ],
         ]);
     }
 

@@ -1,0 +1,54 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>RUNNING</title></head><body>
+<div class="wrap va-stores" id="va-stores-app" aria-busy="true">
+  <form id="va-stores-filters"><label for="va-stores-search">Buscar</label><input id="va-stores-search"><label for="va-stores-lifecycle">Estado</label><select id="va-stores-lifecycle"><option value="">Todos</option><option value="active">Activo</option></select><label for="va-stores-status">Operativo</label><select id="va-stores-status"><option value="">Todos</option></select><label for="va-stores-sort">Orden</label><select id="va-stores-sort"><option value="name_asc">Nombre</option></select><button type="submit">Buscar</button><button id="va-stores-reset" type="button">Restablecer</button></form>
+  <p id="va-stores-summary"></p><div id="va-stores-results" tabindex="-1"></div><nav id="va-stores-pagination"></nav>
+</div>
+<script id="va-stores-config" type="application/json">{"restUrl":"https://example.test/wp-json/veciahorra/v1","nonce":"test-nonce","adminUrl":"https://example.test/wp-admin/admin.php?page=veciahorra-stores","createUrl":"https://example.test/wp-admin/admin.php?page=veciahorra-store-create","editUrl":"https://example.test/wp-admin/admin.php?page=veciahorra-store-edit"}</script>
+<pre id="test-results" data-status="running">RUNNING</pre>
+<script type="module">
+const output = document.getElementById('test-results');
+const calls = [];
+let slowResolve;
+const item = (id, name, state = 'active') => ({id,business_name:name,legal_name:`Legal ${name}`,rut:'1-9',email:'safe@example.test',phone:'+5621',commune:'Santiago',city:'Santiago',status:state === 'active' ? 'active' : 'pending',onboarding_status:state === 'active' ? 'complete' : 'draft',approved_at:state === 'active' ? '2026-01-01 00:00:00' : null,lifecycle_state:state,allowed_actions:[],created_at:'2026-01-01 00:00:00',updated_at:'2026-01-02 00:00:00'});
+window.fetch = async (url) => {
+  calls.push(String(url));
+  const parsed = new URL(url);
+  const search = parsed.searchParams.get('search');
+  if (search === 'error') return {ok:false,json:async()=>({success:false})};
+  if (search === 'slow') return new Promise((resolve)=>{ slowResolve=()=>resolve({ok:true,json:async()=>({success:true,data:[item(9,'Respuesta obsoleta')],meta:{page:1,per_page:20,total:1,total_pages:1,has_next:false}})}); });
+  const data = search === 'none' ? [] : search === 'fast' ? [item(8,'Respuesta vigente')] : [item(1, '<img src=x onerror=alert(1)>'), item(2, 'Mercado Dos', 'draft')];
+  return {ok:true,json:async()=>({success:true,data,meta:{page:Number(parsed.searchParams.get('page')),per_page:20,total:data.length,total_pages:data.length ? 2 : 0,has_next:data.length > 0}})};
+};
+const wait = () => new Promise((resolve)=>setTimeout(resolve,40));
+const assert = (condition,message) => { if(!condition) throw new Error(message); };
+try {
+  const configNode=document.getElementById('va-stores-config'); const config=JSON.parse(configNode.textContent); config.adminUrl=location.href.split('?')[0]; configNode.textContent=JSON.stringify(config);
+  await import('../../assets/admin/js/modules/stores/app.js'); await wait();
+  const root=document.getElementById('va-stores-app'); const results=document.getElementById('va-stores-results');
+  assert(calls.length===1,'Carga inicial debe usar una solicitud.');
+  assert(calls[0].includes('context=admin_list') && calls[0].includes('X')===false,'Falta contexto administrativo.');
+  assert(results.textContent.includes('<img src=x onerror=alert(1)>') && results.querySelector('img')===null,'Render remoto inseguro.');
+  assert(results.querySelectorAll('tbody tr').length===2,'Tabla inicial incompleta.');
+  assert(document.activeElement===results,'Foco no llego a resultados.');
+  assert(results.textContent.includes('Activo') && results.textContent.includes('Borrador'),'Badges lifecycle ausentes.');
+  assert(!/Aprobar|Rechazar|Activar|Inactivar|Eliminar/.test(results.textContent),'Hay acciones lifecycle en tabla.');
+  assert(results.querySelector('a[href*="store_id=1"]') && results.querySelector('a[href*="veciahorra-store-edit"]'),'Enlaces de detalle/edicion ausentes.');
+  document.getElementById('va-stores-search').value='none'; document.getElementById('va-stores-filters').requestSubmit(); await wait();
+  assert(calls.length===2 && results.textContent.includes('No hay resultados'),'Busqueda no produjo vacio filtrado en una solicitud.');
+  document.getElementById('va-stores-reset').click(); await wait(); assert(calls.length===3,'Restablecer no usa una solicitud.');
+  document.querySelector('#va-stores-pagination button:last-of-type').click(); await wait();
+  assert(calls.length===4 && new URL(location.href).searchParams.get('paged')==='2','Paginacion/URL no se conservaron.');
+  const searchField=document.getElementById('va-stores-search');
+  searchField.value='slow'; document.getElementById('va-stores-filters').requestSubmit(); await wait();
+  searchField.value='fast'; document.getElementById('va-stores-filters').requestSubmit(); await wait(); slowResolve(); await wait();
+  assert(results.textContent.includes('Respuesta vigente') && !results.textContent.includes('Respuesta obsoleta'),'Respuesta obsoleta sobrescribio estado.');
+  const beforePop=calls.length; history.pushState({},'',location.pathname+'?page=veciahorra-stores&search=none'); dispatchEvent(new PopStateEvent('popstate')); await wait();
+  assert(calls.length===beforePop+1 && document.getElementById('va-stores-search').value==='none','popstate duplico solicitud o no sincronizo controles.');
+  const beforeDuplicate=calls.length; await import('../../assets/admin/js/modules/stores/app.js?duplicate=1'); await wait(); assert(calls.length===beforeDuplicate,'Inicializacion duplicada agrego solicitud.');
+  document.getElementById('va-stores-search').value='error'; document.getElementById('va-stores-filters').requestSubmit(); await wait();
+  assert(results.textContent.includes('No fue posible cargar'),'Error REST no visible.');
+  assert(document.activeElement===results,'Foco no llego al error.');
+  assert(root.getAttribute('aria-busy')==='false','aria-busy no finalizo.');
+  output.dataset.status='pass'; output.textContent=JSON.stringify({calls:calls.length,safe:true,responsive:true,keyboard:true}); document.title='PASS';
+} catch(error) { output.dataset.status='fail'; output.textContent=JSON.stringify({message:error.message,stack:error.stack}); document.title='FAIL'; }
+</script></body></html>

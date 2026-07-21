@@ -134,4 +134,29 @@ final class StoreService extends CrudService
             $status
         );
     }
+
+    public function paginateAdmin(
+        int $page,
+        int $perPage,
+        ?string $term,
+        ?string $status,
+        ?string $lifecycleState,
+        string $orderBy,
+        string $direction
+    ): Collection {
+        return $this->repository->paginateAdmin(
+            $page,
+            $perPage,
+            $term,
+            $status,
+            $lifecycleState,
+            $orderBy,
+            $direction
+        );
+    }
+
+    public function countAdmin(?string $term, ?string $status, ?string $lifecycleState): int
+    {
+        return $this->repository->countAdmin($term, $status, $lifecycleState);
+    }
 }

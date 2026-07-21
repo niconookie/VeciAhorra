@@ -362,4 +362,99 @@ final class StoreRepository extends BaseRepository implements StoreTransitionRep
 
         return (int) $value;
     }
+
+    public function paginateAdmin(
+        int $page,
+        int $perPage,
+        ?string $term,
+        ?string $status,
+        ?string $lifecycleState,
+        string $orderBy,
+        string $direction
+    ): Collection {
+        [$where, $params] = $this->adminWhere($term, $status, $lifecycleState);
+        $allowed = ['business_name', 'created_at', 'updated_at'];
+        if (! in_array($orderBy, $allowed, true)) {
+            $orderBy = 'business_name';
+        }
+        $direction = in_array($direction, ['ASC', 'DESC'], true) ? $direction : 'ASC';
+        $sql = sprintf(
+            'SELECT * FROM %s %s ORDER BY %s %s, id ASC LIMIT %%d OFFSET %%d',
+            $this->table($this->table),
+            $where,
+            $orderBy,
+            $direction
+        );
+        $params[] = $perPage;
+        $params[] = ($page - 1) * $perPage;
+        $database = $this->db();
+        $rows = $database->get_results($database->prepare($sql, ...$params), ARRAY_A);
+        if (! is_array($rows) || $database->last_error !== '') {
+            throw new PersistenceException('No fue posible listar los minimarkets.');
+        }
+        $collection = new Collection();
+        foreach ($rows as $row) {
+            $collection->add($this->hydrate($row));
+        }
+
+        return $collection;
+    }
+
+    public function countAdmin(?string $term, ?string $status, ?string $lifecycleState): int
+    {
+        [$where, $params] = $this->adminWhere($term, $status, $lifecycleState);
+        $sql = sprintf('SELECT COUNT(*) FROM %s %s', $this->table($this->table), $where);
+        $database = $this->db();
+        $value = $params === []
+            ? $database->get_var($sql)
+            : $database->get_var($database->prepare($sql, ...$params));
+        if ($value === null || $database->last_error !== '') {
+            throw new PersistenceException('No fue posible contar los minimarkets.');
+        }
+
+        return (int) $value;
+    }
+
+    /** @return array{0:string,1:list<mixed>} */
+    private function adminWhere(?string $term, ?string $status, ?string $lifecycleState): array
+    {
+        $conditions = [];
+        $params = [];
+        if ($term !== null && $term !== '') {
+            $like = '%' . $this->db()->esc_like($term) . '%';
+            $conditions[] = '(business_name LIKE %s OR legal_name LIKE %s OR rut LIKE %s OR email LIKE %s OR commune LIKE %s OR city LIKE %s)';
+            array_push($params, $like, $like, $like, $like, $like, $like);
+        }
+        if ($status !== null) {
+            $conditions[] = 'status = %s';
+            $params[] = $status;
+        }
+        if ($lifecycleState !== null) {
+            $conditions[] = $this->lifecyclePredicate($lifecycleState);
+        }
+
+        return [$conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions), $params];
+    }
+
+    private function lifecyclePredicate(string $state): string
+    {
+        $unapproved = "(approved_at IS NULL OR approved_at = '')";
+        $approved = "approved_at IS NOT NULL AND approved_at <> ''"
+            . " AND approved_at <> '0000-00-00 00:00:00'"
+            . " AND approved_at REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$'";
+        $valid = "((status = 'pending' AND onboarding_status = 'draft' AND {$unapproved})"
+            . " OR (status = 'pending' AND onboarding_status = 'complete' AND {$unapproved})"
+            . " OR (status = 'rejected' AND onboarding_status = 'complete' AND {$unapproved})"
+            . " OR (status = 'inactive' AND onboarding_status = 'complete' AND {$approved})"
+            . " OR (status = 'active' AND onboarding_status = 'complete' AND {$approved}))";
+        return match ($state) {
+            'draft' => "(status = 'pending' AND onboarding_status = 'draft' AND {$unapproved})",
+            'in_review' => "(status = 'pending' AND onboarding_status = 'complete' AND {$unapproved})",
+            'rejected' => "(status = 'rejected' AND onboarding_status = 'complete' AND {$unapproved})",
+            'approved_inactive' => "(status = 'inactive' AND onboarding_status = 'complete' AND {$approved})",
+            'active' => "(status = 'active' AND onboarding_status = 'complete' AND {$approved})",
+            'invalid' => "NOT ({$valid}) OR status IS NULL OR onboarding_status IS NULL",
+            default => '1 = 0',
+        };
+    }
 }

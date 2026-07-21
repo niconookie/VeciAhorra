@@ -79,7 +79,16 @@ final class StoreAdminReadController
     public function index(array $query): array
     {
         try {
-            $items = $this->service->paginate(
+            $admin = ($query['context'] ?? null) === 'admin_list';
+            $items = $admin ? $this->service->paginateAdmin(
+                $query['page'],
+                $query['per_page'],
+                $query['search'],
+                $query['status'],
+                $query['lifecycle_state'],
+                $query['order_by'],
+                $query['direction']
+            ) : $this->service->paginate(
                 $query['page'],
                 $query['per_page'],
                 $query['search'],
@@ -87,7 +96,11 @@ final class StoreAdminReadController
                 $query['order_by'],
                 $query['direction']
             );
-            $total = $this->service->count(
+            $total = $admin ? $this->service->countAdmin(
+                $query['search'],
+                $query['status'],
+                $query['lifecycle_state']
+            ) : $this->service->count(
                 $query['search'],
                 $query['status']
             );
@@ -105,7 +118,9 @@ final class StoreAdminReadController
                     );
                 }
 
-                $data[] = $this->serialize($store->toArray());
+                $data[] = $admin
+                    ? $this->serializeAdminList($store->toArray())
+                    : $this->serialize($store->toArray());
             }
 
             return [
@@ -213,6 +228,34 @@ final class StoreAdminReadController
             'approved_at' => $approvedAt,
             'lifecycle_state' => $state,
             'allowed_actions' => $this->lifecycle->allowedActions($status, $onboarding, $approvedAt),
+            'created_at' => (string) ($store['created_at'] ?? ''),
+            'updated_at' => (string) ($store['updated_at'] ?? ''),
+        ];
+    }
+
+    private function serializeAdminList(array $store): array
+    {
+        $status = (string) ($store['status'] ?? '');
+        $onboarding = (string) ($store['onboarding_status'] ?? '');
+        $approvedAt = $store['approved_at'] ?? null;
+        $state = $this->lifecycle->classify($status, $onboarding, $approvedAt);
+
+        return [
+            'id' => (int) ($store['id'] ?? 0),
+            'business_name' => (string) ($store['business_name'] ?? ''),
+            'legal_name' => $this->optionalText($store['legal_name'] ?? null),
+            'rut' => $this->optionalText($store['rut'] ?? null),
+            'email' => (string) ($store['email'] ?? ''),
+            'phone' => $this->optionalText($store['phone'] ?? null),
+            'commune' => $this->optionalText($store['commune'] ?? null),
+            'city' => $this->optionalText($store['city'] ?? null),
+            'status' => $status,
+            'onboarding_status' => $onboarding,
+            'approved_at' => $approvedAt,
+            'lifecycle_state' => $state,
+            'allowed_actions' => $state === StoreLifecycleContract::STATE_INVALID
+                ? []
+                : $this->lifecycle->allowedActions($status, $onboarding, $approvedAt),
             'created_at' => (string) ($store['created_at'] ?? ''),
             'updated_at' => (string) ($store['updated_at'] ?? ''),
         ];

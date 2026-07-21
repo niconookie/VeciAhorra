@@ -35,7 +35,7 @@ final class StoreRoutes
             [
                 'methods' => WP_REST_Server::READABLE,
                 'callback' => [$this, 'index'],
-                'permission_callback' => [$this, 'canManageStores'],
+                'permission_callback' => [$this, 'canManageStoreResource'],
             ]
         );
 
@@ -90,12 +90,6 @@ final class StoreRoutes
         $status = ($result['success'] ?? false) === true ? 200 : 503;
 
         return $this->response($result, $status);
-    }
-
-    public function canManageStores(
-        WP_REST_Request $request
-    ): bool|WP_Error {
-        return current_user_can('manage_options');
     }
 
     public function show(WP_REST_Request $request): WP_REST_Response

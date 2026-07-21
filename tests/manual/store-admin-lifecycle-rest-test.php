@@ -334,7 +334,7 @@ try {
     restStoreSame(false, str_contains($encodedFailure, 'SQL sensible'), 'REST expuso la excepcion previa.');
     restStoreSame(false, str_contains($encodedFailure, 'trace'), 'REST expuso stack trace.');
 
-    $list = restStoreRequest('GET', '/veciahorra/v1/stores');
+    $list = restStoreRequest('GET', '/veciahorra/v1/stores', null, $nonce);
     restStoreSame(200, $list->get_status(), 'Listado existente cambio contrato de acceso.');
     restStoreSame(['id', 'name', 'status', 'onboarding_status', 'approved_at', 'location'], array_keys($list->get_data()['data'][0] ?? []), 'DTO del listado fue ampliado.');
 

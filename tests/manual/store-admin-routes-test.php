@@ -32,6 +32,9 @@ function storeAdminRequest(array $query = []): WP_REST_Response
         '/veciahorra/v1/stores'
     );
     $request->set_query_params($query);
+    if (current_user_can('manage_options')) {
+        $request->set_header('X-WP-Nonce', wp_create_nonce('wp_rest'));
+    }
 
     return rest_do_request($request);
 }

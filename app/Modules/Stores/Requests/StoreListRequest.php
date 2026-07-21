@@ -38,6 +38,21 @@ final class StoreListRequest
         'status',
     ];
 
+    private const ADMIN_ORDER_FIELDS = [
+        'business_name',
+        'created_at',
+        'updated_at',
+    ];
+
+    private const LIFECYCLE_STATES = [
+        'draft',
+        'in_review',
+        'rejected',
+        'approved_inactive',
+        'active',
+        'invalid',
+    ];
+
     public function __construct(private array $input)
     {
     }
@@ -48,12 +63,23 @@ final class StoreListRequest
      *   per_page: int,
      *   search: string|null,
      *   status: string|null,
+     *   context: string|null,
+     *   lifecycle_state: string|null,
      *   order_by: string,
      *   direction: string
      * }
      */
     public function validated(): array
     {
+        $context = $this->context();
+        $admin = $context === 'admin_list';
+        if (! $admin && array_key_exists('lifecycle_state', $this->input)) {
+            throw new StoreListValidationException(
+                'lifecycle_state',
+                'lifecycle_state requiere context=admin_list.'
+            );
+        }
+
         return [
             'page' => $this->integer(
                 'page',
@@ -72,13 +98,33 @@ final class StoreListRequest
                 'status',
                 self::ALLOWED_STATUSES
             ),
+            'context' => $context,
+            'lifecycle_state' => $admin
+                ? $this->optionalEnum('lifecycle_state', self::LIFECYCLE_STATES)
+                : null,
             'order_by' => $this->enum(
                 'order_by',
-                self::ALLOWED_ORDER_FIELDS,
+                $admin ? self::ADMIN_ORDER_FIELDS : self::ALLOWED_ORDER_FIELDS,
                 self::DEFAULT_ORDER_BY
             ),
             'direction' => $this->direction(),
         ];
+    }
+
+    private function context(): ?string
+    {
+        if (! array_key_exists('context', $this->input)) {
+            return null;
+        }
+        $value = $this->input['context'];
+        if (! is_string($value) || $value !== 'admin_list') {
+            throw new StoreListValidationException(
+                'context',
+                'El parametro context no es valido.'
+            );
+        }
+
+        return $value;
     }
 
     private function search(): ?string
