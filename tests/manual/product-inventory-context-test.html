@@ -124,7 +124,7 @@ try {
     scenarios.create_context = true;
 
     store.setFormField('productId', '99');
-    store.setFormField('minimarketId', '8');
+    store.selectStore({ id: 8, name: 'Minimarket contextual', status: 'active' });
     store.setFormField('price', '10');
     await store.save();
     state = store.getState();

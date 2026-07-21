@@ -173,11 +173,7 @@ export function createInventoryStore(api) {
             state.currentView !== VIEW_FORM
             || state.form.isSaving
             || !Object.hasOwn(DEFAULT_VALUES, field)
-            || field === 'productId'
-            || (
-                state.form.mode === FORM_EDIT
-                && ['productId', 'minimarketId'].includes(field)
-            )
+            || ['productId', 'minimarketId'].includes(field)
         ) {
             return;
         }
@@ -232,6 +228,35 @@ export function createInventoryStore(api) {
             values: { ...state.form.values, productId: '' },
             selectedProduct: null,
             fieldErrors: { ...state.form.fieldErrors, productId: undefined },
+            error: null,
+            message: null,
+        });
+        return true;
+    }
+
+    function selectStore(store) {
+        const normalizedStore = normalizeAdministrativeStore(store);
+        if (state.currentView !== VIEW_FORM || state.form.mode !== FORM_CREATE
+            || state.form.isSaving || normalizedStore === null) return false;
+        setForm({
+            ...state.form,
+            values: { ...state.form.values, minimarketId: String(normalizedStore.id) },
+            selectedStore: normalizedStore,
+            fieldErrors: { ...state.form.fieldErrors, minimarketId: undefined },
+            error: null,
+            message: null,
+        });
+        return true;
+    }
+
+    function clearSelectedStore() {
+        if (state.currentView !== VIEW_FORM || state.form.mode !== FORM_CREATE
+            || state.form.isSaving) return false;
+        setForm({
+            ...state.form,
+            values: { ...state.form.values, minimarketId: '' },
+            selectedStore: null,
+            fieldErrors: { ...state.form.fieldErrors, minimarketId: undefined },
             error: null,
             message: null,
         });
@@ -304,18 +329,29 @@ export function createInventoryStore(api) {
             const replaceableProduct = productRemoved
                 && state.form.mode === FORM_CREATE
                 && !state.form.productLocked;
+            const replaceableStore = [
+                'inventory_invalid_store_id',
+                'inventory_store_not_found',
+                'inventory_store_incompatible',
+            ].includes(normalizedError.code) && state.form.mode === FORM_CREATE;
             setForm({
                 ...state.form,
-                values: replaceableProduct
-                    ? { ...state.form.values, productId: '' }
-                    : state.form.values,
+                values: {
+                    ...state.form.values,
+                    ...(replaceableProduct ? { productId: '' } : {}),
+                    ...(replaceableStore ? { minimarketId: '' } : {}),
+                },
                 selectedProduct: replaceableProduct ? null : state.form.selectedProduct,
-                fieldErrors: replaceableProduct
-                    ? {
-                        ...state.form.fieldErrors,
+                selectedStore: replaceableStore ? null : state.form.selectedStore,
+                fieldErrors: {
+                    ...state.form.fieldErrors,
+                    ...(replaceableProduct ? {
                         productId: 'El producto seleccionado ya no esta disponible. Seleccione otro.',
-                    }
-                    : state.form.fieldErrors,
+                    } : {}),
+                    ...(replaceableStore ? {
+                        minimarketId: 'El minimarket seleccionado ya no esta disponible. Seleccione otro.',
+                    } : {}),
+                },
                 status: STATUS_ERROR,
                 error: normalizedError,
             });
@@ -452,6 +488,8 @@ export function createInventoryStore(api) {
         setFormField,
         selectProduct,
         clearSelectedProduct,
+        selectStore,
+        clearSelectedStore,
         save,
         returnToList,
         loadContext,
@@ -474,6 +512,7 @@ function initialForm(mode = FORM_CREATE) {
         contextProduct: null,
         productLocked: false,
         selectedProduct: null,
+        selectedStore: null,
     };
 }
 
@@ -503,7 +542,7 @@ function validate(values) {
     const stock = nonNegativeInteger(values.stock);
 
     if (productId === null) errors.productId = 'Seleccione un producto.';
-    if (minimarketId === null) errors.minimarketId = 'Ingrese un Minimarket ID positivo.';
+    if (minimarketId === null) errors.minimarketId = 'Seleccione un minimarket.';
     if (price === null) errors.price = 'Ingrese un precio mayor o igual a 0.';
     if (stock === null) errors.stock = 'Ingrese un stock entero mayor o igual a 0.';
     if (!['active', 'inactive'].includes(values.status)) {
@@ -540,6 +579,16 @@ function normalizeAdministrativeProduct(product) {
     return id !== null
         && name !== ''
         && ['active', 'inactive', 'draft'].includes(status)
+        ? { id, name, status }
+        : null;
+}
+
+function normalizeAdministrativeStore(store) {
+    const id = positiveInteger(store?.id);
+    const name = typeof store?.name === 'string' ? store.name.trim() : '';
+    const status = String(store?.status ?? '');
+    return id !== null && name !== ''
+        && ['pending', 'active', 'inactive', 'rejected'].includes(status)
         ? { id, name, status }
         : null;
 }
@@ -616,6 +665,9 @@ function snapshot(source) {
             selectedProduct: source.form.selectedProduct === null
                 ? null
                 : { ...source.form.selectedProduct },
+            selectedStore: source.form.selectedStore === null
+                ? null
+                : { ...source.form.selectedStore },
         },
     };
 }

@@ -9,6 +9,7 @@ import {
     VIEW_FORM,
 } from './store.js';
 import { createProductSelector } from './product-selector.js';
+import { createStoreSelector } from './store-selector.js';
 
 export function createInventoryView(nodes, actions) {
     const newButton = nodes.root.querySelector('.page-title-action');
@@ -99,6 +100,7 @@ export function createInventoryView(nodes, actions) {
         }
 
         focusedFormKey = null;
+        inventoryForm.deactivate();
         const loading = state.status === STATUS_LOADING;
         const hasFilters = Object.entries(state.inputs).some(([name, value]) => (
             !['page', 'perPage'].includes(name) && String(value).trim() !== ''
@@ -235,12 +237,13 @@ function createInventoryForm(actions) {
     formState.className = 'veciahorra-inventory-admin__state';
     const controls = {
         productId: createFormInput('productId', 'Product ID', 'number', '1'),
-        minimarketId: createFormInput('minimarketId', 'Minimarket ID', 'number', '1'),
         price: createFormInput('price', 'Price', 'number', '0.01'),
         stock: createFormInput('stock', 'Stock', 'number', '1'),
         status: createFormStatus(),
     };
     const productSelector = createProductSelector(actions);
+    const storeControl = createStoreControl();
+    let storeSelector = null;
 
     Object.entries(controls).forEach(([name, control]) => {
         control.input.addEventListener('input', () => {
@@ -249,6 +252,7 @@ function createInventoryForm(actions) {
         fields.append(control.wrapper);
     });
     fields.insertBefore(productSelector.element, controls.productId.wrapper);
+    fields.insertBefore(storeControl.element, controls.price.wrapper);
 
     const buttons = document.createElement('div');
     buttons.className = 'veciahorra-inventory-admin__form-actions';
@@ -285,6 +289,7 @@ function createInventoryForm(actions) {
         fields.hidden = loading || detailUnavailable;
         buttons.hidden = loading || detailUnavailable;
         productSelector.render(form);
+        renderStore(form, disabled);
         controls.productId.wrapper.hidden = form.mode === FORM_CREATE;
         productContext.hidden = form.contextProduct === null;
         productContext.textContent = form.contextProduct === null
@@ -312,6 +317,53 @@ function createInventoryForm(actions) {
         });
     }
 
+    function renderStore(form, disabled) {
+        const creating = form.mode === FORM_CREATE;
+        const activeStoreView = creating ? storeControl.create : storeControl.readonly;
+        if (storeControl.element.firstElementChild !== activeStoreView) {
+            storeControl.element.replaceChildren(activeStoreView);
+        }
+        if (creating && storeSelector === null) {
+            storeSelector = createStoreSelector({
+                searchStores: actions.searchStores,
+                onStoreSelected: actions.onStoreSelected,
+                elements: storeControl.elements,
+            });
+        } else if (!creating) {
+            destroyStoreSelector();
+        }
+        const selected = form.selectedStore;
+        storeControl.search.hidden = selected !== null;
+        storeControl.selected.hidden = selected === null;
+        storeControl.input.disabled = disabled;
+        storeControl.change.disabled = disabled;
+        storeControl.remove.disabled = disabled;
+        const error = form.fieldErrors.minimarketId || '';
+        storeControl.input.setAttribute('aria-invalid', error ? 'true' : 'false');
+        storeControl.error.textContent = error;
+        if (selected !== null) {
+            storeControl.selectedText.textContent = `${selected.name} (#${selected.id}) - ${storeStatusLabel(selected.status)}`;
+        }
+        if (!creating) {
+            storeControl.readonlyName.textContent = `Minimarket ID #${form.values.minimarketId}`;
+            storeControl.readonlyMeta.textContent = 'El minimarket asociado no puede modificarse en este inventario.';
+        }
+    }
+
+    function clearStoreSelection() {
+        storeSelector?.reset();
+        actions.onStoreCleared?.();
+        queueMicrotask(() => storeSelector?.focus());
+    }
+
+    function destroyStoreSelector() {
+        storeSelector?.destroy();
+        storeSelector = null;
+    }
+
+    storeControl.change.addEventListener('click', clearStoreSelection);
+    storeControl.remove.addEventListener('click', clearStoreSelection);
+
     function focusPrimary(mode) {
         if (mode === FORM_CREATE && !productSelector.element.hidden) {
             productSelector.focus();
@@ -323,7 +375,64 @@ function createInventoryForm(actions) {
         }
     }
 
-    return { element, render, focusPrimary };
+    return { element, render, focusPrimary, deactivate: destroyStoreSelector };
+}
+
+function createStoreControl() {
+    const element = document.createElement('div');
+    element.className = 'veciahorra-inventory-admin__store-field';
+    const create = document.createElement('div');
+    create.className = 'veciahorra-inventory-admin__store-selector';
+    const label = document.createElement('label');
+    label.htmlFor = 'veciahorra-inventory-store-search';
+    label.textContent = 'Minimarket (obligatorio)';
+    const search = document.createElement('div');
+    search.className = 'veciahorra-inventory-admin__store-search';
+    const input = document.createElement('input');
+    input.id = 'veciahorra-inventory-store-search';
+    input.type = 'search';
+    input.className = 'regular-text';
+    input.placeholder = 'Buscar minimarket';
+    input.setAttribute('aria-required', 'true');
+    input.setAttribute('aria-describedby', 'veciahorra-inventory-store-help veciahorra-inventory-minimarketId-error');
+    const help = document.createElement('p');
+    help.id = 'veciahorra-inventory-store-help';
+    help.className = 'description';
+    help.textContent = 'Escriba al menos 2 caracteres y seleccione un resultado.';
+    const status = document.createElement('p');
+    status.className = 'veciahorra-inventory-admin__store-search-status';
+    const results = document.createElement('div');
+    results.className = 'veciahorra-inventory-admin__store-results';
+    const error = document.createElement('p');
+    error.id = 'veciahorra-inventory-minimarketId-error';
+    error.className = 'veciahorra-inventory-admin__field-error';
+    error.setAttribute('role', 'alert');
+    search.append(input, help, status, results, error);
+    const selected = document.createElement('div');
+    selected.className = 'veciahorra-inventory-admin__selected-store';
+    selected.setAttribute('role', 'status');
+    selected.setAttribute('aria-live', 'polite');
+    const selectedText = document.createElement('p');
+    const change = createButton('Cambiar minimarket');
+    const remove = createButton('Quitar seleccion');
+    change.classList.add('button-secondary');
+    remove.classList.add('button-link-delete');
+    selected.append(selectedText, change, remove);
+    create.append(label, search, selected);
+    const readonly = document.createElement('section');
+    readonly.className = 'veciahorra-inventory-admin__store-readonly';
+    readonly.setAttribute('aria-label', 'Minimarket asociado');
+    const readonlyLabel = document.createElement('strong');
+    readonlyLabel.textContent = 'Minimarket';
+    const readonlyName = document.createElement('p');
+    const readonlyMeta = document.createElement('p');
+    readonly.append(readonlyLabel, readonlyName, readonlyMeta);
+    element.append(create);
+    return { element, create, search, input, status, results, error, selected, selectedText, change, remove, readonly, readonlyName, readonlyMeta, elements: { input, results, status } };
+}
+
+function storeStatusLabel(status) {
+    return { pending: 'Pendiente', active: 'Activo', inactive: 'Inactivo', rejected: 'Rechazado' }[status] || status;
 }
 
 function renderContext(container, context, actions) {

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>RUNNING</title></head>
+<body>
+<div id="root"><button class="page-title-action">Nuevo</button></div>
+<div id="messages"></div><div id="toolbar"></div><div id="table"></div><div id="pagination"></div>
+<pre id="test-results" data-status="running">RUNNING</pre>
+<script type="module">
+import { createInventoryStore } from '../../assets/admin/js/modules/inventory/store.js';
+import { createInventoryView } from '../../assets/admin/js/modules/inventory/view.js';
+
+const output = document.querySelector('#test-results');
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const item = { id: 41, product_id: 7, minimarket_id: 12, price: 100, stock: 3, status: 'active', updated_at: 'now' };
+const created = [];
+let storeSearches = 0;
+const api = {
+    getInventory: async () => ({ data: [], meta: { page: 1, per_page: 20, total: 0, total_pages: 0 } }),
+    getInventoryItem: async () => ({ data: item }),
+    createInventory: async (payload) => { created.push(payload); return { data: { id: 41 } }; },
+    updateInventory: async () => ({ data: item }),
+};
+const store = createInventoryStore(api);
+const nodes = {
+    root: document.querySelector('#root'), messages: document.querySelector('#messages'),
+    toolbar: document.querySelector('#toolbar'), table: document.querySelector('#table'),
+    pagination: document.querySelector('#pagination'),
+};
+const actions = {
+    onFilter() {}, onSearch() {}, onClear() {}, onReload() {}, onPage() {},
+    onNew: () => store.openCreateForm(), onEdit: (id) => store.openEditForm(id),
+    onFormField: (field, value) => store.setFormField(field, value),
+    onProductSelected: (product) => store.selectProduct(product), onProductCleared: () => store.clearSelectedProduct(),
+    searchProducts: async () => ({ data: [] }),
+    onStoreSelected: (selectedStore) => store.selectStore(selectedStore), onStoreCleared: () => store.clearSelectedStore(),
+    searchStores: async () => { storeSearches++; return { data: [{ id: 12, name: 'Almacen Central', status: 'active' }] }; },
+    onSave: () => store.save(), onCancel: () => store.returnToList(),
+    allInventoryUrl: '#', contextualListUrl: () => '#', contextualCreateUrl: () => '#',
+};
+const view = createInventoryView(nodes, actions);
+store.subscribe(view.render); view.render(store.getState()); store.openCreateForm();
+
+async function run() {
+    assert(document.querySelector('#veciahorra-inventory-minimarketId') === null, 'Existe input manual minimarketId.');
+    const input = document.querySelector('#veciahorra-inventory-store-search');
+    assert(input?.getAttribute('role') === 'combobox' && input.getAttribute('aria-required') === 'true', 'Selector Store inaccesible.');
+    input.value = 'almacen'; input.dispatchEvent(new Event('input', { bubbles: true })); await wait(350);
+    document.querySelector('.veciahorra-inventory-admin__store-results [role="option"]').click();
+    assert(store.getState().form.values.minimarketId === '12' && store.getState().form.selectedStore.name === 'Almacen Central', 'Seleccion no actualizo estado durable.');
+    store.selectProduct({ id: 7, name: 'Producto', status: 'active' }); store.setFormField('price', '100'); store.setFormField('stock', '3');
+    assert(await store.save() && created[0].minimarket_id === 12 && !Object.hasOwn(created[0], 'store'), 'Payload create incorrecto.');
+    assert(document.querySelector('#veciahorra-inventory-store-search') === null, 'Edicion conserva combobox Store.');
+    assert(document.querySelector('.veciahorra-inventory-admin__store-readonly')?.textContent.includes('#12'), 'Store readonly ausente.');
+    const searchesBefore = storeSearches; await store.openEditForm(41);
+    assert(storeSearches === searchesBefore && document.querySelector('#veciahorra-inventory-store-search') === null, 'Edicion busco o activo Store.');
+    store.returnToList(); store.openCreateForm();
+    assert(store.getState().form.values.minimarketId === '' && document.querySelector('#veciahorra-inventory-store-search'), 'Reset heredo Store o no recreo selector.');
+    output.dataset.status = 'pass'; output.textContent = 'PASS integrated inventory Store form'; document.title = 'PASS';
+}
+run().catch((error) => { output.dataset.status = 'fail'; output.textContent = error.message; document.title = 'FAIL'; });
+</script></body></html>

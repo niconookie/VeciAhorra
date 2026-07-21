@@ -58,10 +58,11 @@ assertInventoryStoreSelector(
 );
 assertInventoryStoreSelector(
     ! str_contains($app, 'createStoreSelector')
-        && ! str_contains($view, 'createStoreSelector')
-        && str_contains($view, "createFormInput('minimarketId'")
+        && str_contains($view, 'createStoreSelector')
+        && ! str_contains($view, "createFormInput('minimarketId'")
+        && str_contains($store, 'selectedStore: normalizedStore')
         && str_contains($store, 'minimarket_id: minimarketId'),
-    'El selector fue integrado prematuramente o cambio el contrato Inventory.'
+    'El selector no esta integrado o cambio el contrato Inventory.'
 );
 
 $routes = rest_get_server()->get_routes();

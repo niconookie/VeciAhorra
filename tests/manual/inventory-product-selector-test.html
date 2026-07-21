@@ -138,26 +138,26 @@ async function run() {
     store.setFormField('productId', '998');
     assert(store.getState().form.values.productId === '', 'Un escritor no autorizado estableció productId.'); scenarios.authority = true;
     assert(store.selectProduct(product(9, 'Contrato', 'draft')), 'Store rechazó Product draft.');
-    store.setFormField('minimarketId', '2'); store.setFormField('price', '10'); store.setFormField('stock', '3');
+    store.selectStore({ id: 2, name: 'Minimarket dos', status: 'active' }); store.setFormField('price', '10'); store.setFormField('stock', '3');
     assert(await store.save(), 'No guardó selección válida.');
     assert(createdPayloads[0].product_id === 9 && !Object.hasOwn(createdPayloads[0], 'product'), 'Payload no preservó product_id contractual.'); scenarios.payload = true;
 
     const removedStore = createInventoryStore({ ...storeApi, createInventory: async () => { const error = new Error('Product eliminado'); error.code = 'inventory_product_not_found'; throw error; } });
-    removedStore.openCreateForm(); removedStore.selectProduct(product(10, 'Eliminado')); removedStore.setFormField('minimarketId', '2'); removedStore.setFormField('price', '5');
+    removedStore.openCreateForm(); removedStore.selectProduct(product(10, 'Eliminado')); removedStore.selectStore({ id: 2, name: 'Minimarket dos', status: 'active' }); removedStore.setFormField('price', '5');
     await removedStore.save();
     assert(removedStore.getState().form.values.productId === '' && removedStore.getState().form.values.minimarketId === '2', 'Product eliminado no limpió solo la selección.'); scenarios.removed = true;
     const duplicateStore = createInventoryStore({ ...storeApi, createInventory: async () => { const error = new Error('Duplicado'); error.code = 'inventory_duplicate'; error.field = 'product_id'; error.reason = 'duplicate_reference'; throw error; } });
-    duplicateStore.openCreateForm(); duplicateStore.selectProduct(product(11, 'Duplicado')); duplicateStore.setFormField('minimarketId', '3'); duplicateStore.setFormField('price', '7'); duplicateStore.setFormField('stock', '4'); await duplicateStore.save();
+    duplicateStore.openCreateForm(); duplicateStore.selectProduct(product(11, 'Duplicado')); duplicateStore.selectStore({ id: 3, name: 'Minimarket tres', status: 'active' }); duplicateStore.setFormField('price', '7'); duplicateStore.setFormField('stock', '4'); await duplicateStore.save();
     const duplicateForm = duplicateStore.getState().form;
     assert(duplicateForm.selectedProduct.id === 11 && duplicateForm.values.minimarketId === '3' && duplicateForm.values.price === '7' && duplicateForm.error.reason === 'duplicate_reference', 'Duplicado perdió valores o detalles.'); scenarios.duplicate = true;
 
     const technicalStore = createInventoryStore({ ...storeApi, createInventory: async () => { const error = new Error('Servicio no disponible'); error.code = 'http_503'; error.retryable = true; throw error; } });
-    technicalStore.openCreateForm(); technicalStore.selectProduct(product(24, 'Preservado')); technicalStore.setFormField('minimarketId', '4'); technicalStore.setFormField('price', '8'); await technicalStore.save();
+    technicalStore.openCreateForm(); technicalStore.selectProduct(product(24, 'Preservado')); technicalStore.selectStore({ id: 4, name: 'Minimarket cuatro', status: 'active' }); technicalStore.setFormField('price', '8'); await technicalStore.save();
     assert(technicalStore.getState().form.selectedProduct.id === 24 && technicalStore.getState().form.values.minimarketId === '4', 'Error técnico perdió selección o formulario.'); scenarios.save_technical_error = true;
 
     const contextualStore = createInventoryStore({ ...storeApi, createInventory: async () => { const error = new Error('Product contextual eliminado'); error.code = 'inventory_product_not_found'; throw error; } });
     contextualStore.applyContext({ intent: 'create' }, product(25, 'Contextual eliminado'));
-    contextualStore.setFormField('minimarketId', '5'); contextualStore.setFormField('price', '9'); await contextualStore.save();
+    contextualStore.selectStore({ id: 5, name: 'Minimarket cinco', status: 'active' }); contextualStore.setFormField('price', '9'); await contextualStore.save();
     assert(contextualStore.getState().form.values.productId === '25' && contextualStore.getState().form.contextProduct.id === 25 && contextualStore.getState().form.productLocked, 'Error contextual borró o desbloqueó Product.'); scenarios.contextual_removed = true;
 
     const editStore = createInventoryStore({ ...storeApi, getInventoryItem: async () => ({ data: { id: 91, product_id: 27, minimarket_id: 2, price: 10, stock: 3, status: 'active', updated_at: 'now' } }) });

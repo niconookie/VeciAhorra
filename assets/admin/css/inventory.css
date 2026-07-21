@@ -310,8 +310,98 @@
     margin-left: 0.75rem;
 }
 
+.veciahorra-inventory-admin__store-field,
+.veciahorra-inventory-admin__store-selector {
+    min-width: 0;
+}
+
+.veciahorra-inventory-admin__store-selector {
+    max-width: 42rem;
+    position: relative;
+}
+
+.veciahorra-inventory-admin__store-selector > label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+}
+
+.veciahorra-inventory-admin__store-search input {
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.veciahorra-inventory-admin__store-search input:focus-visible,
+.veciahorra-inventory-admin__store-option:focus-visible {
+    outline: 2px solid #2271b1;
+    outline-offset: 2px;
+}
+
+.veciahorra-inventory-admin__store-search-status {
+    margin: 0.35rem 0;
+    min-height: 1.5em;
+}
+
+.veciahorra-inventory-admin__store-results {
+    background: #fff;
+    border: 1px solid #8c8f94;
+    border-radius: 3px;
+    margin: 0.5rem 0;
+}
+
+.veciahorra-inventory-admin__store-results > [role='option'] {
+    align-items: baseline;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid #dcdcde;
+    color: #1d2327;
+    cursor: pointer;
+    display: flex;
+    gap: 0.25rem 1rem;
+    justify-content: space-between;
+    padding: 0.75rem;
+    text-align: left;
+    width: 100%;
+}
+
+.veciahorra-inventory-admin__store-results > [role='option']:last-child {
+    border-bottom: 0;
+}
+
+.veciahorra-inventory-admin__store-results > [role='option']:hover,
+.veciahorra-inventory-admin__store-results > [role='option'][aria-selected='true'] {
+    background: #f0f6fc;
+}
+
+.veciahorra-inventory-admin__selected-store,
+.veciahorra-inventory-admin__store-readonly {
+    background: #f0f6fc;
+    border-left: 4px solid #2271b1;
+    overflow-wrap: anywhere;
+    padding: 0.75rem;
+}
+
+.veciahorra-inventory-admin__selected-store p,
+.veciahorra-inventory-admin__store-readonly p {
+    margin: 0 0 0.5rem;
+}
+
+.veciahorra-inventory-admin__selected-store button + button {
+    margin-left: 0.75rem;
+}
+
+.veciahorra-inventory-admin__store-readonly p:last-child {
+    color: #50575e;
+    margin-bottom: 0;
+}
+
 @media (max-width: 600px) {
     .veciahorra-inventory-admin__product-option {
+        flex-direction: column;
+    }
+
+    .veciahorra-inventory-admin__store-results > [role='option'] {
+        align-items: flex-start;
         flex-direction: column;
     }
 

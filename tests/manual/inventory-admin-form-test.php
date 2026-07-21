@@ -62,6 +62,7 @@ $api = inventoryFormSource('assets/admin/js/modules/inventory/api.js');
 $store = inventoryFormSource('assets/admin/js/modules/inventory/store.js');
 $view = inventoryFormSource('assets/admin/js/modules/inventory/view.js');
 $app = inventoryFormSource('assets/admin/js/modules/inventory/app.js');
+$storeSelector = inventoryFormSource('assets/admin/js/modules/inventory/store-selector.js');
 $shell = inventoryFormSource('app/Modules/Inventory/Views/index.php');
 
 foreach (
@@ -77,6 +78,10 @@ foreach (
         'onSave' => $app,
         'onCancel' => $app,
         'Nuevo inventario' => $shell,
+        'createStoreSelector' => $view,
+        'searchStores' => $app,
+        'selectStore' => $store,
+        'clearSelectedStore' => $store,
     ] as $fragment => $source
 ) {
     assertInventoryForm(
@@ -110,8 +115,26 @@ assertInventoryForm(
 );
 assertInventoryForm(
     str_contains($store, "errors.productId = 'Seleccione un producto.'")
-        && str_contains($store, "errors.minimarketId = 'Ingrese un Minimarket ID positivo.'"),
+        && str_contains($store, "errors.minimarketId = 'Seleccione un minimarket.'"),
     'Faltan errores frontend para IDs invalidos.'
+);
+assertInventoryForm(
+    ! str_contains($view, "createFormInput('minimarketId'")
+        && str_contains($view, "input.type = 'search'")
+        && str_contains($view, "readonly.setAttribute('aria-label', 'Minimarket asociado')"),
+    'El formulario conserva un input manual o no presenta Store readonly.'
+);
+assertInventoryForm(
+    str_contains($store, "['productId', 'minimarketId'].includes(field)")
+        && str_contains($store, 'selectedStore: normalizedStore')
+        && str_contains($store, 'minimarket_id: minimarketId'),
+    'minimarketId no queda bajo autoridad durable del Store seleccionado.'
+);
+assertInventoryForm(
+    str_contains($view, 'destroyStoreSelector')
+        && str_contains($view, 'inventoryForm.deactivate()')
+        && str_contains($storeSelector, 'controller.abort()'),
+    'Falta destruir el selector Store o abortar solicitudes pendientes.'
 );
 assertInventoryForm(
     substr_count($api, 'fetch(') === 1
