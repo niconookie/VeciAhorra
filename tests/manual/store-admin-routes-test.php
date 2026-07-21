@@ -449,12 +449,17 @@ try {
         'CRUD Editado ' . $suffix,
         $storeService->find($crudId)?->business_name
     );
+    assertStoreAdminSame(1, $wpdb->update($table, [
+        'status' => 'inactive',
+        'onboarding_status' => 'complete',
+        'approved_at' => current_time('mysql'),
+    ], ['id' => $crudId]));
     assertStoreAdminSame(
         1,
-        $storeService->bulkUpdateStatus([$crudId], 'inactive')
+        $storeService->bulkUpdateStatus([$crudId], 'active')
     );
     assertStoreAdminSame(
-        'inactive',
+        'active',
         $storeService->find($crudId)?->status
     );
     $storeService->delete($crudId);

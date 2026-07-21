@@ -40,7 +40,6 @@ final class StoreRequest
         return array_merge(
             $this->validatedFields(),
             [
-                'status' => $this->validatedStatus(),
                 'updated_at' => current_time('mysql'),
             ]
         );
@@ -190,26 +189,4 @@ final class StoreRequest
         }
     }
 
-    /**
-     * Valida el estado del minimarket.
-     */
-    private function validatedStatus(): string
-    {
-        $status = sanitize_key(
-            $this->input('status')
-        );
-
-        $allowedStatuses = [
-            'pending',
-            'active',
-            'inactive',
-            'rejected',
-        ];
-
-        if (! in_array($status, $allowedStatuses, true)) {
-            throw new InvalidArgumentException('El estado del minimarket no es válido.');
-        }
-
-        return $status;
-    }
 }

@@ -7,6 +7,7 @@ namespace VeciAhorra\Modules\Stores\Services;
 use InvalidArgumentException;
 use VeciAhorra\Core\CrudService;
 use VeciAhorra\Database\Collection;
+use VeciAhorra\Modules\Stores\Domain\StoreLifecycleContract;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 /**
@@ -14,20 +15,30 @@ use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
  */
 final class StoreService extends CrudService
 {
+    private StoreLifecycleContract $lifecycle;
+
     public function bulkUpdateStatus(
         array $ids,
         string $status
     ): int {
-        $allowedStatuses = [
-            'pending',
-            'active',
-            'inactive',
-            'rejected',
-        ];
+        $allowedStatuses = $this->lifecycle->statuses();
 
         if (! in_array($status, $allowedStatuses, true)) {
             throw new InvalidArgumentException(
                 'El estado del minimarket no es válido.'
+            );
+        }
+
+        foreach ($ids as $id) {
+            $store = $this->find((int) $id);
+            if ($store === null) {
+                continue;
+            }
+
+            $this->lifecycle->validate(
+                $status,
+                (string) $store->onboarding_status,
+                $store->approved_at
             );
         }
 
@@ -41,6 +52,34 @@ final class StoreService extends CrudService
     public function __construct()
     {
         $this->repository = new StoreRepository();
+        $this->lifecycle = new StoreLifecycleContract();
+    }
+
+    public function lifecycle(): StoreLifecycleContract
+    {
+        return $this->lifecycle;
+    }
+
+    public function create(array $data): int
+    {
+        $data['status'] = StoreLifecycleContract::STATUS_PENDING;
+        $data['onboarding_status'] = StoreLifecycleContract::ONBOARDING_DRAFT;
+        $data['approved_at'] = null;
+
+        $this->lifecycle->validate(
+            $data['status'],
+            $data['onboarding_status'],
+            $data['approved_at']
+        );
+
+        return parent::create($data);
+    }
+
+    public function update(int $id, array $data): void
+    {
+        unset($data['status'], $data['onboarding_status'], $data['approved_at']);
+
+        parent::update($id, $data);
     }
 
     /**
