@@ -61,5 +61,18 @@ export function createStoreDetailApi(config) {
                 body, signal,
             }, 'store_update_failed');
         },
+        async transition(action, signal) {
+            return request(`${config.detailUrl}/transitions`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': config.nonce,
+                },
+                body: JSON.stringify({ action }),
+                signal,
+            }, 'store_transition_failed');
+        },
     });
 }

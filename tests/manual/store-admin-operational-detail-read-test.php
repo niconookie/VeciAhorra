@@ -19,7 +19,7 @@ detailReadAssert(substr_count($api, 'fetch(') === 1, 'La lectura debe tener un �
 foreach (["method: 'GET'", "credentials: 'same-origin'", "Accept: 'application/json'", "'X-WP-Nonce': config.nonce", 'config.detailUrl', 'signal'] as $fragment) {
     detailReadAssert(str_contains($api, $fragment), 'Cliente GET sin ' . $fragment . '.');
 }
-foreach (['PUT', 'PATCH', 'DELETE', '/transitions', 'setInterval', 'setTimeout', 'localStorage', 'sessionStorage', 'console.log'] as $forbidden) {
+foreach (['PUT', 'PATCH', 'DELETE', 'setInterval', 'setTimeout', 'localStorage', 'sessionStorage', 'console.log'] as $forbidden) {
     detailReadAssert(! str_contains($app . $api . $contract . $view, $forbidden), 'Lectura contiene patrón prohibido: ' . $forbidden);
 }
 foreach (['AbortController', 'readSequence', 'requestId !== readSequence', "addEventListener('pagehide'", 'readController?.abort()', 'rootNode.isConnected', "error?.name === 'AbortError'", 'vaStoreDetailInitialized', 'createStoreDetailCoordinator'] as $fragment) {
@@ -31,7 +31,7 @@ foreach (['validateDetailPayload', 'Number.isSafeInteger', 'item.id !== expected
 foreach (['draft', 'in_review', 'rejected', 'approved_inactive', 'active', 'invalid', 'save', 'submit_for_review', 'return_to_draft', 'approve', 'reject', 'activate', 'deactivate', 'delete_if_unreferenced'] as $value) {
     detailReadAssert(str_contains($contract, "'{$value}'") || str_contains($contract, "{$value}:"), 'Allowlist sin ' . $value . '.');
 }
-foreach (['document.createElement', 'textContent', 'append', 'replaceChildren', 'createDocumentFragment', 'Cargando minimarket', 'No hay acciones contractuales disponibles', 'Estado operativo', 'Estado de incorporación'] as $fragment) {
+foreach (['document.createElement', 'textContent', 'append', 'replaceChildren', 'createDocumentFragment', 'Cargando minimarket', 'No hay acciones lifecycle disponibles', 'Estado operativo', 'Estado de incorporación'] as $fragment) {
     detailReadAssert(str_contains($view, $fragment), 'Render seguro sin ' . $fragment . '.');
 }
 foreach (['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'eval(', 'new Function', 'mailto:', 'tel:'] as $forbidden) {

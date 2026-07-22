@@ -1,5 +1,6 @@
-import { actionLabels, lifecyclePresentation } from './detail-contract.js';
+import { lifecyclePresentation } from './detail-contract.js';
 import { editableFields, fieldErrorMessage } from './detail-edit.js';
+import { lifecycleActions, visibleLifecycleActions } from './detail-lifecycle.js';
 
 const placeholder = (value, empty = 'No informado') => (
     typeof value === 'string' && value.trim() !== '' ? value : empty
@@ -121,14 +122,22 @@ export function createStoreDetailView(root) {
                 commercialContent.append(controls);
             }
             nodes.commercial.replaceChildren(commercialContent);
-            const actionItems = item.allowed_actions.map((action) => node('li', actionLabels[action]));
-            if (actionItems.length === 0) {
-                nodes.actions.replaceChildren(node('p', 'No hay acciones contractuales disponibles.'));
+            const actionNames = visibleLifecycleActions(item);
+            if (actionNames.length === 0) {
+                nodes.actions.replaceChildren(node('p', 'No hay acciones lifecycle disponibles.'));
             } else {
-                const introduction = node('p', 'Acciones contractuales disponibles (sólo lectura):');
-                const list = node('ul');
-                list.append(...actionItems);
-                nodes.actions.replaceChildren(introduction, list);
+                const controls = node('div', undefined, 'va-store-detail__lifecycle-actions');
+                actionNames.forEach((action) => {
+                    const definition = lifecycleActions[action];
+                    const className = definition.tone === 'primary'
+                        ? 'button button-primary'
+                        : `button va-store-detail__action--${definition.tone}`;
+                    const button = node('button', definition.label, className);
+                    button.type = 'button';
+                    button.dataset.vaStoreLifecycleAction = action;
+                    controls.append(button);
+                });
+                nodes.actions.replaceChildren(node('p', 'Acciones lifecycle disponibles:'), controls);
             }
             nodes.sensitive.replaceChildren(node('p', 'No hay controles sensibles disponibles en esta etapa.'));
             nodes.messages.replaceChildren();
@@ -138,13 +147,62 @@ export function createStoreDetailView(root) {
                 notice.append(node('p', options.success));
                 nodes.messages.replaceChildren(notice);
                 nodes.messages.focus({ preventScroll: true });
+            } else if (options.error) {
+                const notice = node('div', undefined, 'notice notice-error inline');
+                notice.setAttribute('role', 'alert');
+                notice.append(node('p', options.error));
+                nodes.messages.replaceChildren(notice);
+                nodes.messages.focus({ preventScroll: true });
+            } else if (options.warning) {
+                const notice = node('div', undefined, 'notice notice-warning inline');
+                notice.setAttribute('role', 'status');
+                notice.append(node('p', options.warning));
+                nodes.messages.replaceChildren(notice);
+                nodes.messages.focus({ preventScroll: true });
             } else if (options.focusEdit) {
                 nodes.commercial.querySelector('[data-va-store-edit]')?.focus({ preventScroll: true });
+            } else if (options.focusLifecycle) {
+                nodes.actions.querySelector(`[data-va-store-lifecycle-action="${options.focusLifecycle}"]`)?.focus({ preventScroll: true });
             }
             root.dataset.vaStoreDetailState = 'loaded';
             root.setAttribute('aria-busy', 'false');
         },
+        confirmLifecycle(action) {
+            const edit = nodes.commercial.querySelector('[data-va-store-edit]');
+            if (edit) edit.disabled = true;
+            const definition = lifecycleActions[action];
+            const panel = node('section', undefined, 'va-store-detail__confirmation');
+            panel.setAttribute('role', 'region');
+            panel.setAttribute('aria-busy', 'false');
+            const heading = node('h3', `Confirmar: ${definition.label}`);
+            heading.id = 'va-store-detail-confirmation-heading';
+            heading.tabIndex = -1;
+            panel.setAttribute('aria-labelledby', heading.id);
+            const progress = node('p', '', 'va-store-detail__transition-progress');
+            progress.dataset.vaStoreTransitionProgress = 'true';
+            progress.setAttribute('role', 'status');
+            const controls = node('div', undefined, 'va-store-detail__confirmation-actions');
+            const confirm = node('button', 'Confirmar', 'button button-primary');
+            confirm.type = 'button'; confirm.dataset.vaStoreConfirmLifecycle = 'true';
+            const cancel = node('button', 'Cancelar', 'button');
+            cancel.type = 'button'; cancel.dataset.vaStoreCancelLifecycle = 'true';
+            controls.append(confirm, cancel);
+            panel.append(heading, node('p', definition.consequence), progress, controls);
+            nodes.actions.replaceChildren(panel);
+            root.dataset.vaStoreDetailState = 'confirming';
+            heading.focus({ preventScroll: true });
+        },
+        transitioning(active) {
+            root.dataset.vaStoreDetailState = active ? 'transitioning' : 'confirming';
+            root.setAttribute('aria-busy', active ? 'true' : 'false');
+            const panel = nodes.actions.querySelector('.va-store-detail__confirmation');
+            panel?.setAttribute('aria-busy', active ? 'true' : 'false');
+            panel?.querySelectorAll('button').forEach((button) => { button.disabled = active; });
+            const progress = nodes.actions.querySelector('[data-va-store-transition-progress]');
+            if (progress) progress.textContent = active ? 'Procesando acción lifecycle…' : '';
+        },
         edit(snapshot) {
+            nodes.actions.querySelectorAll('button').forEach((button) => { button.disabled = true; });
             const form = node('form', undefined, 'va-store-detail__form');
             form.dataset.vaStoreEditForm = 'true';
             form.noValidate = true;

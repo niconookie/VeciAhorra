@@ -59,7 +59,7 @@ detailEditAssert(str_contains($controller, "wp_verify_nonce(\$nonce, 'veciahorra
 detailEditAssert(str_contains($controller, 'HTTP_X_VECIAHORRA_STORE_DETAIL') && str_contains($controller, "=== 'commercial-update'"), 'Negociación JSON no usa una señal cerrada.');
 detailEditAssert(str_contains($controller, "current_user_can('manage_options')") && str_contains($controller, 'StoreValidationException'), 'Guardado sin permiso o errores estructurados.');
 detailEditAssert(str_contains($service, "unset(\$data['status'], \$data['onboarding_status'], \$data['approved_at'])"), 'StoreService no preserva autoridades lifecycle.');
-detailEditAssert(! str_contains($app . $api . $edit . $view, '/transitions') && ! str_contains($api, "method: 'DELETE'"), 'Se incorporaron lifecycle o eliminación.');
+detailEditAssert(! str_contains($edit, '/transitions') && ! str_contains($api, "method: 'DELETE'"), 'El módulo comercial incorporó lifecycle o eliminación.');
 detailEditAssert(str_contains($css, '.va-store-detail__form-grid') && str_contains($css, '@media (max-width: 782px)') && ! str_contains($css, '!important'), 'CSS de edición fuera de alcance.');
 
 echo "PASS store-admin-operational-detail-edit-test\n";

@@ -2,6 +2,7 @@ import { createStoreDetailApi } from './detail-api.js';
 import { validateDetailPayload } from './detail-contract.js';
 import { createStoreDetailView, detailErrorMessage } from './detail-view.js';
 import { captureEditSnapshot, readEditPayload, validateEditPayload, editableFields } from './detail-edit.js';
+import { isLifecycleAction, lifecycleActions, transitionPayload } from './detail-lifecycle.js';
 
 const root = document.querySelector('[data-va-store-detail]');
 
@@ -57,9 +58,15 @@ export function createStoreDetailCoordinator({ rootNode, config, api, view }) {
     let snapshot = null;
     let readController = null;
     let saveController = null;
+    let transitionController = null;
+    let transitionSequence = 0;
+    let pendingAction = null;
 
     const load = () => {
         if (!active) return;
+        transitionSequence++;
+        transitionController?.abort();
+        pendingAction = null;
         readController?.abort();
         readController = new AbortController();
         const requestId = ++readSequence;
@@ -151,9 +158,106 @@ export function createStoreDetailCoordinator({ rootNode, config, api, view }) {
     const isCurrentSave = (operationId, baseDto) => active
         && operationId === saveSequence && dto === baseDto && rootNode.isConnected;
 
+    const openLifecycle = (action) => {
+        if (mode !== 'reading' || !dto || !isLifecycleAction(action) || !dto.allowed_actions.includes(action)) return;
+        pendingAction = action;
+        mode = 'confirming';
+        view.confirmLifecycle(action);
+    };
+
+    const cancelLifecycle = () => {
+        if (mode !== 'confirming' || !dto || !pendingAction) return;
+        const action = pendingAction;
+        pendingAction = null;
+        mode = 'reading';
+        view.render(dto, { focusLifecycle: action });
+    };
+
+    const confirmLifecycle = () => {
+        if (mode !== 'confirming' || !dto || !pendingAction || !dto.allowed_actions.includes(pendingAction)) return;
+        const action = pendingAction;
+        transitionPayload(action);
+        const baseDto = dto;
+        const operationId = ++transitionSequence;
+        let processed = false;
+        mode = 'transitioning';
+        view.transitioning(true);
+        transitionController?.abort();
+        transitionController = new AbortController();
+        api.transition(action, transitionController.signal)
+            .then((result) => {
+                if (!isCurrentTransition(operationId, baseDto, action)) return null;
+                validateDetailPayload(result, config.storeId);
+                processed = true;
+                return authoritativeTransitionGet(operationId, baseDto, action);
+            })
+            .then((refresh) => {
+                if (!refresh || !isCurrentTransition(operationId, baseDto, action)) return;
+                dto = validateDetailPayload(refresh, config.storeId);
+                pendingAction = null;
+                mode = 'reading';
+                view.render(dto, { success: lifecycleActions[action].success });
+            })
+            .catch((error) => {
+                if (!isCurrentTransition(operationId, baseDto, action) || error?.name === 'AbortError') return;
+                if (processed) {
+                    mode = 'error'; pendingAction = null;
+                    view.error('La acción fue procesada, pero no fue posible recargar el estado actualizado. Recarga la página antes de continuar.');
+                    return;
+                }
+                if (error?.status === 409) {
+                    authoritativeTransitionGet(operationId, baseDto, action)
+                        .then((refresh) => {
+                            if (!isCurrentTransition(operationId, baseDto, action)) return;
+                            dto = validateDetailPayload(refresh, config.storeId);
+                            pendingAction = null; mode = 'reading';
+                            view.render(dto, { warning: 'El estado del minimarket cambió mientras realizabas la acción. Se recargó la información vigente.' });
+                        })
+                        .catch((refreshError) => {
+                            if (!isCurrentTransition(operationId, baseDto, action) || refreshError?.name === 'AbortError') return;
+                            pendingAction = null; mode = 'error';
+                            view.error('El estado cambió y no fue posible recargar la información vigente. Recarga la página.');
+                        });
+                    return;
+                }
+                if (isUncertainTransition(error)) {
+                    pendingAction = null;
+                    mode = 'error';
+                    view.error('No fue posible confirmar el resultado de la acción. Recarga la página antes de volver a intentarlo.');
+                    return;
+                }
+                pendingAction = null;
+                if (error?.status === 404) {
+                    mode = 'error';
+                    view.error(transitionErrorMessage(error));
+                } else {
+                    mode = 'reading';
+                    view.render(dto, { error: transitionErrorMessage(error) });
+                }
+            });
+    };
+
+    const authoritativeTransitionGet = (operationId, baseDto, action) => {
+        if (!isCurrentTransition(operationId, baseDto, action)) return Promise.resolve(null);
+        readController?.abort();
+        readController = new AbortController();
+        ++readSequence;
+        return api.get(readController.signal);
+    };
+
+    const isCurrentTransition = (operationId, baseDto, action) => active
+        && operationId === transitionSequence && dto === baseDto
+        && pendingAction === action && rootNode.isConnected;
+
     const click = (event) => {
         if (event.target?.closest?.('[data-va-store-edit]')) enterEdit();
         else if (event.target?.closest?.('[data-va-store-cancel-edit]')) cancel();
+        else if (event.target?.closest?.('[data-va-store-confirm-lifecycle]')) confirmLifecycle();
+        else if (event.target?.closest?.('[data-va-store-cancel-lifecycle]')) cancelLifecycle();
+        else {
+            const action = event.target?.closest?.('[data-va-store-lifecycle-action]')?.dataset.vaStoreLifecycleAction;
+            if (action) openLifecycle(action);
+        }
     };
 
     const destroy = () => {
@@ -162,13 +266,33 @@ export function createStoreDetailCoordinator({ rootNode, config, api, view }) {
         mode = 'abandoned';
         readSequence++;
         saveSequence++;
+        transitionSequence++;
         readController?.abort();
         saveController?.abort();
+        transitionController?.abort();
         rootNode.removeEventListener?.('click', click);
         rootNode.removeEventListener?.('submit', submit);
     };
 
-    return Object.freeze({ load, destroy, click, submit, enterEdit, cancel });
+    return Object.freeze({ load, destroy, click, submit, enterEdit, cancel, openLifecycle, cancelLifecycle, confirmLifecycle });
+}
+
+function transitionErrorMessage(error) {
+    const messages = {
+        0: 'No fue posible conectar para procesar la acción lifecycle.',
+        400: 'La solicitud de transición no es válida.',
+        401: 'La sesión expiró. Revisa tu sesión antes de volver a intentar.',
+        403: 'No tienes permisos o la autorización REST expiró.',
+        404: 'El minimarket ya no existe o no está disponible.',
+        422: 'La acción lifecycle no puede aplicarse al estado actual.',
+    };
+    return messages[error?.status] || 'No fue posible procesar la acción lifecycle.';
+}
+
+function isUncertainTransition(error) {
+    return error?.status === 0
+        || (Number.isInteger(error?.status) && error.status >= 200 && error.status < 300)
+        || error instanceof TypeError;
 }
 
 function safeFieldErrors(error) {

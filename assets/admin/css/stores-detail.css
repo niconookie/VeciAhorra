@@ -147,6 +147,42 @@
   font-weight: 600;
 }
 
+.va-store-detail__lifecycle-actions,
+.va-store-detail__confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.va-store-detail__action--secondary {
+  background: #f6f7f7;
+  border-color: #2271b1;
+  color: #2271b1;
+}
+
+.va-store-detail__action--critical {
+  background: #fff;
+  border-color: #b32d2e;
+  color: #b32d2e;
+}
+
+.va-store-detail__confirmation {
+  border-left: 4px solid #dba617;
+  padding: 4px 0 4px 16px;
+}
+
+.va-store-detail__confirmation h3 {
+  margin-top: 0;
+}
+
+.va-store-detail__transition-progress:empty {
+  display: none;
+}
+
+.va-store-detail__transition-progress {
+  font-weight: 600;
+}
+
 @media (max-width: 782px) {
   .va-store-detail__header {
     flex-direction: column;
@@ -167,5 +203,18 @@
 
   .va-store-detail__form-actions .button {
     min-height: 40px;
+  }
+
+  .va-store-detail__lifecycle-actions,
+  .va-store-detail__confirmation-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .va-store-detail__lifecycle-actions .button,
+  .va-store-detail__confirmation-actions .button {
+    min-height: 40px;
+    white-space: normal;
+    width: 100%;
   }
 }
