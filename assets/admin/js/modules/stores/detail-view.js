@@ -1,6 +1,7 @@
 import { lifecyclePresentation } from './detail-contract.js';
 import { editableFields, fieldErrorMessage } from './detail-edit.js';
 import { lifecycleActions, visibleLifecycleActions } from './detail-lifecycle.js';
+import { canDeleteStore, matchesStoreName } from './detail-delete.js';
 
 const placeholder = (value, empty = 'No informado') => (
     typeof value === 'string' && value.trim() !== '' ? value : empty
@@ -39,6 +40,8 @@ export function createStoreDetailView(root) {
         sensitive: root.querySelector('[data-va-store-detail-sensitive]'),
     };
     if (Object.values(nodes).some((value) => !value)) throw new Error('missing_detail_nodes');
+    const sensitiveSection = nodes.sensitive.closest('section');
+    if (!sensitiveSection) throw new Error('missing_sensitive_section');
 
     const clearData = () => {
         nodes.badge.replaceChildren();
@@ -47,6 +50,7 @@ export function createStoreDetailView(root) {
         nodes.commercial.replaceChildren();
         nodes.actions.replaceChildren();
         nodes.sensitive.replaceChildren();
+        sensitiveSection.hidden = true;
     };
 
     return Object.freeze({
@@ -139,7 +143,16 @@ export function createStoreDetailView(root) {
                 });
                 nodes.actions.replaceChildren(node('p', 'Acciones lifecycle disponibles:'), controls);
             }
-            nodes.sensitive.replaceChildren(node('p', 'No hay controles sensibles disponibles en esta etapa.'));
+            if (canDeleteStore(item)) {
+                const description = node('p', 'Esta acción elimina el minimarket únicamente si no existen registros que lo referencien. La verificación se realiza de forma segura en el servidor.');
+                const button = node('button', 'Eliminar minimarket', 'button va-store-detail__delete-button');
+                button.type = 'button'; button.dataset.vaStoreOpenDelete = 'true';
+                nodes.sensitive.replaceChildren(description, button);
+                sensitiveSection.hidden = false;
+            } else {
+                nodes.sensitive.replaceChildren();
+                sensitiveSection.hidden = true;
+            }
             nodes.messages.replaceChildren();
             if (options.success) {
                 const notice = node('div', undefined, 'notice notice-success inline');
@@ -163,6 +176,8 @@ export function createStoreDetailView(root) {
                 nodes.commercial.querySelector('[data-va-store-edit]')?.focus({ preventScroll: true });
             } else if (options.focusLifecycle) {
                 nodes.actions.querySelector(`[data-va-store-lifecycle-action="${options.focusLifecycle}"]`)?.focus({ preventScroll: true });
+            } else if (options.focusDelete) {
+                nodes.sensitive.querySelector('[data-va-store-open-delete]')?.focus({ preventScroll: true });
             }
             root.dataset.vaStoreDetailState = 'loaded';
             root.setAttribute('aria-busy', 'false');
@@ -170,6 +185,7 @@ export function createStoreDetailView(root) {
         confirmLifecycle(action) {
             const edit = nodes.commercial.querySelector('[data-va-store-edit]');
             if (edit) edit.disabled = true;
+            nodes.sensitive.querySelectorAll('button').forEach((button) => { button.disabled = true; });
             const definition = lifecycleActions[action];
             const panel = node('section', undefined, 'va-store-detail__confirmation');
             panel.setAttribute('role', 'region');
@@ -201,8 +217,61 @@ export function createStoreDetailView(root) {
             const progress = nodes.actions.querySelector('[data-va-store-transition-progress]');
             if (progress) progress.textContent = active ? 'Procesando acción lifecycle…' : '';
         },
+        confirmDelete(item) {
+            nodes.actions.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+            const edit = nodes.commercial.querySelector('[data-va-store-edit]');
+            if (edit) edit.disabled = true;
+            const panel = node('section', undefined, 'va-store-detail__delete-confirmation');
+            panel.setAttribute('role', 'region'); panel.setAttribute('aria-busy', 'false');
+            const heading = node('h3', 'Confirmar eliminación del minimarket');
+            heading.id = 'va-store-detail-delete-heading'; panel.setAttribute('aria-labelledby', heading.id);
+            const warning = node('p', 'La eliminación sólo se completará si el minimarket no posee referencias. Esta acción no se puede deshacer desde esta pantalla.');
+            const instruction = node('p');
+            instruction.append('Escribe exactamente ', node('strong', item.business_name), ' para confirmar.');
+            const id = 'va-store-detail-delete-name';
+            const errorId = `${id}-error`; const helpId = `${id}-help`;
+            const label = node('label', 'Nombre comercial del minimarket'); label.htmlFor = id;
+            const input = node('input'); input.type = 'text'; input.id = id; input.autocomplete = 'off';
+            input.dataset.vaStoreDeleteName = 'true'; input.setAttribute('aria-describedby', `${helpId} ${errorId}`);
+            const help = node('p', `Debes escribir: ${item.business_name}`, 'description'); help.id = helpId;
+            const error = node('p', '', 'va-store-detail__delete-error'); error.id = errorId; error.dataset.vaStoreDeleteError = 'true';
+            const progress = node('p', '', 'va-store-detail__delete-progress'); progress.dataset.vaStoreDeleteProgress = 'true'; progress.setAttribute('role', 'status');
+            const controls = node('div', undefined, 'va-store-detail__delete-actions');
+            const confirm = node('button', 'Eliminar minimarket', 'button va-store-detail__delete-button');
+            confirm.type = 'button'; confirm.disabled = true; confirm.dataset.vaStoreConfirmDelete = 'true';
+            const cancel = node('button', 'Cancelar', 'button'); cancel.type = 'button'; cancel.dataset.vaStoreCancelDelete = 'true';
+            controls.append(confirm, cancel);
+            panel.append(heading, warning, instruction, label, input, help, error, progress, controls);
+            nodes.sensitive.replaceChildren(panel); sensitiveSection.hidden = false;
+            root.dataset.vaStoreDetailState = 'confirming_delete';
+            input.focus({ preventScroll: true });
+        },
+        updateDeleteConfirmation(value, businessName, showError = false) {
+            const valid = matchesStoreName(value, businessName);
+            const input = nodes.sensitive.querySelector('[data-va-store-delete-name]');
+            const confirm = nodes.sensitive.querySelector('[data-va-store-confirm-delete]');
+            const error = nodes.sensitive.querySelector('[data-va-store-delete-error]');
+            if (input) input.setAttribute('aria-invalid', showError && !valid ? 'true' : 'false');
+            if (confirm) confirm.disabled = !valid;
+            if (error) error.textContent = showError && !valid ? 'El nombre no coincide exactamente con el minimarket.' : '';
+            if (showError && !valid) input?.focus({ preventScroll: true });
+            return valid;
+        },
+        deleting(active) {
+            root.dataset.vaStoreDetailState = active ? 'deleting' : 'confirming_delete';
+            root.setAttribute('aria-busy', active ? 'true' : 'false');
+            const panel = nodes.sensitive.querySelector('.va-store-detail__delete-confirmation');
+            panel?.setAttribute('aria-busy', active ? 'true' : 'false');
+            panel?.querySelectorAll('input, button').forEach((control) => { control.disabled = active; });
+            const progress = nodes.sensitive.querySelector('[data-va-store-delete-progress]');
+            if (progress) progress.textContent = active ? 'Eliminando minimarket…' : '';
+        },
+        deleteValue() {
+            return nodes.sensitive.querySelector('[data-va-store-delete-name]')?.value ?? '';
+        },
         edit(snapshot) {
             nodes.actions.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+            nodes.sensitive.querySelectorAll('button').forEach((button) => { button.disabled = true; });
             const form = node('form', undefined, 'va-store-detail__form');
             form.dataset.vaStoreEditForm = 'true';
             form.noValidate = true;

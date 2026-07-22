@@ -183,6 +183,53 @@
   font-weight: 600;
 }
 
+.va-store-detail__delete-button {
+  background: #b32d2e;
+  border-color: #8a2424;
+  color: #fff;
+}
+
+.va-store-detail__delete-button:disabled {
+  opacity: 0.65;
+}
+
+.va-store-detail__delete-confirmation {
+  border-left: 4px solid #b32d2e;
+  padding: 4px 0 4px 16px;
+}
+
+.va-store-detail__delete-confirmation label {
+  display: block;
+  font-weight: 600;
+  margin: 12px 0 6px;
+}
+
+.va-store-detail__delete-confirmation input {
+  max-width: 100%;
+  width: 420px;
+}
+
+.va-store-detail__delete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.va-store-detail__delete-error {
+  color: #b32d2e;
+  margin: 6px 0;
+}
+
+.va-store-detail__delete-error:empty,
+.va-store-detail__delete-progress:empty {
+  display: none;
+}
+
+.va-store-detail__delete-progress {
+  font-weight: 600;
+}
+
 @media (max-width: 782px) {
   .va-store-detail__header {
     flex-direction: column;
@@ -216,5 +263,16 @@
     min-height: 40px;
     white-space: normal;
     width: 100%;
+  }
+
+  .va-store-detail__delete-confirmation input,
+  .va-store-detail__delete-actions .button {
+    min-height: 40px;
+    width: 100%;
+  }
+
+  .va-store-detail__delete-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

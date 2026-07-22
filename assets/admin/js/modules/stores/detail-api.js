@@ -8,7 +8,7 @@ export class StoreDetailApiError extends Error {
 }
 
 export function createStoreDetailApi(config) {
-    const request = async (url, options, fallbackCode) => {
+    const request = async (url, options, fallbackCode, expectsNoContent = false) => {
         let response;
         try {
             response = await fetch(url, options);
@@ -25,6 +25,10 @@ export function createStoreDetailApi(config) {
             const failure = new StoreDetailApiError(response.status, fallbackCode);
             failure.data = data;
             throw failure;
+        }
+        if (expectsNoContent) {
+            if (response.status !== 204) throw new StoreDetailApiError(response.status, 'invalid_delete_response');
+            return Object.freeze({ deleted: true });
         }
         const contentType = response.headers?.get?.('content-type');
         if (typeof contentType !== 'string' || !contentType.toLowerCase().includes('application/json')) {
@@ -73,6 +77,17 @@ export function createStoreDetailApi(config) {
                 body: JSON.stringify({ action }),
                 signal,
             }, 'store_transition_failed');
+        },
+        async deleteStore(signal) {
+            return request(config.detailUrl, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-WP-Nonce': config.nonce,
+                },
+                signal,
+            }, 'store_delete_failed', true);
         },
     });
 }

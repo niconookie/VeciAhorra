@@ -19,7 +19,7 @@ detailReadAssert(substr_count($api, 'fetch(') === 1, 'La lectura debe tener un √
 foreach (["method: 'GET'", "credentials: 'same-origin'", "Accept: 'application/json'", "'X-WP-Nonce': config.nonce", 'config.detailUrl', 'signal'] as $fragment) {
     detailReadAssert(str_contains($api, $fragment), 'Cliente GET sin ' . $fragment . '.');
 }
-foreach (['PUT', 'PATCH', 'DELETE', 'setInterval', 'setTimeout', 'localStorage', 'sessionStorage', 'console.log'] as $forbidden) {
+foreach (['PUT', 'PATCH', 'setInterval', 'setTimeout', 'localStorage', 'sessionStorage', 'console.log'] as $forbidden) {
     detailReadAssert(! str_contains($app . $api . $contract . $view, $forbidden), 'Lectura contiene patr√≥n prohibido: ' . $forbidden);
 }
 foreach (['AbortController', 'readSequence', 'requestId !== readSequence', "addEventListener('pagehide'", 'readController?.abort()', 'rootNode.isConnected', "error?.name === 'AbortError'", 'vaStoreDetailInitialized', 'createStoreDetailCoordinator'] as $fragment) {

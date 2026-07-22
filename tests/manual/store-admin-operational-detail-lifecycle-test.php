@@ -36,9 +36,10 @@ detailLifecycleAssert(str_contains($app, 'La acción fue procesada, pero no fue 
 detailLifecycleAssert(str_contains($app, 'isUncertainTransition') && str_contains($app, 'No fue posible confirmar el resultado'), 'Respuesta 2xx inválida o red incierta reactivan controles obsoletos.');
 detailLifecycleAssert(str_contains($app, 'El estado cambió y no fue posible recargar'), 'Conflicto con GET fallido no queda en estado seguro.');
 detailLifecycleAssert(str_contains($app, 'pendingAction = null') && str_contains($app, 'focusLifecycle'), 'Cancelación no restaura estado/foco.');
-foreach (['innerHTML', 'insertAdjacentHTML', 'window.confirm', 'localStorage', 'sessionStorage', 'indexedDB', 'console.', "method: 'DELETE'"] as $forbidden) {
+foreach (['innerHTML', 'insertAdjacentHTML', 'window.confirm', 'localStorage', 'sessionStorage', 'indexedDB', 'console.'] as $forbidden) {
     detailLifecycleAssert(! str_contains($app . $api . $module . $view, $forbidden), "Patrón prohibido: {$forbidden}.");
 }
+detailLifecycleAssert(! str_contains($module, "method: 'DELETE'"), 'El módulo lifecycle incorporó DELETE.');
 detailLifecycleAssert(str_contains($css, '.va-store-detail__confirmation') && str_contains($css, '.va-store-detail__lifecycle-actions') && str_contains($css, '@media (max-width: 782px)'), 'CSS lifecycle no cubre confirmación/responsive.');
 detailLifecycleAssert(! str_contains($css, '!important'), 'CSS lifecycle usa !important.');
 

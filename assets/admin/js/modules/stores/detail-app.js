@@ -3,6 +3,7 @@ import { validateDetailPayload } from './detail-contract.js';
 import { createStoreDetailView, detailErrorMessage } from './detail-view.js';
 import { captureEditSnapshot, readEditPayload, validateEditPayload, editableFields } from './detail-edit.js';
 import { isLifecycleAction, lifecycleActions, transitionPayload } from './detail-lifecycle.js';
+import { canDeleteStore, matchesStoreName } from './detail-delete.js';
 
 const root = document.querySelector('[data-va-store-detail]');
 
@@ -38,6 +39,7 @@ function initialize(rootNode) {
         window.addEventListener('pagehide', coordinator.destroy, { once: true });
         rootNode.addEventListener('click', coordinator.click);
         rootNode.addEventListener('submit', coordinator.submit);
+        rootNode.addEventListener('input', coordinator.input);
         coordinator.load();
     } catch (error) {
         if (view) {
@@ -49,7 +51,7 @@ function initialize(rootNode) {
     }
 }
 
-export function createStoreDetailCoordinator({ rootNode, config, api, view }) {
+export function createStoreDetailCoordinator({ rootNode, config, api, view, navigate = (url) => window.location.assign(url) }) {
     let readSequence = 0;
     let saveSequence = 0;
     let active = true;
@@ -61,12 +63,16 @@ export function createStoreDetailCoordinator({ rootNode, config, api, view }) {
     let transitionController = null;
     let transitionSequence = 0;
     let pendingAction = null;
+    let deleteSequence = 0;
+    let deleteController = null;
 
     const load = () => {
-        if (!active) return;
+        if (!active || !['loading', 'reading', 'error'].includes(mode)) return;
         transitionSequence++;
         transitionController?.abort();
         pendingAction = null;
+        deleteSequence++;
+        deleteController?.abort();
         readController?.abort();
         readController = new AbortController();
         const requestId = ++readSequence;
@@ -249,11 +255,92 @@ export function createStoreDetailCoordinator({ rootNode, config, api, view }) {
         && operationId === transitionSequence && dto === baseDto
         && pendingAction === action && rootNode.isConnected;
 
+    const openDelete = () => {
+        if (mode !== 'reading' || !dto || !canDeleteStore(dto)) return;
+        mode = 'confirming_delete';
+        view.confirmDelete(dto);
+    };
+
+    const cancelDelete = () => {
+        if (mode !== 'confirming_delete' || !dto) return;
+        mode = 'reading';
+        view.render(dto, { focusDelete: true });
+    };
+
+    const input = (event) => {
+        if (mode !== 'confirming_delete' || !event.target?.matches?.('[data-va-store-delete-name]') || !dto) return;
+        view.updateDeleteConfirmation(event.target.value, dto.business_name);
+    };
+
+    const confirmDelete = () => {
+        if (mode !== 'confirming_delete' || !dto || !canDeleteStore(dto)) return;
+        const value = view.deleteValue();
+        if (!matchesStoreName(value, dto.business_name)) {
+            view.updateDeleteConfirmation(value, dto.business_name, true);
+            return;
+        }
+        const baseDto = dto;
+        const operationId = ++deleteSequence;
+        mode = 'deleting';
+        view.deleting(true);
+        deleteController?.abort();
+        deleteController = new AbortController();
+        api.deleteStore(deleteController.signal)
+            .then((result) => {
+                if (!isCurrentDelete(operationId, baseDto)) return;
+                if (result?.deleted !== true) throw new TypeError('invalid_delete_response');
+                mode = 'navigating';
+                active = false;
+                deleteSequence++;
+                navigate(config.returnUrl);
+            })
+            .catch((error) => {
+                if (!isCurrentDelete(operationId, baseDto) || error?.name === 'AbortError') return;
+                const code = error?.data?.error?.code;
+                if (error?.status === 409 && code === 'store_referenced') {
+                    mode = 'reading';
+                    view.render(dto, { error: 'No es posible eliminar el minimarket porque existen registros que lo referencian.' });
+                    return;
+                }
+                if ((error?.status === 409 && ['concurrent_modification', 'action_not_allowed'].includes(code)) || error?.status === 422) {
+                    authoritativeDeleteGet(operationId, baseDto)
+                        .then((refresh) => {
+                            if (!isCurrentDelete(operationId, baseDto)) return;
+                            dto = validateDetailPayload(refresh, config.storeId);
+                            mode = 'reading';
+                            view.render(dto, { warning: 'El minimarket cambió mientras intentabas eliminarlo. Se recargó la información vigente.' });
+                        })
+                        .catch((refreshError) => {
+                            if (!isCurrentDelete(operationId, baseDto) || refreshError?.name === 'AbortError') return;
+                            mode = 'uncertain';
+                            view.error('El minimarket cambió y no fue posible recargar su estado. Vuelve al listado antes de continuar.');
+                        });
+                    return;
+                }
+                mode = error?.status === 404 ? 'error' : 'uncertain';
+                view.error(error?.status === 404
+                    ? 'El minimarket ya no está disponible. Vuelve al listado para continuar.'
+                    : 'No fue posible confirmar el resultado de la eliminación. Recarga el listado antes de realizar otra acción.');
+            });
+    };
+
+    const authoritativeDeleteGet = (operationId, baseDto) => {
+        if (!isCurrentDelete(operationId, baseDto)) return Promise.resolve(null);
+        readController?.abort(); readController = new AbortController(); ++readSequence;
+        return api.get(readController.signal);
+    };
+
+    const isCurrentDelete = (operationId, baseDto) => active
+        && operationId === deleteSequence && dto === baseDto && rootNode.isConnected;
+
     const click = (event) => {
         if (event.target?.closest?.('[data-va-store-edit]')) enterEdit();
         else if (event.target?.closest?.('[data-va-store-cancel-edit]')) cancel();
         else if (event.target?.closest?.('[data-va-store-confirm-lifecycle]')) confirmLifecycle();
         else if (event.target?.closest?.('[data-va-store-cancel-lifecycle]')) cancelLifecycle();
+        else if (event.target?.closest?.('[data-va-store-open-delete]')) openDelete();
+        else if (event.target?.closest?.('[data-va-store-cancel-delete]')) cancelDelete();
+        else if (event.target?.closest?.('[data-va-store-confirm-delete]')) confirmDelete();
         else {
             const action = event.target?.closest?.('[data-va-store-lifecycle-action]')?.dataset.vaStoreLifecycleAction;
             if (action) openLifecycle(action);
@@ -267,14 +354,17 @@ export function createStoreDetailCoordinator({ rootNode, config, api, view }) {
         readSequence++;
         saveSequence++;
         transitionSequence++;
+        deleteSequence++;
         readController?.abort();
         saveController?.abort();
         transitionController?.abort();
+        deleteController?.abort();
         rootNode.removeEventListener?.('click', click);
         rootNode.removeEventListener?.('submit', submit);
+        rootNode.removeEventListener?.('input', input);
     };
 
-    return Object.freeze({ load, destroy, click, submit, enterEdit, cancel, openLifecycle, cancelLifecycle, confirmLifecycle });
+    return Object.freeze({ load, destroy, click, input, submit, enterEdit, cancel, openLifecycle, cancelLifecycle, confirmLifecycle, openDelete, cancelDelete, confirmDelete });
 }
 
 function transitionErrorMessage(error) {
