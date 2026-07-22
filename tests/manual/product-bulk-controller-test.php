@@ -231,6 +231,10 @@ try {
             'status' => 'inactive',
         ]);
 
+        if (($result['success'] ?? false) !== true) {
+            throw new RuntimeException((string) wp_json_encode($result));
+        }
+
         assertSameValue(2, $result['data']['requested'] ?? null);
         assertSameValue(2, $result['data']['affected'] ?? null);
     });

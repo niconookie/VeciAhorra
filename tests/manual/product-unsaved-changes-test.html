@@ -52,7 +52,13 @@ async function run() {
                 };
             }
             names.set(id, payload.name ?? names.get(id));
-            return { data: { id, updated: true } };
+            return {
+                data: {
+                    id,
+                    updated: true,
+                    updated_at: '2026-07-06 12:00:01',
+                },
+            };
         },
     }, {});
 

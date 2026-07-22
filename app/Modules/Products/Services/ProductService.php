@@ -7,6 +7,8 @@ namespace VeciAhorra\Modules\Products\Services;
 use InvalidArgumentException;
 use VeciAhorra\Database\Collection;
 use VeciAhorra\Exceptions\RecordNotFoundException;
+use VeciAhorra\Modules\Products\Domain\ProductLifecycleContract;
+use VeciAhorra\Modules\Products\Exceptions\ProductConcurrencyException;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
 
@@ -23,12 +25,15 @@ final class ProductService
 
     private CatalogValidator $catalogValidator;
 
+    private ProductLifecycleContract $lifecycle;
+
     public function __construct(
         ?CatalogValidator $catalogValidator = null
     ) {
         $this->repository = new ProductRepository();
         $this->catalogValidator = $catalogValidator
             ?? new CatalogValidator();
+        $this->lifecycle = new ProductLifecycleContract();
     }
 
     /**
@@ -65,9 +70,14 @@ final class ProductService
     /**
      * Actualiza un producto.
      */
-    public function update(int $id, array $data): void
+    public function update(
+        int $id,
+        array $data,
+        string $expectedUpdatedAt
+    ): string
     {
         $product = $this->requireProduct($id);
+        $this->assertCurrentVersion($product, $expectedUpdatedAt);
         $payload = $this->buildUpdatePayload($data);
 
         $this->catalogValidator->validate($payload);
@@ -96,12 +106,17 @@ final class ProductService
             );
         }
 
-        $payload['updated_at'] = current_time('mysql');
-
-        $this->repository->update(
+        $updatedAt = $this->nextUpdatedAt($expectedUpdatedAt);
+        $affected = $this->repository->updateCommercial(
             $id,
-            $payload
+            $payload,
+            $expectedUpdatedAt,
+            $updatedAt
         );
+
+        $this->assertCasSucceeded($id, $affected);
+
+        return $updatedAt;
     }
 
     /**
@@ -167,21 +182,33 @@ final class ProductService
      */
     public function updateStatus(
         int $id,
-        string $status
-    ): void {
+        string $status,
+        string $expectedUpdatedAt
+    ): string {
         $this->assertAllowedStatus($status);
 
         $product = $this->requireProduct($id);
+        $this->assertCurrentVersion($product, $expectedUpdatedAt);
+        $this->lifecycle->assertTransition(
+            $product->status,
+            $status
+        );
 
         if ($product->status === $status) {
-            return;
+            return $expectedUpdatedAt;
         }
 
-        $this->repository->updateStatus(
+        $updatedAt = $this->nextUpdatedAt($expectedUpdatedAt);
+        $affected = $this->repository->updateStatus(
             $id,
             $status,
-            current_time('mysql')
+            $expectedUpdatedAt,
+            $updatedAt
         );
+
+        $this->assertCasSucceeded($id, $affected);
+
+        return $updatedAt;
     }
 
     /**
@@ -193,13 +220,35 @@ final class ProductService
     ): int {
         $this->assertBulkIds($ids);
         $this->assertBulkStatus($status);
-        $updatedAt = current_time('mysql');
+        $products = [];
 
-        return $this->repository->bulkUpdateStatus(
-            $ids,
-            $status,
-            $updatedAt
-        );
+        foreach ($ids as $id) {
+            $product = $this->requireProduct($id);
+            $this->lifecycle->assertTransition(
+                $product->status,
+                $status
+            );
+            $products[] = $product;
+        }
+
+        $updates = [];
+
+        foreach ($products as $product) {
+            if ($product->status === $status) {
+                continue;
+            }
+
+            $updates[] = [
+                'id' => (int) $product->id,
+                'status' => $status,
+                'expected_updated_at' => $product->updated_at,
+                'updated_at' => $this->nextUpdatedAt(
+                    $product->updated_at
+                ),
+            ];
+        }
+
+        return $this->repository->updateStatusesAtomically($updates);
     }
 
     /**
@@ -217,12 +266,10 @@ final class ProductService
         $this->catalogValidator->validate([
             'category_id' => $categoryId,
         ]);
-        $updatedAt = current_time('mysql');
-
-        return $this->repository->bulkUpdateCategory(
+        return $this->bulkUpdateCommercial(
             $ids,
-            $categoryId,
-            $updatedAt
+            'category_id',
+            $categoryId
         );
     }
 
@@ -241,12 +288,10 @@ final class ProductService
         $this->catalogValidator->validate([
             'brand_id' => $brandId,
         ]);
-        $updatedAt = current_time('mysql');
-
-        return $this->repository->bulkUpdateBrand(
+        return $this->bulkUpdateCommercial(
             $ids,
-            $brandId,
-            $updatedAt
+            'brand_id',
+            $brandId
         );
     }
 
@@ -265,12 +310,10 @@ final class ProductService
         $this->catalogValidator->validate([
             'unit_id' => $unitId,
         ]);
-        $updatedAt = current_time('mysql');
-
-        return $this->repository->bulkUpdateUnit(
+        return $this->bulkUpdateCommercial(
             $ids,
-            $unitId,
-            $updatedAt
+            'unit_id',
+            $unitId
         );
     }
 
@@ -279,9 +322,11 @@ final class ProductService
      */
     public function deactivate(int $id): void
     {
+        $product = $this->requireProduct($id);
         $this->updateStatus(
             $id,
-            Product::STATUS_INACTIVE
+            Product::STATUS_INACTIVE,
+            $product->updated_at
         );
     }
 
@@ -554,5 +599,60 @@ final class ProductService
         }
 
         return $payload;
+    }
+
+    private function assertCurrentVersion(
+        Product $product,
+        string $expectedUpdatedAt
+    ): void {
+        if ($product->updated_at !== $expectedUpdatedAt) {
+            throw new ProductConcurrencyException(
+                'El producto fue modificado por otra operacion.'
+            );
+        }
+    }
+
+    private function assertCasSucceeded(int $id, int $affected): void
+    {
+        if ($affected === 1) {
+            return;
+        }
+
+        if ($this->repository->findById($id) === null) {
+            throw new RecordNotFoundException(
+                'El producto solicitado no existe.'
+            );
+        }
+
+        throw new ProductConcurrencyException(
+            'El producto fue modificado por otra operacion.'
+        );
+    }
+
+    private function nextUpdatedAt(string $expectedUpdatedAt): string
+    {
+        return $this->repository->nextUpdatedAt($expectedUpdatedAt);
+    }
+
+    private function bulkUpdateCommercial(
+        array $ids,
+        string $field,
+        ?int $value
+    ): int {
+        $updates = [];
+
+        foreach ($ids as $id) {
+            $product = $this->requireProduct($id);
+            $updates[] = [
+                'id' => (int) $product->id,
+                'data' => [$field => $value],
+                'expected_updated_at' => $product->updated_at,
+                'updated_at' => $this->nextUpdatedAt(
+                    $product->updated_at
+                ),
+            ];
+        }
+
+        return $this->repository->updateCommercialsAtomically($updates);
     }
 }

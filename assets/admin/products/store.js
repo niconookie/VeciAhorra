@@ -403,7 +403,8 @@ export function createProductsStore(api, catalogApi) {
         try {
             const response = await api.updateProductStatus(
                 state.form.productId,
-                status
+                status,
+                state.form.productUpdatedAt
             );
 
             listNeedsReload = true;
@@ -412,6 +413,8 @@ export function createProductsStore(api, catalogApi) {
                     ...state.form,
                     status: FORM_STATUS_SUCCESS,
                     productStatus: response.data.status,
+                    productUpdatedAt: response.data.updated_at
+                        || state.form.productUpdatedAt,
                     error: null,
                     message: 'Estado del producto actualizado.',
                 },
@@ -570,7 +573,11 @@ export function createProductsStore(api, catalogApi) {
         setFormSaving();
 
         try {
-            await api.updateProduct(productId, changes);
+            const response = await api.updateProduct(
+                productId,
+                changes,
+                state.form.productUpdatedAt
+            );
             listNeedsReload = true;
 
             try {
@@ -591,6 +598,7 @@ export function createProductsStore(api, catalogApi) {
                         status: FORM_STATUS_ERROR,
                         values,
                         initialValues: { ...values },
+                        productUpdatedAt: response.data.updated_at,
                         error: normalizeError(error),
                         message: 'Los cambios fueron guardados, pero no fue posible recargar el producto.',
                     },
@@ -622,6 +630,7 @@ export function createProductsStore(api, catalogApi) {
                 values,
                 initialValues: { ...values },
                 productStatus: product.status,
+                productUpdatedAt: product.updated_at,
                 message,
             },
         });
@@ -658,13 +667,16 @@ export function createProductsStore(api, catalogApi) {
         const fieldErrors = fieldErrorsFromSaveError(normalizedError);
         const isValidationError = Object.keys(fieldErrors).length > 0
             || normalizedError.status === 422;
+        const isConcurrencyConflict =
+            normalizedError.status === 409
+            && normalizedError.code === 'product_concurrency_conflict';
 
         setState({
             form: {
                 ...state.form,
                 status: FORM_STATUS_ERROR,
                 fieldErrors,
-                error: isValidationError
+                error: isValidationError || isConcurrencyConflict
                     ? normalizedError
                     : {
                         ...normalizedError,
@@ -727,6 +739,7 @@ function createInitialFormState() {
         values: createEmptyFormValues(),
         initialValues: null,
         productStatus: 'draft',
+        productUpdatedAt: null,
         fieldErrors: {},
         error: null,
         message: null,

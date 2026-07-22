@@ -36,8 +36,12 @@ const product = (id, values = {}) => ({
 const createStore = (overrides = {}) => createProductsStore({
     createProduct: async () => ({ data: { id: 1 } }),
     getProduct: async (id) => ({ data: product(id) }),
-    updateProduct: async (id) => ({ data: { id, updated: true } }),
-    updateProductStatus: async (id, status) => ({ data: { id, status } }),
+    updateProduct: async (id) => ({
+        data: { id, updated: true, updated_at: '2026-07-06 12:00:01' },
+    }),
+    updateProductStatus: async (id, status) => ({
+        data: { id, status, updated_at: '2026-07-06 12:00:01' },
+    }),
     ...overrides,
 }, {});
 

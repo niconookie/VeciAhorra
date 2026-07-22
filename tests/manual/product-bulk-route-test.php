@@ -343,18 +343,33 @@ try {
         );
         $body = $response->get_data();
 
+        if ($response->get_status() !== 200) {
+            throw new RuntimeException((string) wp_json_encode($body));
+        }
+
         assertSameValue(200, $response->get_status());
         assertSameValue(2, $body['data']['requested'] ?? null);
         assertSameValue(2, $body['data']['affected'] ?? null);
     });
 
     test('08. Status individual funciona con ID numerico', function () use (
-        $ids
+        $ids,
+        $table,
+        $wpdb
     ): void {
+        $expectedUpdatedAt = (string) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT updated_at FROM {$table} WHERE id = %d",
+                $ids[0]
+            )
+        );
         $response = restRequest(
             'PATCH',
             '/veciahorra/v1/products/' . $ids[0] . '/status',
-            ['status' => 'active']
+            [
+                'status' => 'active',
+                'expected_updated_at' => $expectedUpdatedAt,
+            ]
         );
         $body = $response->get_data();
 

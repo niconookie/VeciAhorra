@@ -221,7 +221,12 @@ try {
         422,
         publicCartRequest('PATCH', $itemsRoute . '/' . $itemA, $session, ['quantity' => 5])->get_status()
     );
-    $products->update($productA, ['status' => Product::STATUS_INACTIVE, 'updated_at' => $now]);
+    $products->updateStatus(
+        $productA,
+        Product::STATUS_INACTIVE,
+        $now,
+        $products->nextUpdatedAt($now)
+    );
     assertPublicCartSame(
         422,
         publicCartRequest('PATCH', $itemsRoute . '/' . $itemA, $session, ['quantity' => 2])->get_status()

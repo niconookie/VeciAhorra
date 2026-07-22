@@ -212,9 +212,11 @@ try {
         );
     }
 
-    $service->update($createdId, [
-        'name' => 'Producto actualizado sin relaciones',
-    ]);
+    $service->update(
+        $createdId,
+        ['name' => 'Producto actualizado sin relaciones'],
+        (string) $service->find($createdId)?->updated_at
+    );
     $partialRow = $wpdb->get_row(
         $wpdb->prepare(
             "SELECT * FROM {$productsTable} WHERE id = %d",
@@ -231,12 +233,16 @@ try {
         (int) $partialRow['image_id']
     );
 
-    $service->update($createdId, [
-        'category_id' => null,
-        'brand_id' => null,
-        'unit_id' => null,
-        'image_id' => null,
-    ]);
+    $service->update(
+        $createdId,
+        [
+            'category_id' => null,
+            'brand_id' => null,
+            'unit_id' => null,
+            'image_id' => null,
+        ],
+        (string) $service->find($createdId)?->updated_at
+    );
     $nullRow = $wpdb->get_row(
         $wpdb->prepare(
             "SELECT category_id, brand_id, unit_id, image_id
@@ -263,9 +269,11 @@ try {
         ARRAY_A
     );
     assertCatalogError(
-        fn () => $service->update($createdId, [
-            'category_id' => PHP_INT_MAX,
-        ]),
+        fn () => $service->update(
+            $createdId,
+            ['category_id' => PHP_INT_MAX],
+            (string) $service->find($createdId)?->updated_at
+        ),
         'invalid_category_id',
         'La categoría indicada no existe.'
     );
@@ -280,9 +288,11 @@ try {
         )
     );
 
-    $service->update($createdId, [
-        'image_id' => (int) $attachmentId,
-    ]);
+    $service->update(
+        $createdId,
+        ['image_id' => (int) $attachmentId],
+        (string) $service->find($createdId)?->updated_at
+    );
     assertSameCatalogValue(
         (int) $attachmentId,
         (int) $wpdb->get_var(

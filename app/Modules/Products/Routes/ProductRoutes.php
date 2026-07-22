@@ -498,7 +498,10 @@ final class ProductRoutes
     private function errorStatus(string $code): int
     {
         return match ($code) {
+            'product_concurrency_conflict' => 409,
             'validation_error' => 422,
+            'invalid_product_state',
+            'product_transition_not_allowed',
             'invalid_category_id',
             'invalid_brand_id',
             'invalid_unit_id',

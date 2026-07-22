@@ -10,6 +10,8 @@ use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Exceptions\CatalogUnavailableException;
 use VeciAhorra\Exceptions\CatalogValidationException;
+use VeciAhorra\Modules\Products\Exceptions\ProductConcurrencyException;
+use VeciAhorra\Modules\Products\Exceptions\ProductLifecycleException;
 use VeciAhorra\Modules\Products\Requests\ProductBulkRequest;
 use VeciAhorra\Modules\Products\Requests\ProductListRequest;
 use VeciAhorra\Modules\Products\Requests\ProductRequest;
@@ -103,14 +105,21 @@ final class ProductController
         try {
             $request = new ProductRequest($input);
             $data = $request->validateForUpdate();
+            $expectedUpdatedAt =
+                $request->validateExpectedUpdatedAt();
 
-            $this->service->update($id, $data);
+            $updatedAt = $this->service->update(
+                $id,
+                $data,
+                $expectedUpdatedAt
+            );
 
             return [
                 'success' => true,
                 'data' => [
                     'id' => $id,
                     'updated' => true,
+                    'updated_at' => $updatedAt,
                 ],
             ];
         } catch (Throwable $exception) {
@@ -125,10 +134,13 @@ final class ProductController
         try {
             $request = new ProductRequest($input);
             $data = $request->validateForStatusChange();
+            $expectedUpdatedAt =
+                $request->validateExpectedUpdatedAt();
 
-            $this->service->updateStatus(
+            $updatedAt = $this->service->updateStatus(
                 $id,
-                $data['status']
+                $data['status'],
+                $expectedUpdatedAt
             );
 
             return [
@@ -136,6 +148,7 @@ final class ProductController
                 'data' => [
                     'id' => $id,
                     'status' => $data['status'],
+                    'updated_at' => $updatedAt,
                 ],
             ];
         } catch (Throwable $exception) {
@@ -251,6 +264,26 @@ final class ProductController
     private function translateException(
         Throwable $exception
     ): array {
+        if ($exception instanceof ProductConcurrencyException) {
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => 'product_concurrency_conflict',
+                    'message' => $exception->getMessage(),
+                ],
+            ];
+        }
+
+        if ($exception instanceof ProductLifecycleException) {
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => $exception->errorCode(),
+                    'message' => $exception->getMessage(),
+                ],
+            ];
+        }
+
         if ($exception instanceof CatalogValidationException) {
             return [
                 'success' => false,

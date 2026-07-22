@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Products\Requests;
 
+use DateTimeImmutable;
 use InvalidArgumentException;
 use VeciAhorra\Modules\Products\Models\Product;
 
@@ -102,6 +103,17 @@ final class ProductRequest
     public function validateForUpdate(): array
     {
         $this->errors = [];
+        $this->rejectUnexpectedFields([
+            'woo_product_id',
+            'name',
+            'sku',
+            'description',
+            'category_id',
+            'brand_id',
+            'unit_id',
+            'image_id',
+            'expected_updated_at',
+        ]);
         $data = [];
 
         if ($this->has('name')) {
@@ -150,6 +162,10 @@ final class ProductRequest
     public function validateForStatusChange(): array
     {
         $this->errors = [];
+        $this->rejectUnexpectedFields([
+            'status',
+            'expected_updated_at',
+        ]);
         $value = $this->value('status');
 
         if (! is_string($value)) {
@@ -170,6 +186,39 @@ final class ProductRequest
         $this->throwIfInvalid();
 
         return ['status' => $status];
+    }
+
+    /**
+     * Valida la version durable requerida por las escrituras CAS.
+     */
+    public function validateExpectedUpdatedAt(): string
+    {
+        $this->errors = [];
+        $value = $this->value('expected_updated_at');
+
+        if (! is_string($value)) {
+            $this->errors[] =
+                'La version esperada del producto es obligatoria.';
+            $expectedUpdatedAt = '';
+        } else {
+            $expectedUpdatedAt = trim($value);
+            $date = DateTimeImmutable::createFromFormat(
+                '!Y-m-d H:i:s',
+                $expectedUpdatedAt
+            );
+
+            if (
+                $date === false
+                || $date->format('Y-m-d H:i:s') !== $expectedUpdatedAt
+            ) {
+                $this->errors[] =
+                    'La version esperada del producto no es valida.';
+            }
+        }
+
+        $this->throwIfInvalid();
+
+        return $expectedUpdatedAt;
     }
 
     /**
@@ -367,6 +416,19 @@ final class ProductRequest
         return function_exists('mb_strlen')
             ? mb_strlen($value)
             : strlen($value);
+    }
+
+    /** @param list<string> $allowedFields */
+    private function rejectUnexpectedFields(array $allowedFields): void
+    {
+        foreach (array_keys($this->input) as $field) {
+            if (! in_array($field, $allowedFields, true)) {
+                $this->errors[] = sprintf(
+                    'El campo %s no pertenece a esta operacion.',
+                    (string) $field
+                );
+            }
+        }
     }
 
     /**

@@ -129,10 +129,13 @@ export function createProductsApi({ restUrl, nonce }) {
         return response.payload;
     }
 
-    async function updateProduct(id, payload) {
+    async function updateProduct(id, payload, expectedUpdatedAt) {
         const response = await request(
             buildProductUrl(id),
-            jsonRequestOptions('PATCH', payload)
+            jsonRequestOptions('PATCH', {
+                ...payload,
+                expected_updated_at: expectedUpdatedAt,
+            })
         );
 
         assertResponse(response, isUpdateProductResponse);
@@ -140,10 +143,13 @@ export function createProductsApi({ restUrl, nonce }) {
         return response.payload;
     }
 
-    async function updateProductStatus(id, status) {
+    async function updateProductStatus(id, status, expectedUpdatedAt) {
         const response = await request(
             buildProductUrl(id, '/status'),
-            jsonRequestOptions('PATCH', { status })
+            jsonRequestOptions('PATCH', {
+                status,
+                expected_updated_at: expectedUpdatedAt,
+            })
         );
 
         assertResponse(response, isUpdateProductStatusResponse);
@@ -269,13 +275,15 @@ function isCreateProductResponse(payload) {
 function isUpdateProductResponse(payload) {
     return isSuccessfulDataResponse(payload)
         && isPositiveInteger(payload.data.id)
-        && payload.data.updated === true;
+        && payload.data.updated === true
+        && isNonEmptyString(payload.data.updated_at);
 }
 
 function isUpdateProductStatusResponse(payload) {
     return isSuccessfulDataResponse(payload)
         && isPositiveInteger(payload.data.id)
-        && ['active', 'inactive'].includes(payload.data.status);
+        && ['active', 'inactive'].includes(payload.data.status)
+        && isNonEmptyString(payload.data.updated_at);
 }
 
 function isSuccessfulDataResponse(payload) {

@@ -169,13 +169,22 @@ foreach ($productDefinitions as $definition) {
 
         foreach ($productData as $field => $value) {
             if ($product->{$field} !== $value) {
-                $products->update($productId, $productData);
+                $products->update(
+                    $productId,
+                    $productData,
+                    (string) $product->updated_at
+                );
                 break;
             }
         }
     }
 
-    $products->updateStatus($productId, 'active');
+    $currentProduct = $products->find($productId);
+    $products->updateStatus(
+        $productId,
+        'active',
+        (string) $currentProduct?->updated_at
+    );
     $inventoryRow = $inventoryRepository->findByProductAndMinimarket(
         $productId,
         $storeId

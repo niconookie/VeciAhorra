@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Products\Repositories;
 
+use BadMethodCallException;
 use InvalidArgumentException;
+use Throwable;
 use VeciAhorra\Database\BaseRepository;
 use VeciAhorra\Database\Collection;
 use VeciAhorra\Exceptions\PersistenceException;
+use VeciAhorra\Modules\Products\Domain\ProductLifecycleContract;
+use VeciAhorra\Modules\Products\Exceptions\ProductConcurrencyException;
 use VeciAhorra\Modules\Products\Models\Product;
 
 /**
@@ -16,7 +20,6 @@ use VeciAhorra\Modules\Products\Models\Product;
 final class ProductRepository extends BaseRepository
 {
     private const BULK_UPDATE_FIELDS = [
-        'status',
         'category_id',
         'brand_id',
         'unit_id',
@@ -33,6 +36,86 @@ final class ProductRepository extends BaseRepository
     protected function model(): string
     {
         return Product::class;
+    }
+
+    /**
+     * Impide el update generico: Products exige contratos CAS separados.
+     */
+    public function update(int $id, array $data): int
+    {
+        throw new BadMethodCallException(
+            'Use updateCommercial() o updateStatus() para Products.'
+        );
+    }
+
+    /**
+     * Ejecuta una unidad atomica y respeta transacciones externas.
+     */
+    public function transaction(callable $callback): mixed
+    {
+        $nested = (int) $this->db()->get_var(
+            'SELECT @@in_transaction'
+        ) === 1;
+        $savepoint = 'va_products_' . substr(hash(
+            'sha256',
+            (string) microtime(true) . random_int(1, PHP_INT_MAX)
+        ), 0, 12);
+
+        if ($nested) {
+            if ($this->db()->query("SAVEPOINT {$savepoint}") === false) {
+                throw new PersistenceException(
+                    'No fue posible crear el savepoint de Products.'
+                );
+            }
+        } elseif ($this->db()->query('START TRANSACTION') === false) {
+            throw new PersistenceException(
+                'No fue posible iniciar la transaccion de Products.'
+            );
+        }
+
+        try {
+            $result = $callback();
+            $statement = $nested
+                ? "RELEASE SAVEPOINT {$savepoint}"
+                : 'COMMIT';
+
+            if ($this->db()->query($statement) === false) {
+                throw new PersistenceException(
+                    'No fue posible confirmar la transaccion de Products.'
+                );
+            }
+
+            return $result;
+        } catch (Throwable $exception) {
+            $this->db()->query(
+                $nested
+                    ? "ROLLBACK TO SAVEPOINT {$savepoint}"
+                    : 'ROLLBACK'
+            );
+            throw $exception;
+        }
+    }
+
+    /**
+     * Obtiene una version durable posterior sin adelantar el reloj.
+     */
+    public function nextUpdatedAt(string $expectedUpdatedAt): string
+    {
+        $deadline = microtime(true) + 3.0;
+
+        do {
+            $now = current_time('mysql');
+
+            if ($now !== '' && strcmp($now, $expectedUpdatedAt) > 0) {
+                return $now;
+            }
+
+            usleep(25000);
+        } while (microtime(true) < $deadline);
+
+        throw new PersistenceException(
+            'No fue posible obtener una version durable posterior.'
+        );
     }
 
     /**
@@ -255,12 +338,13 @@ final class ProductRepository extends BaseRepository
     public function updateStatus(
         int $id,
         string $status,
+        string $expectedUpdatedAt,
         string $updatedAt
     ): int {
         $sql = sprintf(
             'UPDATE %s
              SET status = %%s, updated_at = %%s
-             WHERE id = %%d',
+             WHERE id = %%d AND updated_at = %%s',
             $this->table($this->table)
         );
 
@@ -269,7 +353,8 @@ final class ProductRepository extends BaseRepository
                 $sql,
                 $status,
                 $updatedAt,
-                $id
+                $id,
+                $expectedUpdatedAt
             )
         );
 
@@ -283,6 +368,114 @@ final class ProductRepository extends BaseRepository
     }
 
     /**
+     * Actualiza datos comerciales si la version durable coincide.
+     */
+    public function updateCommercial(
+        int $id,
+        array $data,
+        string $expectedUpdatedAt,
+        string $updatedAt
+    ): int {
+        $allowedFields = [
+            'woo_product_id',
+            'name',
+            'slug',
+            'sku',
+            'description',
+            'category_id',
+            'brand_id',
+            'unit_id',
+            'image_id',
+        ];
+        $payload = array_intersect_key(
+            $data,
+            array_flip($allowedFields)
+        );
+        $payload['updated_at'] = $updatedAt;
+
+        $result = $this->db()->update(
+            $this->table($this->table),
+            $payload,
+            [
+                'id' => $id,
+                'updated_at' => $expectedUpdatedAt,
+            ]
+        );
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible actualizar el producto.'
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Aplica un lote lifecycle como una unica unidad atomica.
+     *
+     * @param list<array{
+     *     id: int,
+     *     status: string,
+     *     expected_updated_at: string,
+     *     updated_at: string
+     * }> $updates
+     */
+    public function updateStatusesAtomically(array $updates): int
+    {
+        return $this->transaction(function () use ($updates): int {
+            foreach ($updates as $update) {
+                $affected = $this->updateStatus(
+                    $update['id'],
+                    $update['status'],
+                    $update['expected_updated_at'],
+                    $update['updated_at']
+                );
+
+                if ($affected !== 1) {
+                    throw new ProductConcurrencyException(
+                        'El lote encontro una version concurrente.'
+                    );
+                }
+            }
+
+            return count($updates);
+        });
+    }
+
+    /**
+     * Aplica un lote comercial como una unica unidad atomica.
+     *
+     * @param list<array{
+     *     id: int,
+     *     data: array<string, mixed>,
+     *     expected_updated_at: string,
+     *     updated_at: string
+     * }> $updates
+     */
+    public function updateCommercialsAtomically(array $updates): int
+    {
+        return $this->transaction(function () use ($updates): int {
+            foreach ($updates as $update) {
+                $affected = $this->updateCommercial(
+                    $update['id'],
+                    $update['data'],
+                    $update['expected_updated_at'],
+                    $update['updated_at']
+                );
+
+                if ($affected !== 1) {
+                    throw new ProductConcurrencyException(
+                        'El lote encontro una version concurrente.'
+                    );
+                }
+            }
+
+            return count($updates);
+        });
+    }
+
+    /**
      * Actualiza masivamente el estado de productos.
      */
     public function bulkUpdateStatus(
@@ -290,12 +483,37 @@ final class ProductRepository extends BaseRepository
         string $status,
         string $updatedAt
     ): int {
-        return $this->bulkUpdateField(
-            $ids,
-            'status',
-            $status,
-            $updatedAt
-        );
+        $lifecycle = new ProductLifecycleContract();
+        $updates = [];
+
+        foreach ($ids as $id) {
+            $product = $this->findById((int) $id);
+
+            if ($product === null) {
+                continue;
+            }
+
+            $lifecycle->assertTransition($product->status, $status);
+
+            if ($product->status === $status) {
+                continue;
+            }
+
+            if (strcmp($updatedAt, $product->updated_at) <= 0) {
+                throw new InvalidArgumentException(
+                    'La version masiva debe ser posterior.'
+                );
+            }
+
+            $updates[] = [
+                'id' => (int) $product->id,
+                'status' => $status,
+                'expected_updated_at' => $product->updated_at,
+                'updated_at' => $updatedAt,
+            ];
+        }
+
+        return $this->updateStatusesAtomically($updates);
     }
 
     /**
@@ -374,9 +592,7 @@ final class ProductRepository extends BaseRepository
         if ($value === null) {
             $assignment = sprintf('%s = NULL', $field);
         } else {
-            $valuePlaceholder = $field === 'status'
-                ? '%s'
-                : '%d';
+            $valuePlaceholder = '%d';
             $assignment = sprintf(
                 '%s = %s',
                 $field,
