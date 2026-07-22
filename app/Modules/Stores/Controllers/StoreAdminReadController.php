@@ -208,7 +208,7 @@ final class StoreAdminReadController
         $status = (string) ($store['status'] ?? '');
         $onboarding = (string) ($store['onboarding_status'] ?? '');
         $approvedAt = $store['approved_at'] ?? null;
-        $state = $this->lifecycle->validate($status, $onboarding, $approvedAt);
+        $state = $this->lifecycle->classify($status, $onboarding, $approvedAt);
 
         return [
             'id' => (int) ($store['id'] ?? 0),
@@ -227,7 +227,9 @@ final class StoreAdminReadController
             'onboarding_status' => $onboarding,
             'approved_at' => $approvedAt,
             'lifecycle_state' => $state,
-            'allowed_actions' => $this->lifecycle->allowedActions($status, $onboarding, $approvedAt),
+            'allowed_actions' => $state === StoreLifecycleContract::STATE_INVALID
+                ? []
+                : $this->lifecycle->allowedActions($status, $onboarding, $approvedAt),
             'created_at' => (string) ($store['created_at'] ?? ''),
             'updated_at' => (string) ($store['updated_at'] ?? ''),
         ];

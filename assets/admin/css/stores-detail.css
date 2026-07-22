@@ -28,6 +28,7 @@
 
 .va-store-detail__identity {
   color: #50575e;
+  overflow-wrap: anywhere;
 }
 
 .va-store-detail__messages {
@@ -51,6 +52,45 @@
   margin-top: 0;
 }
 
+.va-store-detail__badge {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-block;
+  font-weight: 600;
+  padding: 4px 10px;
+}
+
+.va-store-detail__badge--neutral { color: #50575e; }
+.va-store-detail__badge--info { color: #135e96; }
+.va-store-detail__badge--warning { color: #8a4b08; }
+.va-store-detail__badge--positive { color: #116329; }
+.va-store-detail__badge--critical { color: #b32d2e; }
+
+.va-store-detail__definitions {
+  display: grid;
+  gap: 8px 16px;
+  grid-template-columns: minmax(140px, 190px) minmax(0, 1fr);
+  margin: 0;
+}
+
+.va-store-detail__definitions dt {
+  font-weight: 600;
+}
+
+.va-store-detail__definitions dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.va-store-detail__invalid {
+  margin: 12px 0;
+}
+
+.va-store-detail__loading {
+  padding: 12px 0;
+}
+
 @media (max-width: 782px) {
   .va-store-detail__header {
     flex-direction: column;
@@ -58,6 +98,10 @@
   }
 
   .va-store-detail__main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .va-store-detail__definitions {
     grid-template-columns: minmax(0, 1fr);
   }
 }

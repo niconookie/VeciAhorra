@@ -137,6 +137,7 @@ try {
         'active' => ['active', 'complete', current_time('mysql')],
     ];
     $stateIds = [];
+    $detailKeys = ['id', 'business_name', 'legal_name', 'owner_name', 'rut', 'email', 'phone', 'mobile', 'address', 'commune', 'city', 'region', 'status', 'onboarding_status', 'approved_at', 'lifecycle_state', 'allowed_actions', 'created_at', 'updated_at'];
     foreach ($states as $state => [$status, $onboarding, $approval]) {
         $id = restStoreFixture($stores, $state . '-' . uniqid());
         $stateIds[$state] = $id;
@@ -148,10 +149,28 @@ try {
         restStoreSame(200, $response->get_status(), 'Detalle fallo para ' . $state . '.');
         restStoreSame($state, $data['lifecycle_state'] ?? null, 'Estado derivado incorrecto.');
         restStoreSame($contract->allowedActions($status, $onboarding, $approval), $data['allowed_actions'] ?? null, 'Acciones derivadas incorrectas.');
+        restStoreSame($status, $data['status'] ?? null, 'Status persistido incorrecto para ' . $state . '.');
+        restStoreSame($onboarding, $data['onboarding_status'] ?? null, 'Onboarding persistido incorrecto para ' . $state . '.');
+        restStoreSame($approval, $data['approved_at'] ?? null, 'Aprobacion persistida incorrecta para ' . $state . '.');
+        restStoreSame($detailKeys, array_keys($data), 'Contrato exacto del DTO detalle cambio.');
         restStoreSame('private, no-store', $response->get_headers()['Cache-Control'] ?? null, 'Detalle permite cache.');
         foreach (['id', 'business_name', 'legal_name', 'owner_name', 'rut', 'email', 'phone', 'mobile', 'address', 'commune', 'city', 'region', 'status', 'onboarding_status', 'approved_at', 'created_at', 'updated_at'] as $field) {
             restStoreSame(true, array_key_exists($field, $data), 'DTO sin campo ' . $field . '.');
         }
+    }
+
+    $nullableId = restStoreFixture($stores, 'nullable-' . uniqid());
+    restStoreSame(true, $wpdb->update($table, [
+        'mobile' => null,
+        'address' => null,
+        'commune' => null,
+        'city' => null,
+        'region' => null,
+    ], ['id' => $nullableId]) !== false, 'No se prepararon nulls permitidos.');
+    $nullableData = restStoreRequest('GET', "/veciahorra/v1/stores/{$nullableId}", null, $nonce)->get_data()['data'] ?? [];
+    foreach (['mobile', 'address', 'commune', 'city', 'region', 'approved_at'] as $field) {
+        restStoreSame(true, array_key_exists($field, $nullableData), 'DTO nullable omitio ' . $field . '.');
+        restStoreSame(null, $nullableData[$field], 'DTO nullable altero ' . $field . '.');
     }
 
     $invalidCombinationId = restStoreFixture($stores, 'invalid-' . uniqid());
@@ -166,8 +185,15 @@ try {
         null,
         $nonce
     );
-    restStoreSame(422, $invalidCombination->get_status(), 'Combinacion invalida no devolvio 422.');
-    restStoreSame('invalid_combination', $invalidCombination->get_data()['error']['code'] ?? null, 'Codigo de combinacion invalida incorrecto.');
+    restStoreSame(200, $invalidCombination->get_status(), 'Detalle invalid no se pudo leer.');
+    $invalidData = $invalidCombination->get_data()['data'] ?? [];
+    restStoreSame('invalid', $invalidData['lifecycle_state'] ?? null, 'Combinacion invalida no se clasifico conservadoramente.');
+    restStoreSame([], $invalidData['allowed_actions'] ?? null, 'Detalle invalid expuso acciones.');
+    restStoreSame('active', $invalidData['status'] ?? null, 'Detalle invalid oculto status persistido.');
+    restStoreSame('draft', $invalidData['onboarding_status'] ?? null, 'Detalle invalid oculto onboarding persistido.');
+    restStoreSame(true, array_key_exists('approved_at', $invalidData), 'Detalle invalid omitio approved_at.');
+    restStoreSame(null, $invalidData['approved_at'], 'Detalle invalid altero approved_at.');
+    restStoreSame('private, no-store', $invalidCombination->get_headers()['Cache-Control'] ?? null, 'Detalle invalid permite cache.');
 
     $missing = restStoreRequest('GET', '/veciahorra/v1/stores/999999999', null, $nonce);
     restStoreSame(404, $missing->get_status(), 'Store inexistente no devolvio 404.');
