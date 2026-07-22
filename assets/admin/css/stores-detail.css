@@ -91,6 +91,62 @@
   padding: 12px 0;
 }
 
+.va-store-detail__commercial-actions,
+.va-store-detail__form-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.va-store-detail__form-heading {
+  margin-top: 0;
+}
+
+.va-store-detail__form-alert:empty,
+.va-store-detail__field-error:empty,
+.va-store-detail__saving:empty {
+  display: none;
+}
+
+.va-store-detail__form-alert:not(:empty) {
+  background: #fcf0f1;
+  border-left: 4px solid #d63638;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+}
+
+.va-store-detail__form-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.va-store-detail__field {
+  min-width: 0;
+}
+
+.va-store-detail__field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.va-store-detail__field input {
+  max-width: 100%;
+  width: 100%;
+}
+
+.va-store-detail__field-error {
+  color: #b32d2e;
+  margin: 6px 0 0;
+}
+
+.va-store-detail__saving {
+  font-weight: 600;
+}
+
 @media (max-width: 782px) {
   .va-store-detail__header {
     flex-direction: column;
@@ -103,5 +159,13 @@
 
   .va-store-detail__definitions {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .va-store-detail__form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .va-store-detail__form-actions .button {
+    min-height: 40px;
   }
 }

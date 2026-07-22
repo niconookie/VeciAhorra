@@ -1,4 +1,5 @@
 import { actionLabels, lifecyclePresentation } from './detail-contract.js';
+import { editableFields, fieldErrorMessage } from './detail-edit.js';
 
 const placeholder = (value, empty = 'No informado') => (
     typeof value === 'string' && value.trim() !== '' ? value : empty
@@ -64,7 +65,7 @@ export function createStoreDetailView(root) {
             nodes.messages.replaceChildren(notice);
             nodes.messages.focus({ preventScroll: true });
         },
-        render(item) {
+        render(item, options = {}) {
             const presentation = lifecyclePresentation[item.lifecycle_state];
             nodes.heading.textContent = item.business_name;
             nodes.identity.textContent = [placeholder(item.rut, ''), placeholder(item.legal_name, '')]
@@ -97,7 +98,8 @@ export function createStoreDetailView(root) {
                 ['Aprobación', item.approved_at ?? 'Sin fecha de aprobación'],
             ]));
             nodes.lifecycle.replaceChildren(lifecycleContent);
-            nodes.commercial.replaceChildren(definitionList([
+            const commercialContent = document.createDocumentFragment();
+            commercialContent.append(definitionList([
                 ['Nombre comercial', item.business_name],
                 ['Razón social', placeholder(item.legal_name)],
                 ['Representante', item.owner_name],
@@ -110,6 +112,15 @@ export function createStoreDetailView(root) {
                 ['Ciudad', placeholder(item.city)],
                 ['Región', placeholder(item.region)],
             ]));
+            if (item.allowed_actions.includes('save')) {
+                const controls = node('div', undefined, 'va-store-detail__commercial-actions');
+                const edit = node('button', 'Editar información', 'button button-secondary');
+                edit.type = 'button';
+                edit.dataset.vaStoreEdit = 'true';
+                controls.append(edit);
+                commercialContent.append(controls);
+            }
+            nodes.commercial.replaceChildren(commercialContent);
             const actionItems = item.allowed_actions.map((action) => node('li', actionLabels[action]));
             if (actionItems.length === 0) {
                 nodes.actions.replaceChildren(node('p', 'No hay acciones contractuales disponibles.'));
@@ -121,9 +132,88 @@ export function createStoreDetailView(root) {
             }
             nodes.sensitive.replaceChildren(node('p', 'No hay controles sensibles disponibles en esta etapa.'));
             nodes.messages.replaceChildren();
+            if (options.success) {
+                const notice = node('div', undefined, 'notice notice-success inline');
+                notice.setAttribute('role', 'status');
+                notice.append(node('p', options.success));
+                nodes.messages.replaceChildren(notice);
+                nodes.messages.focus({ preventScroll: true });
+            } else if (options.focusEdit) {
+                nodes.commercial.querySelector('[data-va-store-edit]')?.focus({ preventScroll: true });
+            }
             root.dataset.vaStoreDetailState = 'loaded';
             root.setAttribute('aria-busy', 'false');
         },
+        edit(snapshot) {
+            const form = node('form', undefined, 'va-store-detail__form');
+            form.dataset.vaStoreEditForm = 'true';
+            form.noValidate = true;
+            const heading = node('h3', 'Editar información comercial', 'va-store-detail__form-heading');
+            heading.id = 'va-store-detail-edit-heading';
+            form.setAttribute('aria-labelledby', heading.id);
+            const globalError = node('div', undefined, 'va-store-detail__form-alert');
+            globalError.dataset.vaStoreEditError = 'true';
+            globalError.setAttribute('role', 'alert');
+            globalError.tabIndex = -1;
+            const grid = node('div', undefined, 'va-store-detail__form-grid');
+            editableFields.forEach((definition, index) => {
+                const group = node('div', undefined, 'va-store-detail__field');
+                const id = `va-store-detail-field-${definition.name}`;
+                const errorId = `${id}-error`;
+                const label = node('label', `${definition.label}${definition.required ? ' *' : ''}`);
+                label.htmlFor = id;
+                const control = node('input');
+                control.id = id; control.name = definition.name; control.type = definition.type;
+                control.maxLength = definition.maxLength; control.required = definition.required;
+                control.autocomplete = definition.autocomplete; control.value = snapshot[definition.name];
+                control.setAttribute('aria-describedby', errorId);
+                const error = node('p', '', 'va-store-detail__field-error');
+                error.id = errorId; error.dataset.vaStoreFieldError = definition.name;
+                group.append(label, control, error); grid.append(group);
+                if (index === 0) control.dataset.vaStoreFirstField = 'true';
+            });
+            const actions = node('div', undefined, 'va-store-detail__form-actions');
+            const save = node('button', 'Guardar cambios', 'button button-primary'); save.type = 'submit';
+            const cancel = node('button', 'Cancelar', 'button'); cancel.type = 'button'; cancel.dataset.vaStoreCancelEdit = 'true';
+            const progress = node('span', '', 'va-store-detail__saving'); progress.dataset.vaStoreSaving = 'true'; progress.setAttribute('role', 'status');
+            actions.append(save, cancel, progress);
+            form.append(heading, globalError, grid, actions);
+            nodes.commercial.replaceChildren(form);
+            root.dataset.vaStoreDetailState = 'editing';
+            nodes.commercial.querySelector('[data-va-store-first-field]')?.focus({ preventScroll: true });
+        },
+        editErrors(errors, globalMessage = '') {
+            editableFields.forEach(({ name }) => {
+                const control = nodes.commercial.querySelector(`[name="${name}"]`);
+                const region = nodes.commercial.querySelector(`[data-va-store-field-error="${name}"]`);
+                const message = errors[name] ? fieldErrorMessage(name, errors[name]) : '';
+                control?.setAttribute('aria-invalid', message ? 'true' : 'false');
+                if (region) region.textContent = message || '';
+            });
+            const alert = nodes.commercial.querySelector('[data-va-store-edit-error]');
+            if (alert) alert.textContent = globalMessage;
+            const firstInvalid = editableFields.map(({ name }) => nodes.commercial.querySelector(`[name="${name}"][aria-invalid="true"]`)).find(Boolean);
+            (firstInvalid || (globalMessage ? alert : null))?.focus({ preventScroll: true });
+        },
+        saving(active) {
+            root.dataset.vaStoreDetailState = active ? 'saving' : 'editing';
+            root.setAttribute('aria-busy', active ? 'true' : 'false');
+            nodes.commercial.querySelectorAll('input, button').forEach((control) => { control.disabled = active; });
+            const progress = nodes.commercial.querySelector('[data-va-store-saving]');
+            if (progress) progress.textContent = active ? 'Guardando cambios…' : '';
+        },
+        persistedRefreshError(message) {
+            root.dataset.vaStoreDetailState = 'error';
+            root.setAttribute('aria-busy', 'false');
+            const alert = nodes.commercial.querySelector('[data-va-store-edit-error]');
+            if (alert) {
+                alert.textContent = message;
+                alert.focus({ preventScroll: true });
+            }
+            const progress = nodes.commercial.querySelector('[data-va-store-saving]');
+            if (progress) progress.textContent = '';
+        },
+        form() { return nodes.commercial.querySelector('[data-va-store-edit-form]'); },
     });
 }
 

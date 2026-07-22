@@ -1,0 +1,24 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>RUNNING</title></head><body>
+<pre id="test-results" data-status="running">RUNNING</pre>
+<div class="va-store-detail" data-va-store-detail><header><h1>Detalle</h1><p data-va-store-detail-identity></p><div data-va-store-detail-badge></div></header><div data-va-store-detail-messages tabindex="-1"></div><main data-va-store-detail-main><section><div data-va-store-detail-summary></div></section><section><div data-va-store-detail-lifecycle></div></section><section><h2>Comercial</h2><div data-va-store-detail-commercial></div></section><section><div data-va-store-detail-actions></div></section><section><div data-va-store-detail-sensitive></div></section></main></div>
+<script>document.querySelector('[data-va-store-detail]').dataset.vaStoreDetailInitialized='true';</script>
+<script type="module">
+import {createStoreDetailCoordinator} from '../../assets/admin/js/modules/stores/detail-app.js?edit-harness';
+import {createStoreDetailView} from '../../assets/admin/js/modules/stores/detail-view.js';
+import {validateDetailPayload} from '../../assets/admin/js/modules/stores/detail-contract.js';
+const output=document.getElementById('test-results'),root=document.querySelector('[data-va-store-detail]');
+const assert=(value,message)=>{if(!value)throw new Error(message)};const wait=()=>new Promise(resolve=>setTimeout(resolve,20));
+const dto=(overrides={})=>({id:25,business_name:'Mercado Ñ',legal_name:'',owner_name:'Dueña',rut:'1-9',email:'safe@example.test',phone:'',mobile:null,address:null,commune:'Santiago',city:'Santiago',region:'RM',status:'active',onboarding_status:'complete',approved_at:'2026-01-01 00:00:00',lifecycle_state:'active',allowed_actions:['save'],created_at:'2026-01-01 00:00:00',updated_at:'2026-01-02 00:00:00',...overrides});
+const wrap=(item)=>({success:true,data:item});
+try {
+ let updates=0,gets=0,lastPayload=null;const view=createStoreDetailView(root);const api={get:async()=>{gets++;return gets===1?wrap(dto()):wrap(dto({business_name:'Normalizado',allowed_actions:[]}));},update:async(payload)=>{updates++;lastPayload=payload;return{success:true,data:{updated:true}}}};
+ const coordinator=createStoreDetailCoordinator({rootNode:root,config:{storeId:25},api,view});
+ coordinator.load();await wait();coordinator.enterEdit();
+ assert(root.dataset.vaStoreDetailState==='editing','No entró a edición.');assert(root.querySelectorAll('input').length===11,'Campos editables incorrectos.');assert(root.querySelector('[name=legal_name]').value===''&&root.querySelector('[name=business_name]').value==='Mercado Ñ','Precarga alterada.');
+ root.querySelector('[name=business_name]').value='<img src=x onerror="window.executed=true">';coordinator.cancel();assert(updates===0&&gets===1,'Cancelar hizo solicitud.');assert(root.textContent.includes('Mercado Ñ')&&!root.querySelector('img'),'Cancelar/render permitió HTML.');
+ coordinator.enterEdit();const form=view.form();form.querySelector('[name=email]').value='malo';coordinator.submit(new SubmitEvent('submit',{cancelable:true}));assert(form.querySelector('[name=email]').getAttribute('aria-invalid')==='true'&&updates===0,'Validación local falló.');
+ form.querySelector('[name=email]').value='new@example.test';form.querySelector('[name=business_name]').value=' Enviado ';const event=new SubmitEvent('submit',{cancelable:true});Object.defineProperty(event,'target',{value:form});coordinator.submit(event);coordinator.submit(event);assert(updates===1,'Doble submit produjo otra mutación.');await wait();assert(gets===2&&root.dataset.vaStoreDetailState==='loaded'&&root.textContent.includes('Normalizado'),'No usó GET autoritativo.');assert(!root.querySelector('[data-va-store-edit]'),'No reevaluó save.');assert(Object.keys(lastPayload).length===11&&!('status'in lastPayload)&&lastPayload.business_name===' Enviado ','Payload no es cerrado/literal.');
+ view.render(validateDetailPayload(wrap(dto({lifecycle_state:'invalid',allowed_actions:[],status:'pending',onboarding_status:'draft',approved_at:null})),25));assert(!root.querySelector('[data-va-store-edit]'),'Invalid permite editar.');
+ output.dataset.status='pass';output.textContent=JSON.stringify({updates,gets,fields:11,safe:!window.executed});document.title='PASS';
+} catch(error) {output.dataset.status='fail';output.textContent=JSON.stringify({message:error.message,stack:error.stack});document.title='FAIL';}
+</script></body></html>

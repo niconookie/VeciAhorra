@@ -148,8 +148,8 @@ preg_match('~<script type="application/json" id="va-store-detail-config">(.*?)</
 $config = json_decode(html_entity_decode($configMatch[1] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8'), true);
 detailShellSame(true, $config['enabled'] ?? null, 'Config enabled incorrecta.');
 detailShellSame(25, $config['storeId'] ?? null, 'Config ID incorrecta.');
-foreach (['detailUrl', 'nonce', 'returnUrl'] as $key) detailShellAssert(is_string($config[$key] ?? null) && $config[$key] !== '', "Config sin {$key}.");
-detailShellSame(['enabled', 'storeId', 'detailUrl', 'nonce', 'returnUrl'], array_keys($config), 'Config contiene campos inesperados.');
+foreach (['detailUrl', 'nonce', 'updateUrl', 'updateNonce', 'returnUrl'] as $key) detailShellAssert(is_string($config[$key] ?? null) && $config[$key] !== '', "Config sin {$key}.");
+detailShellSame(['enabled', 'storeId', 'detailUrl', 'nonce', 'updateUrl', 'updateNonce', 'returnUrl'], array_keys($config), 'Config contiene campos inesperados.');
 
 $previousGet = $_GET;
 $_GET = ['page' => 'veciahorra-stores', 'action' => 'view', 'id' => '25'];

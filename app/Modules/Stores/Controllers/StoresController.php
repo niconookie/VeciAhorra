@@ -10,6 +10,7 @@ use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Stores\Requests\StoreRequest;
 use VeciAhorra\Modules\Stores\Requests\StoreAdminPageRequest;
+use VeciAhorra\Modules\Stores\Exceptions\StoreValidationException;
 use VeciAhorra\Modules\Stores\Services\StoreService;
 use VeciAhorra\Core\Controller;
 use VeciAhorra\Core\Flash;
@@ -76,6 +77,11 @@ final class StoresController extends Controller
                 'storeId' => $id,
                 'detailUrl' => esc_url_raw(rest_url('veciahorra/v1/stores/' . $id)),
                 'nonce' => wp_create_nonce('wp_rest'),
+                'updateUrl' => esc_url_raw(add_query_arg(
+                    ['page' => 'veciahorra-store-edit'],
+                    admin_url('admin.php')
+                )),
+                'updateNonce' => wp_create_nonce('veciahorra_store'),
                 'returnUrl' => esc_url_raw($request->returnUrl()),
             ];
         }
@@ -292,6 +298,11 @@ private function update(): void
 {
     $id = (int) ($_POST['id'] ?? 0);
 
+    if ($this->wantsJson()) {
+        $this->updateJson($id);
+        return;
+    }
+
     $this->executeAction(
         function () use ($id): void {
             $request = new StoreRequest();
@@ -317,6 +328,40 @@ private function update(): void
     );
 
     $this->redirect('veciahorra-stores');
+}
+
+private function wantsJson(): bool
+{
+    return ($_SERVER['HTTP_X_VECIAHORRA_STORE_DETAIL'] ?? '') === 'commercial-update'
+        && str_contains(strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? '')), 'application/json');
+}
+
+private function updateJson(int $id): void
+{
+    nocache_headers();
+    header('Cache-Control: private, no-store');
+    if (! current_user_can('manage_options')) {
+        wp_send_json_error(['code' => 'forbidden'], 403);
+    }
+    $nonce = is_string($_POST['_wpnonce'] ?? null) ? wp_unslash($_POST['_wpnonce']) : '';
+    if (! wp_verify_nonce($nonce, 'veciahorra_store')) {
+        wp_send_json_error(['code' => 'invalid_nonce'], 403);
+    }
+    if ($id <= 0 || $this->service()->find($id) === null) {
+        wp_send_json_error(['code' => 'store_not_found'], 404);
+    }
+    try {
+        $data = (new StoreRequest())->validatedForUpdate();
+        $this->service()->update($id, $data);
+    } catch (StoreValidationException $exception) {
+        wp_send_json_error([
+            'code' => 'validation_error',
+            'fields' => $exception->errors(),
+        ], 422);
+    } catch (PersistenceException | RecordNotFoundException $exception) {
+        wp_send_json_error(['code' => 'update_failed'], 500);
+    }
+    wp_send_json_success(['updated' => true], 200);
 }
 
 /**

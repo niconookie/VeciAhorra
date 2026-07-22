@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Stores\Requests;
 
-use InvalidArgumentException;
+use VeciAhorra\Modules\Stores\Exceptions\StoreValidationException;
 
 /**
  * Maneja y valida los datos del formulario
@@ -97,9 +97,12 @@ final class StoreRequest
             ),
         ];
 
-        $this->validateRequiredFields($fields);
-        $this->validateEmail($fields['email']);
-        $this->validateFieldLengths($fields);
+        $errors = $this->requiredFieldErrors($fields)
+            + $this->emailErrors($fields['email'])
+            + $this->fieldLengthErrors($fields);
+        if ($errors !== []) {
+            throw new StoreValidationException($errors);
+        }
 
         return $fields;
     }
@@ -121,42 +124,34 @@ final class StoreRequest
     /**
      * Valida los campos obligatorios.
      */
-    private function validateRequiredFields(array $fields): void
+    private function requiredFieldErrors(array $fields): array
     {
-        $requiredFields = [
-            'business_name' => 'Nombre Comercial',
-            'owner_name' => 'Propietario',
-            'email' => 'Correo',
-        ];
+        $requiredFields = ['business_name', 'owner_name', 'email'];
 
-        foreach ($requiredFields as $field => $label) {
+        $errors = [];
+        foreach ($requiredFields as $field) {
             if (trim($fields[$field]) === '') {
-                throw new InvalidArgumentException(
-                    sprintf(
-                        'El campo %s es obligatorio.',
-                        $label
-                    )
-                );
+                $errors[$field] = 'required';
             }
         }
+        return $errors;
     }
 
     /**
      * Valida el correo electrónico.
      */
-    private function validateEmail(string $email): void
+    private function emailErrors(string $email): array
     {
         if (is_email($email) === false) {
-            throw new InvalidArgumentException(
-                'El correo electrónico no es válido.'
-            );
+            return ['email' => 'invalid_email'];
         }
+        return [];
     }
 
     /**
      * Valida las longitudes definidas por el esquema.
      */
-    private function validateFieldLengths(array $fields): void
+    private function fieldLengthErrors(array $fields): array
     {
         $limits = [
             'business_name' => 150,
@@ -172,21 +167,17 @@ final class StoreRequest
             'region' => 120,
         ];
 
+        $errors = [];
         foreach ($limits as $field => $maximum) {
             $length = function_exists('mb_strlen')
                 ? mb_strlen($fields[$field])
                 : strlen($fields[$field]);
 
             if ($length > $maximum) {
-                throw new InvalidArgumentException(
-                    sprintf(
-                        'El campo %s supera el máximo de %d caracteres.',
-                        $field,
-                        $maximum
-                    )
-                );
+                $errors[$field] = 'too_long';
             }
         }
+        return $errors;
     }
 
 }
