@@ -16,8 +16,8 @@ function initialize(rootNode) {
     let view = null;
 
     try {
-        view = createStoreDetailView(rootNode);
         const config = readConfig(configNode);
+        view = createStoreDetailView(rootNode, config);
         rootNode.dataset.vaStoreDetailInitialized = 'true';
 
         window.VeciAhorra = window.VeciAhorra || {};
@@ -351,6 +351,7 @@ export function createStoreDetailCoordinator({ rootNode, config, api, view, navi
         if (!active) return;
         active = false;
         mode = 'abandoned';
+        view.abandon();
         readSequence++;
         saveSequence++;
         transitionSequence++;
@@ -412,7 +413,7 @@ function readConfig(configNode) {
     if (!configNode) throw new Error('missing_detail_config');
     const parsed = JSON.parse(configNode.textContent || '{}');
     const config = window.location.protocol === 'file:'
-        ? { updateUrl: './admin.php?page=veciahorra-store-edit', updateNonce: 'browser-harness', ...parsed }
+        ? { updateUrl: './admin.php?page=veciahorra-store-edit', updateNonce: 'browser-harness', inventoryListUrl: `./admin.php?page=veciahorra-inventory&minimarket_id=${parsed.storeId}&return_store_id=${parsed.storeId}`, inventoryCreateUrl: `./admin.php?page=veciahorra-inventory&action=create&minimarket_id=${parsed.storeId}&return_store_id=${parsed.storeId}`, ...parsed }
         : parsed;
     if (
         config.enabled !== true
@@ -428,6 +429,8 @@ function readConfig(configNode) {
     const detailUrl = new URL(config.detailUrl, window.location.href);
     const returnUrl = new URL(config.returnUrl, window.location.href);
     const updateUrl = new URL(config.updateUrl, window.location.href);
+    const inventoryListUrl = new URL(config.inventoryListUrl, window.location.href);
+    const inventoryCreateUrl = new URL(config.inventoryCreateUrl, window.location.href);
     const expectedSuffix = `/stores/${config.storeId}`;
     const allowedProtocols = window.location.protocol === 'file:'
         ? ['file:']
@@ -452,8 +455,27 @@ function readConfig(configNode) {
         || updateUrl.hash !== ''
         || updateUrl.username !== ''
         || updateUrl.password !== ''
+        || !isInventoryContextUrl(inventoryListUrl, config.storeId, false)
+        || !isInventoryContextUrl(inventoryCreateUrl, config.storeId, true)
     ) {
         throw new Error('invalid_detail_urls');
     }
-    return Object.freeze({ ...config, detailUrl: detailUrl.toString(), updateUrl: updateUrl.toString(), returnUrl: returnUrl.toString() });
+    return Object.freeze({ ...config, detailUrl: detailUrl.toString(), updateUrl: updateUrl.toString(), returnUrl: returnUrl.toString(), inventoryListUrl: inventoryListUrl.toString(), inventoryCreateUrl: inventoryCreateUrl.toString() });
+}
+
+function isInventoryContextUrl(url, storeId, create) {
+    const allowed = create
+        ? ['page', 'action', 'minimarket_id', 'return_store_id']
+        : ['page', 'minimarket_id', 'return_store_id'];
+    return (window.location.protocol === 'file:' ? url.protocol === 'file:' : ['http:', 'https:'].includes(url.protocol))
+        && url.origin === window.location.origin
+        && url.pathname.endsWith('/admin.php')
+        && url.searchParams.get('page') === 'veciahorra-inventory'
+        && url.searchParams.get('minimarket_id') === String(storeId)
+        && url.searchParams.get('return_store_id') === String(storeId)
+        && (create ? url.searchParams.get('action') === 'create' : !url.searchParams.has('action'))
+        && [...url.searchParams.keys()].length === allowed.length
+        && allowed.every((key) => url.searchParams.getAll(key).length === 1)
+        && [...url.searchParams.keys()].every((key) => allowed.includes(key))
+        && url.hash === '' && url.username === '' && url.password === '';
 }

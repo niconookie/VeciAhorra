@@ -3,6 +3,7 @@ import { createInventoryStore } from './store.js';
 import { createInventoryView } from './view.js';
 import {
     buildContextUrl,
+    buildStoreContextUrl,
     contextProductErrorMessage,
     readAdminContext,
 } from './context.js';
@@ -34,10 +35,12 @@ function initialize() {
         onStoreCleared: () => store.clearSelectedStore(),
         searchStores: (term, options) => api.searchStores(term, options),
         onSave: () => store.save(),
-        onCancel: () => returnToList(store, config.adminUrl),
+        onCancel: () => returnToList(store, config.adminUrl, config.storeAdminUrl),
         allInventoryUrl: config.adminUrl,
         contextualListUrl: (id) => buildContextUrl(config.adminUrl, id),
         contextualCreateUrl: (id) => buildContextUrl(config.adminUrl, id, 'create'),
+        contextualStoreCreateUrl: (id) => buildStoreContextUrl(config.adminUrl, id, 'create'),
+        storeDetailUrl: (id) => buildStoreDetailUrl(config.storeAdminUrl, id),
     });
 
     store.subscribe(view.render);
@@ -49,6 +52,10 @@ function openCreateForm(store, adminUrl) {
     const context = store.getState().context;
 
     if (context.status === 'ready') {
+        if (context.kind === 'store') {
+            window.location.assign(buildStoreContextUrl(adminUrl, context.store.id, 'create'));
+            return;
+        }
         window.location.assign(buildContextUrl(adminUrl, context.product.id, 'create'));
         return;
     }
@@ -56,10 +63,14 @@ function openCreateForm(store, adminUrl) {
     store.openCreateForm();
 }
 
-function returnToList(store, adminUrl) {
+function returnToList(store, adminUrl, storeAdminUrl) {
     const context = store.getState().context;
 
     if (context.status === 'ready') {
+        if (context.kind === 'store') {
+            window.location.assign(buildStoreDetailUrl(storeAdminUrl, context.store.id));
+            return;
+        }
         window.location.assign(buildContextUrl(adminUrl, context.product.id));
         return;
     }
@@ -81,10 +92,17 @@ async function initializeContext(store, api, context) {
     store.loadContext(context);
 
     try {
+        if (context.kind === 'store') {
+            const response = await api.getStore(context.storeId);
+            store.applyStoreContext(context, response.data);
+            return;
+        }
         const response = await api.getProduct(context.productId);
         store.applyContext(context, response.data);
     } catch (error) {
-        store.rejectContext(contextProductErrorMessage(error));
+        store.rejectContext(context.kind === 'store'
+            ? (error?.status === 404 || error?.code === 'store_not_found' ? 'El minimarket indicado no existe o ya no esta disponible.' : 'No fue posible cargar el minimarket seleccionado.')
+            : contextProductErrorMessage(error));
     }
 }
 
@@ -111,7 +129,20 @@ function readConfig() {
         throw new Error('La configuracion no contiene la URL administrativa.');
     }
 
-    return { restUrl: config.restUrl, nonce: config.nonce, adminUrl: config.adminUrl };
+    if (window.location.protocol === 'file:' && (!config.storeAdminUrl || config.storeAdminUrl.trim() === '')) config.storeAdminUrl = './admin.php?page=veciahorra-stores';
+    if (typeof config.storeAdminUrl !== 'string' || config.storeAdminUrl.trim() === '') throw new Error('La configuracion no contiene la URL de Store.');
+    return { restUrl: config.restUrl, nonce: config.nonce, adminUrl: config.adminUrl, storeAdminUrl: config.storeAdminUrl };
+}
+
+function buildStoreDetailUrl(baseUrl, id) {
+    const url = new URL(baseUrl, window.location.origin);
+    if (url.origin !== window.location.origin || !url.pathname.endsWith('/admin.php')
+        || url.searchParams.get('page') !== 'veciahorra-stores'
+        || [...url.searchParams.keys()].some((key) => key !== 'page')
+        || !Number.isSafeInteger(Number(id)) || Number(id) <= 0) throw new TypeError('Store invalido.');
+    url.searchParams.set('action', 'view');
+    url.searchParams.set('id', String(id));
+    return url.toString();
 }
 
 function findRequiredNodes() {

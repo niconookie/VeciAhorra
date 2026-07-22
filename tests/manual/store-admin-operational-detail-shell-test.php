@@ -149,7 +149,16 @@ $config = json_decode(html_entity_decode($configMatch[1] ?? '', ENT_QUOTES | ENT
 detailShellSame(true, $config['enabled'] ?? null, 'Config enabled incorrecta.');
 detailShellSame(25, $config['storeId'] ?? null, 'Config ID incorrecta.');
 foreach (['detailUrl', 'nonce', 'updateUrl', 'updateNonce', 'returnUrl'] as $key) detailShellAssert(is_string($config[$key] ?? null) && $config[$key] !== '', "Config sin {$key}.");
-detailShellSame(['enabled', 'storeId', 'detailUrl', 'nonce', 'updateUrl', 'updateNonce', 'returnUrl'], array_keys($config), 'Config contiene campos inesperados.');
+detailShellSame(['enabled', 'storeId', 'detailUrl', 'nonce', 'updateUrl', 'updateNonce', 'returnUrl', 'inventoryListUrl', 'inventoryCreateUrl'], array_keys($config), 'Config contiene campos inesperados.');
+foreach ([
+    'inventoryListUrl' => ['page' => 'veciahorra-inventory', 'minimarket_id' => '25', 'return_store_id' => '25'],
+    'inventoryCreateUrl' => ['page' => 'veciahorra-inventory', 'action' => 'create', 'minimarket_id' => '25', 'return_store_id' => '25'],
+] as $key => $expectedQuery) {
+    $parts = wp_parse_url($config[$key] ?? '');
+    parse_str($parts['query'] ?? '', $actualQuery);
+    detailShellAssert(str_ends_with($parts['path'] ?? '', '/admin.php'), "{$key} no usa admin.php.");
+    detailShellSame($expectedQuery, $actualQuery, "{$key} no respeta el contrato canonico.");
+}
 
 $previousGet = $_GET;
 $_GET = ['page' => 'veciahorra-stores', 'action' => 'view', 'id' => '25'];

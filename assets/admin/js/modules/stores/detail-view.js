@@ -26,7 +26,7 @@ const location = (item) => [item.commune, item.city, item.region]
     .filter((value) => typeof value === 'string' && value.trim() !== '')
     .join(', ') || 'No informada';
 
-export function createStoreDetailView(root) {
+export function createStoreDetailView(root, config = {}) {
     const nodes = {
         heading: root.querySelector('h1'),
         identity: root.querySelector('[data-va-store-detail-identity]'),
@@ -36,18 +36,25 @@ export function createStoreDetailView(root) {
         summary: root.querySelector('[data-va-store-detail-summary]'),
         lifecycle: root.querySelector('[data-va-store-detail-lifecycle]'),
         commercial: root.querySelector('[data-va-store-detail-commercial]'),
+        inventory: root.querySelector('[data-va-store-detail-inventory]'),
         actions: root.querySelector('[data-va-store-detail-actions]'),
         sensitive: root.querySelector('[data-va-store-detail-sensitive]'),
     };
     if (Object.values(nodes).some((value) => !value)) throw new Error('missing_detail_nodes');
     const sensitiveSection = nodes.sensitive.closest('section');
-    if (!sensitiveSection) throw new Error('missing_sensitive_section');
+    const inventorySection = nodes.inventory.closest('section');
+    if (!sensitiveSection || !inventorySection) throw new Error('missing_detail_section');
+    const hideInventory = () => {
+        nodes.inventory.replaceChildren();
+        inventorySection.hidden = true;
+    };
 
     const clearData = () => {
         nodes.badge.replaceChildren();
         nodes.summary.replaceChildren();
         nodes.lifecycle.replaceChildren();
         nodes.commercial.replaceChildren();
+        hideInventory();
         nodes.actions.replaceChildren();
         nodes.sensitive.replaceChildren();
         sensitiveSection.hidden = true;
@@ -126,6 +133,22 @@ export function createStoreDetailView(root) {
                 commercialContent.append(controls);
             }
             nodes.commercial.replaceChildren(commercialContent);
+            if (item.lifecycle_state !== 'invalid') {
+                const inventoryActions = node('div', undefined, 'va-store-detail__commercial-actions');
+                const listLink = node('a', 'Ver ofertas', 'button button-secondary');
+                listLink.href = config.inventoryListUrl;
+                const createLink = node('a', 'Crear oferta', 'button button-primary');
+                createLink.href = config.inventoryCreateUrl;
+                inventoryActions.append(listLink, createLink);
+                nodes.inventory.replaceChildren(
+                    node('p', 'Consulta las ofertas de este minimarket o crea una nueva.'),
+                    inventoryActions
+                );
+                inventorySection.hidden = false;
+            } else {
+                nodes.inventory.replaceChildren();
+                inventorySection.hidden = true;
+            }
             const actionNames = visibleLifecycleActions(item);
             if (actionNames.length === 0) {
                 nodes.actions.replaceChildren(node('p', 'No hay acciones lifecycle disponibles.'));
@@ -183,6 +206,7 @@ export function createStoreDetailView(root) {
             root.setAttribute('aria-busy', 'false');
         },
         confirmLifecycle(action) {
+            hideInventory();
             const edit = nodes.commercial.querySelector('[data-va-store-edit]');
             if (edit) edit.disabled = true;
             nodes.sensitive.querySelectorAll('button').forEach((button) => { button.disabled = true; });
@@ -218,6 +242,7 @@ export function createStoreDetailView(root) {
             if (progress) progress.textContent = active ? 'Procesando acción lifecycle…' : '';
         },
         confirmDelete(item) {
+            hideInventory();
             nodes.actions.querySelectorAll('button').forEach((button) => { button.disabled = true; });
             const edit = nodes.commercial.querySelector('[data-va-store-edit]');
             if (edit) edit.disabled = true;
@@ -270,6 +295,7 @@ export function createStoreDetailView(root) {
             return nodes.sensitive.querySelector('[data-va-store-delete-name]')?.value ?? '';
         },
         edit(snapshot) {
+            hideInventory();
             nodes.actions.querySelectorAll('button').forEach((button) => { button.disabled = true; });
             nodes.sensitive.querySelectorAll('button').forEach((button) => { button.disabled = true; });
             const form = node('form', undefined, 'va-store-detail__form');
@@ -330,6 +356,7 @@ export function createStoreDetailView(root) {
             if (progress) progress.textContent = active ? 'Guardando cambios…' : '';
         },
         persistedRefreshError(message) {
+            hideInventory();
             root.dataset.vaStoreDetailState = 'error';
             root.setAttribute('aria-busy', 'false');
             const alert = nodes.commercial.querySelector('[data-va-store-edit-error]');
@@ -339,6 +366,10 @@ export function createStoreDetailView(root) {
             }
             const progress = nodes.commercial.querySelector('[data-va-store-saving]');
             if (progress) progress.textContent = '';
+        },
+        abandon() {
+            hideInventory();
+            root.dataset.vaStoreDetailState = 'abandoned';
         },
         form() { return nodes.commercial.querySelector('[data-va-store-edit-form]'); },
     });

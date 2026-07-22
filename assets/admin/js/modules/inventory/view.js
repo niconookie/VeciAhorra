@@ -118,7 +118,7 @@ export function createInventoryView(nodes, actions) {
             }
 
             control.element.disabled = loading || (
-                name === 'productId' && state.context.status === 'ready'
+                state.context.status === 'ready' && ((name === 'productId' && state.context.kind !== 'store') || (name === 'minimarketId' && state.context.kind === 'store'))
             );
         });
 
@@ -142,7 +142,7 @@ function renderContent(nodes, state, actions) {
     }
 
     if (state.context.status === 'loading') {
-        renderState(nodes.table, 'Cargando producto seleccionado...');
+        renderState(nodes.table, 'Cargando contexto seleccionado...');
         return;
     }
 
@@ -157,7 +157,7 @@ function renderContent(nodes, state, actions) {
             renderState(
                 nodes.table,
                 state.context.status === 'ready'
-                    ? 'Este producto todavia no tiene ofertas.'
+                    ? (state.context.kind === 'store' ? 'Este minimarket todavia no tiene ofertas.' : 'Este producto todavia no tiene ofertas.')
                     : 'No hay registros de inventario para mostrar.',
                 'veciahorra-inventory-admin__state--empty'
             );
@@ -165,7 +165,7 @@ function renderContent(nodes, state, actions) {
                 nodes.table.firstElementChild.append(
                     createLink(
                         'Crear primera oferta',
-                        actions.contextualCreateUrl(state.context.product.id),
+                        state.context.kind === 'store' ? actions.contextualStoreCreateUrl(state.context.store.id) : actions.contextualCreateUrl(state.context.product.id),
                         'button button-primary'
                     )
                 );
@@ -319,17 +319,17 @@ function createInventoryForm(actions) {
 
     function renderStore(form, disabled) {
         const creating = form.mode === FORM_CREATE;
-        const activeStoreView = creating ? storeControl.create : storeControl.readonly;
+        const activeStoreView = creating && !form.storeLocked ? storeControl.create : storeControl.readonly;
         if (storeControl.element.firstElementChild !== activeStoreView) {
             storeControl.element.replaceChildren(activeStoreView);
         }
-        if (creating && storeSelector === null) {
+        if (creating && !form.storeLocked && storeSelector === null) {
             storeSelector = createStoreSelector({
                 searchStores: actions.searchStores,
                 onStoreSelected: actions.onStoreSelected,
                 elements: storeControl.elements,
             });
-        } else if (!creating) {
+        } else if (!creating || form.storeLocked) {
             destroyStoreSelector();
         }
         const selected = form.selectedStore;
@@ -344,9 +344,9 @@ function createInventoryForm(actions) {
         if (selected !== null) {
             storeControl.selectedText.textContent = `${selected.name} (#${selected.id}) - ${storeStatusLabel(selected.status)}`;
         }
-        if (!creating) {
-            storeControl.readonlyName.textContent = `Minimarket ID #${form.values.minimarketId}`;
-            storeControl.readonlyMeta.textContent = 'El minimarket asociado no puede modificarse en este inventario.';
+        if (!creating || form.storeLocked) {
+            storeControl.readonlyName.textContent = form.contextStore ? `${form.contextStore.name} (#${form.contextStore.id})` : `Minimarket ID #${form.values.minimarketId}`;
+            storeControl.readonlyMeta.textContent = form.storeLocked ? 'Minimarket fijado por el contexto de navegación.' : 'El minimarket asociado no puede modificarse en este inventario.';
         }
     }
 
@@ -443,17 +443,19 @@ function renderContext(container, context, actions) {
     }
 
     const label = document.createElement('strong');
-    label.textContent = `Ofertas de: ${context.product.name} (#${context.product.id})`;
+    const entity = context.kind === 'store' ? context.store : context.product;
+    label.textContent = `Ofertas de: ${entity.name} (#${entity.id})`;
     const status = document.createElement('span');
-    status.textContent = ` Estado: ${statusLabel(context.product.status)}. `;
+    status.textContent = ` Estado: ${context.kind === 'store' ? storeStatusLabel(entity.status) : statusLabel(entity.status)}. `;
     const all = createLink('Ver todas las ofertas', actions.allInventoryUrl);
     const create = createLink(
         'Crear oferta',
-        actions.contextualCreateUrl(context.product.id),
+        context.kind === 'store' ? actions.contextualStoreCreateUrl(entity.id) : actions.contextualCreateUrl(entity.id),
         'button button-secondary'
     );
     container.hidden = false;
-    container.replaceChildren(label, status, all, create);
+    const back = context.kind === 'store' ? createLink('Volver al minimarket', actions.storeDetailUrl(entity.id)) : null;
+    container.replaceChildren(...[label, status, all, create, back].filter(Boolean));
 }
 
 function renderContextError(container, message, allInventoryUrl) {

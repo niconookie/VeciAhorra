@@ -68,6 +68,10 @@ final class InventoryPage
                 ['page' => self::PAGE_SLUG],
                 admin_url('admin.php')
             )),
+            'storeAdminUrl' => esc_url_raw(add_query_arg(
+                ['page' => 'veciahorra-stores'],
+                admin_url('admin.php')
+            )),
             'version' => Config::PLUGIN_VERSION,
             'textDomain' => Config::TEXT_DOMAIN,
         ];

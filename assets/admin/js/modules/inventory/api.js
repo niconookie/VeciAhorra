@@ -124,6 +124,18 @@ export function createInventoryApi({ restUrl, nonce }) {
             });
     }
 
+    function getStore(id) {
+        if (!isPositiveInteger(id)) {
+            throw new InventoryApiError({ type: 'invalid_request', code: 'invalid_store_id', message: 'El identificador del minimarket no es valido.' });
+        }
+        return request(`/stores/${String(id)}`, { method: 'GET' })
+            .then((response) => assertResponse(response, isStoreContextResponse))
+            .then((payload) => {
+                if (Number(payload.data.id) !== Number(id)) throw new InventoryApiError({ type: 'invalid_response', code: 'invalid_response', message: 'La respuesta del servidor no tiene el formato esperado.' });
+                return payload;
+            });
+    }
+
     function searchProducts(term, { page = 1, perPage = 10 } = {}) {
         const normalizedTerm = String(term ?? '').trim();
 
@@ -182,6 +194,7 @@ export function createInventoryApi({ restUrl, nonce }) {
         getInventory,
         getInventoryItem,
         getProduct,
+        getStore,
         searchProducts,
         searchStores,
         createInventory,
@@ -241,6 +254,14 @@ function isProductResponse(payload) {
         && typeof payload.data.name === 'string'
         && payload.data.name.trim() !== ''
         && ['draft', 'active', 'inactive'].includes(payload.data.status);
+}
+
+function isStoreContextResponse(payload) {
+    return isObject(payload) && payload.success === true && isObject(payload.data)
+        && isPositiveInteger(payload.data.id)
+        && typeof payload.data.business_name === 'string' && payload.data.business_name.trim() !== ''
+        && ['pending', 'active', 'inactive', 'rejected'].includes(String(payload.data.status))
+        && ['pending', 'active', 'inactive', 'rejected', 'invalid'].includes(String(payload.data.lifecycle_state));
 }
 
 function isProductSearchResponse(payload) {

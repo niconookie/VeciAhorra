@@ -35,7 +35,7 @@ export function createInventoryStore(api) {
         items: [],
         meta: null,
         error: null,
-        context: { status: 'none', intent: 'list', product: null, message: null },
+        context: { status: 'none', intent: 'list', kind: null, product: null, store: null, message: null },
         form: initialForm(),
     };
     let latestRequest = 0;
@@ -69,7 +69,7 @@ export function createInventoryStore(api) {
         if (
             !Object.hasOwn(DEFAULT_FILTERS, name)
             || name === 'page'
-            || (name === 'productId' && state.context.status === 'ready')
+            || (state.context.status === 'ready' && ((name === 'productId' && state.context.kind !== 'store') || (name === 'minimarketId' && state.context.kind === 'store')))
         ) {
             return;
         }
@@ -78,14 +78,14 @@ export function createInventoryStore(api) {
     }
 
     function applyFilters() {
-        const contextualProductId = state.context.status === 'ready'
+        const contextualProductId = state.context.status === 'ready' && state.context.kind !== 'store'
             ? String(state.context.product.id)
             : String(state.inputs.productId).trim();
         const query = {
             ...state.inputs,
             search: String(state.inputs.search).trim(),
             productId: contextualProductId,
-            minimarketId: String(state.inputs.minimarketId).trim(),
+            minimarketId: state.context.status === 'ready' && state.context.kind === 'store' ? String(state.context.store.id) : String(state.inputs.minimarketId).trim(),
             page: 1,
             perPage: Number(state.inputs.perPage),
         };
@@ -94,12 +94,13 @@ export function createInventoryStore(api) {
     }
 
     function clearFilters() {
-        const productId = state.context.status === 'ready'
+        const productId = state.context.status === 'ready' && state.context.kind !== 'store'
             ? String(state.context.product.id)
             : '';
+        const minimarketId = state.context.status === 'ready' && state.context.kind === 'store' ? String(state.context.store.id) : '';
         return execute(
-            { ...DEFAULT_FILTERS, productId },
-            { ...DEFAULT_FILTERS, productId }
+            { ...DEFAULT_FILTERS, productId, minimarketId },
+            { ...DEFAULT_FILTERS, productId, minimarketId }
         );
     }
 
@@ -237,7 +238,7 @@ export function createInventoryStore(api) {
     function selectStore(store) {
         const normalizedStore = normalizeAdministrativeStore(store);
         if (state.currentView !== VIEW_FORM || state.form.mode !== FORM_CREATE
-            || state.form.isSaving || normalizedStore === null) return false;
+            || state.form.isSaving || state.form.storeLocked || normalizedStore === null) return false;
         setForm({
             ...state.form,
             values: { ...state.form.values, minimarketId: String(normalizedStore.id) },
@@ -251,7 +252,7 @@ export function createInventoryStore(api) {
 
     function clearSelectedStore() {
         if (state.currentView !== VIEW_FORM || state.form.mode !== FORM_CREATE
-            || state.form.isSaving) return false;
+            || state.form.isSaving || state.form.storeLocked) return false;
         setForm({
             ...state.form,
             values: { ...state.form.values, minimarketId: '' },
@@ -297,6 +298,8 @@ export function createInventoryStore(api) {
             let id = state.form.inventoryId;
             const contextProduct = state.form.contextProduct;
             const productLocked = state.form.productLocked;
+            const contextStore = state.form.contextStore;
+            const storeLocked = state.form.storeLocked;
 
             if (state.form.mode === FORM_CREATE) {
                 const created = await api.createInventory(validation.payload);
@@ -315,6 +318,8 @@ export function createInventoryStore(api) {
                 ...formFromItem(detail.data),
                 contextProduct,
                 productLocked,
+                contextStore,
+                storeLocked,
                 message: state.form.mode === FORM_CREATE
                     ? 'Inventario creado correctamente.'
                     : 'Inventario actualizado correctamente.',
@@ -333,7 +338,7 @@ export function createInventoryStore(api) {
                 'inventory_invalid_store_id',
                 'inventory_store_not_found',
                 'inventory_store_incompatible',
-            ].includes(normalizedError.code) && state.form.mode === FORM_CREATE;
+            ].includes(normalizedError.code) && state.form.mode === FORM_CREATE && !state.form.storeLocked;
             setForm({
                 ...state.form,
                 values: {
@@ -372,6 +377,11 @@ export function createInventoryStore(api) {
         setState({ currentView: VIEW_LIST, form: initialForm() });
 
         if (state.context.status === 'ready') {
+            if (state.context.kind === 'store') {
+                const minimarketId = String(state.context.store.id);
+                await execute({ ...DEFAULT_FILTERS, minimarketId }, { ...DEFAULT_FILTERS, minimarketId });
+                return true;
+            }
             const productId = String(state.context.product.id);
             await execute(
                 { ...DEFAULT_FILTERS, productId },
@@ -391,14 +401,14 @@ export function createInventoryStore(api) {
     function loadContext(context) {
         setState({
             status: STATUS_LOADING,
-            context: { status: 'loading', intent: context.intent, product: null, message: null },
+            context: { status: 'loading', intent: context.intent, kind: context.kind || 'product', product: null, store: null, message: null },
         });
     }
 
     function rejectContext(message) {
         setState({
             status: STATUS_ERROR,
-            context: { status: 'error', intent: 'list', product: null, message },
+            context: { status: 'error', intent: 'list', kind: null, product: null, store: null, message },
             error: { code: 'invalid_product_context', message, retryable: false },
         });
     }
@@ -411,7 +421,7 @@ export function createInventoryStore(api) {
             return false;
         }
         setState({
-            context: { status: 'ready', intent: context.intent, product: normalizedProduct, message: null },
+            context: { status: 'ready', intent: context.intent, kind: 'product', product: normalizedProduct, store: null, message: null },
         });
 
         if (context.intent === 'create') {
@@ -429,6 +439,27 @@ export function createInventoryStore(api) {
             { ...DEFAULT_FILTERS, productId },
             { ...DEFAULT_FILTERS, productId }
         );
+    }
+
+    function applyStoreContext(context, store) {
+        const normalizedStore = normalizeAdministrativeStore({ id: store?.id, name: store?.business_name, status: store?.status });
+        if (normalizedStore === null) {
+            rejectContext('El Store contextual devolvio una respuesta no valida.');
+            return false;
+        }
+        setState({ context: { status: 'ready', intent: context.intent, kind: 'store', product: null, store: normalizedStore, message: null } });
+        if (context.intent === 'create') {
+            const form = initialForm(FORM_CREATE);
+            form.values.minimarketId = String(normalizedStore.id);
+            form.contextStore = { ...normalizedStore };
+            form.selectedStore = { ...normalizedStore };
+            form.storeLocked = true;
+            latestFormRequest++;
+            setState({ currentView: VIEW_FORM, form });
+            return true;
+        }
+        const minimarketId = String(normalizedStore.id);
+        return execute({ ...DEFAULT_FILTERS, minimarketId }, { ...DEFAULT_FILTERS, minimarketId });
     }
 
     async function execute(query, inputs) {
@@ -495,6 +526,7 @@ export function createInventoryStore(api) {
         loadContext,
         rejectContext,
         applyContext,
+        applyStoreContext,
     };
 }
 
@@ -511,6 +543,8 @@ function initialForm(mode = FORM_CREATE) {
         isSaving: false,
         contextProduct: null,
         productLocked: false,
+        contextStore: null,
+        storeLocked: false,
         selectedProduct: null,
         selectedStore: null,
     };
@@ -650,6 +684,7 @@ function snapshot(source) {
         context: {
             ...source.context,
             product: source.context.product === null ? null : { ...source.context.product },
+            store: source.context.store === null ? null : { ...source.context.store },
         },
         form: {
             ...source.form,
@@ -662,6 +697,9 @@ function snapshot(source) {
             contextProduct: source.form.contextProduct === null
                 ? null
                 : { ...source.form.contextProduct },
+            contextStore: source.form.contextStore === null
+                ? null
+                : { ...source.form.contextStore },
             selectedProduct: source.form.selectedProduct === null
                 ? null
                 : { ...source.form.selectedProduct },

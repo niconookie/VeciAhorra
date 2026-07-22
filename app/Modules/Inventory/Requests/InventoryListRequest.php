@@ -58,7 +58,7 @@ final class InventoryListRequest
             ),
             'search' => $this->validatedSearch(),
             'product_id' => $this->validatedOptionalId('product_id'),
-            'minimarket_id' => $this->validatedOptionalId('minimarket_id'),
+            'minimarket_id' => $this->validatedCanonicalOptionalId('minimarket_id'),
             'status' => $this->validatedStatus(),
         ];
 
@@ -148,6 +148,29 @@ final class InventoryListRequest
                 $field
             );
 
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    private function validatedCanonicalOptionalId(string $field): ?int
+    {
+        if (! $this->has($field)) {
+            return null;
+        }
+
+        $value = $this->value($field);
+        $valid = is_int($value)
+            ? $value > 0
+            : is_string($value) && preg_match('/^[1-9][0-9]*$/D', $value) === 1
+                && $this->isInteger($value, 1);
+
+        if (! $valid) {
+            $this->errors[] = sprintf(
+                'El parametro %s debe ser un entero positivo canonico.',
+                $field
+            );
             return null;
         }
 

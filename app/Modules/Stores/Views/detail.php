@@ -39,6 +39,10 @@ $enabled = is_array($config);
                 <h2 id="va-store-detail-commercial-heading">Información comercial</h2>
                 <div data-va-store-detail-commercial></div>
             </section>
+            <section class="va-store-detail__section" aria-labelledby="va-store-detail-inventory-heading" tabindex="-1" hidden>
+                <h2 id="va-store-detail-inventory-heading">Ofertas del minimarket</h2>
+                <div data-va-store-detail-inventory></div>
+            </section>
             <section class="va-store-detail__section" aria-labelledby="va-store-detail-actions-heading" tabindex="-1">
                 <h2 id="va-store-detail-actions-heading">Acciones</h2>
                 <div data-va-store-detail-actions></div>

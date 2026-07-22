@@ -83,6 +83,17 @@ final class StoresController extends Controller
                 )),
                 'updateNonce' => wp_create_nonce('veciahorra_store'),
                 'returnUrl' => esc_url_raw($request->returnUrl()),
+                'inventoryListUrl' => esc_url_raw(add_query_arg([
+                    'page' => 'veciahorra-inventory',
+                    'minimarket_id' => $id,
+                    'return_store_id' => $id,
+                ], admin_url('admin.php'))),
+                'inventoryCreateUrl' => esc_url_raw(add_query_arg([
+                    'page' => 'veciahorra-inventory',
+                    'action' => 'create',
+                    'minimarket_id' => $id,
+                    'return_store_id' => $id,
+                ], admin_url('admin.php'))),
             ];
         }
 
