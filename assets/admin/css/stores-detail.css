@@ -1,0 +1,63 @@
+.va-store-detail {
+  box-sizing: border-box;
+  max-width: 1200px;
+}
+
+.va-store-detail *,
+.va-store-detail *::before,
+.va-store-detail *::after {
+  box-sizing: inherit;
+}
+
+.va-store-detail__navigation {
+  margin: 16px 0;
+}
+
+.va-store-detail__header {
+  align-items: flex-start;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.va-store-detail__header h1,
+.va-store-detail__identity {
+  margin-bottom: 4px;
+}
+
+.va-store-detail__identity {
+  color: #50575e;
+}
+
+.va-store-detail__messages {
+  min-height: 24px;
+}
+
+.va-store-detail__main {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.va-store-detail__section {
+  background: #fff;
+  border: 1px solid #c3c4c7;
+  min-width: 0;
+  padding: 20px;
+}
+
+.va-store-detail__section h2 {
+  margin-top: 0;
+}
+
+@media (max-width: 782px) {
+  .va-store-detail__header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .va-store-detail__main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

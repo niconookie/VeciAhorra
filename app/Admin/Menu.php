@@ -6,6 +6,7 @@ namespace VeciAhorra\Admin;
 
 use VeciAhorra\Core\Config;
 use VeciAhorra\Modules\Stores\Controllers\StoresController;
+use VeciAhorra\Modules\Stores\Requests\StoreAdminPageRequest;
 
 /**
  * Menú principal del administrador.
@@ -113,6 +114,34 @@ add_submenu_page(
     public function enqueueStoreAssets(string $hookSuffix): void
     {
         if ($this->storesPageHook === null || $hookSuffix !== $this->storesPageHook) {
+            return;
+        }
+
+        $request = StoreAdminPageRequest::fromGlobals();
+
+        if ($request->isValidDetail()) {
+            wp_enqueue_style(
+                'veciahorra-stores-admin',
+                VA_PLUGIN_URL . 'assets/admin/css/stores.css',
+                [],
+                Config::PLUGIN_VERSION
+            );
+            wp_enqueue_style(
+                'veciahorra-store-detail-admin',
+                VA_PLUGIN_URL . 'assets/admin/css/stores-detail.css',
+                ['veciahorra-stores-admin'],
+                Config::PLUGIN_VERSION
+            );
+            wp_enqueue_script_module(
+                'veciahorra-store-detail-admin',
+                VA_PLUGIN_URL . 'assets/admin/js/modules/stores/detail-app.js',
+                [],
+                Config::PLUGIN_VERSION
+            );
+            return;
+        }
+
+        if (! $request->isList()) {
             return;
         }
 

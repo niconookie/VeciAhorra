@@ -1,0 +1,36 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>RUNNING</title></head><body>
+<div class="wrap va-stores va-store-detail" data-va-store-detail aria-busy="true">
+  <nav><a href="./">Volver a minimarkets</a></nav><h1>Detalle del minimarket</h1>
+  <div data-va-store-detail-messages role="status" aria-live="polite"></div>
+  <main data-va-store-detail-main><section><h2>Resumen administrativo</h2></section></main>
+</div>
+<script type="application/json" id="va-store-detail-config">{"enabled":true,"storeId":25,"detailUrl":"./stores/25","nonce":"test-nonce","returnUrl":"./?page=veciahorra-stores"}</script>
+<pre id="test-results" data-status="running">RUNNING</pre>
+<script type="module">
+const output=document.getElementById('test-results'); let fetchCalls=0; window.fetch=()=>{fetchCalls+=1;throw new Error('fetch prohibido');};
+window.VeciAhorra={other:1,preserved:'root',stores:{preserved:'stores',list:{future:2},detail:{existing:3,preserved:'detail'}}};
+const assert=(condition,message)=>{if(!condition)throw new Error(message);};
+try{
+  const root=document.querySelector('[data-va-store-detail]'); const configNode=document.getElementById('va-store-detail-config');
+  root.remove();configNode.remove();await import('../../assets/admin/js/modules/stores/detail-app.js?missing-root=1');
+  assert(!window.VeciAhorra.stores.detail.enabled,'Contenedor ausente inicializó detalle.');
+  document.body.prepend(root);await import('../../assets/admin/js/modules/stores/detail-app.js?missing-config=1');
+  assert(root.dataset.vaStoreDetailState==='error'&&root.dataset.vaStoreDetailInitialized!=='true','Configuración ausente se marcó inicializada.');
+  document.body.append(configNode);configNode.textContent='{}';await import('../../assets/admin/js/modules/stores/detail-app.js?invalid-config=1');
+  assert(root.dataset.vaStoreDetailState==='error'&&root.textContent.includes('No fue posible preparar'),'Configuración inválida no mostró error.');
+  configNode.textContent=JSON.stringify({enabled:true,storeId:0,detailUrl:'./stores/0',nonce:'test-nonce',returnUrl:'./?page=veciahorra-stores'});
+  await import('../../assets/admin/js/modules/stores/detail-app.js?invalid-id=1');
+  assert(root.dataset.vaStoreDetailState==='error','Store ID inválido fue aceptado.');
+  delete root.dataset.vaStoreDetailInitialized;root.querySelector('[data-va-store-detail-messages]').replaceChildren();configNode.textContent=JSON.stringify({enabled:true,storeId:25,detailUrl:'./stores/25',nonce:'test-nonce',returnUrl:'./?page=veciahorra-stores'});
+  await import('../../assets/admin/js/modules/stores/detail-app.js?valid=1');
+  assert(root.dataset.vaStoreDetailInitialized==='true','No se inicializó.');
+  assert(root.dataset.vaStoreDetailState==='ready'&&root.dataset.vaStoreId==='25','Estado inicial incorrecto.');
+  assert(root.getAttribute('aria-busy')==='false','aria-busy no finalizó.');
+  assert(window.VeciAhorra.other===1&&window.VeciAhorra.preserved==='root'&&window.VeciAhorra.stores.preserved==='stores'&&window.VeciAhorra.stores.list.future===2&&window.VeciAhorra.stores.detail.existing===3&&window.VeciAhorra.stores.detail.preserved==='detail','Namespace reemplazado.');
+  const snapshot=root.outerHTML; await import('../../assets/admin/js/modules/stores/detail-app.js?duplicate=1');
+  assert(root.outerHTML===snapshot,'Doble evaluación modificó el shell.');
+  assert(fetchCalls===0,'La infraestructura realizó fetch.');
+  assert(document.querySelector('form')===null&&!document.body.textContent.includes('Eliminar minimarket'),'Se anticiparon mutaciones.');
+  output.dataset.status='pass';output.textContent=JSON.stringify({initialized:true,duplicateSafe:true,fetchCalls});document.title='PASS';
+}catch(error){output.dataset.status='fail';output.textContent=JSON.stringify({message:error.message,stack:error.stack});document.title='FAIL';}
+</script></body></html>

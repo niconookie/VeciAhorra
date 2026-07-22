@@ -113,8 +113,16 @@ if (root && configNode && root.dataset.initialized !== 'true') {
     };
 
     const detailUrl = (state, id) => {
-        const url = new URL(window.location.href);
-        url.searchParams.set('store_id', String(id));
+        const url = new URL(config.adminUrl);
+        url.searchParams.set('action', 'view');
+        url.searchParams.set('id', String(id));
+        Object.entries({
+            return_search: state.search,
+            return_lifecycle_state: state.lifecycle_state,
+            return_status: state.status,
+            return_sort: state.sort === 'name_asc' ? '' : state.sort,
+            return_paged: state.page > 1 ? String(state.page) : '',
+        }).forEach(([key, value]) => value ? url.searchParams.set(key, value) : url.searchParams.delete(key));
         return url.toString();
     };
 

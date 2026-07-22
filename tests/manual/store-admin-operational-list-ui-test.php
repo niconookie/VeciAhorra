@@ -37,6 +37,9 @@ foreach (['va-stores-search', 'va-stores-lifecycle', 'va-stores-status', 'va-sto
 foreach (['context', 'admin_list', 'lifecycle_state', 'replaceChildren', 'textContent', 'pushState', 'popstate', 'Ver detalle', 'Editar', "root.dataset.initialized", 'AbortController', 'latestRequest', 'requestId !== latestRequest'] as $fragment) {
     storeListUiAssert(str_contains($script, $fragment), 'JavaScript sin ' . $fragment . '.');
 }
+foreach (["searchParams.set('action', 'view')", "searchParams.set('id', String(id))", 'return_search', 'return_lifecycle_state', 'return_status', 'return_sort', 'return_paged'] as $fragment) {
+    storeListUiAssert(str_contains($script, $fragment), 'Enlace de detalle sin ' . $fragment . '.');
+}
 storeListUiAssert(substr_count($script, 'fetch(') === 1, 'Debe existir un solo punto fetch.');
 storeListUiAssert(! str_contains($script, 'innerHTML'), 'JavaScript usa innerHTML.');
 storeListUiAssert(! str_contains($script, 'insertAdjacentHTML') && ! str_contains($script, 'eval('), 'JavaScript contiene un sumidero inseguro.');

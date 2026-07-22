@@ -32,7 +32,7 @@ try {
   assert(document.activeElement===results,'Foco no llego a resultados.');
   assert(results.textContent.includes('Activo') && results.textContent.includes('Borrador'),'Badges lifecycle ausentes.');
   assert(!/Aprobar|Rechazar|Activar|Inactivar|Eliminar/.test(results.textContent),'Hay acciones lifecycle en tabla.');
-  assert(results.querySelector('a[href*="store_id=1"]') && results.querySelector('a[href*="veciahorra-store-edit"]'),'Enlaces de detalle/edicion ausentes.');
+  assert(results.querySelector('a[href*="action=view"][href*="id=1"]') && results.querySelector('a[href*="veciahorra-store-edit"]'),'Enlaces de detalle/edicion ausentes.');
   document.getElementById('va-stores-search').value='none'; document.getElementById('va-stores-filters').requestSubmit(); await wait();
   assert(calls.length===2 && results.textContent.includes('No hay resultados'),'Busqueda no produjo vacio filtrado en una solicitud.');
   document.getElementById('va-stores-reset').click(); await wait(); assert(calls.length===3,'Restablecer no usa una solicitud.');

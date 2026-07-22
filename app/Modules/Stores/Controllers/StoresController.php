@@ -9,6 +9,7 @@ use VeciAhorra\Admin\Tables\StoresTable;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Stores\Requests\StoreRequest;
+use VeciAhorra\Modules\Stores\Requests\StoreAdminPageRequest;
 use VeciAhorra\Modules\Stores\Services\StoreService;
 use VeciAhorra\Core\Controller;
 use VeciAhorra\Core\Flash;
@@ -19,13 +20,16 @@ use VeciAhorra\Core\Config;
  */
 final class StoresController extends Controller
 {
-    private StoreService $service;
+    private ?StoreService $service = null;
 
     public function __construct()
     {
-        $this->service = new StoreService();
-
         $this->viewPath = dirname(__DIR__) . '/Views';
+    }
+
+    private function service(): StoreService
+    {
+        return $this->service ??= new StoreService();
     }
 
     /**
@@ -33,6 +37,12 @@ final class StoresController extends Controller
      */
     public function index(): void
     {
+        $request = StoreAdminPageRequest::fromGlobals();
+        if (! $request->isList()) {
+            $this->detail($request);
+            return;
+        }
+
         $this->render('index', [
             'config' => [
                 'restUrl' => esc_url_raw(rest_url('veciahorra/v1')),
@@ -51,6 +61,31 @@ final class StoresController extends Controller
                 )),
                 'version' => Config::PLUGIN_VERSION,
             ],
+        ]);
+    }
+
+    private function detail(StoreAdminPageRequest $request): void
+    {
+        $valid = $request->isValidDetail();
+        $config = null;
+
+        if ($valid) {
+            $id = $request->storeId();
+            $config = [
+                'enabled' => true,
+                'storeId' => $id,
+                'detailUrl' => esc_url_raw(rest_url('veciahorra/v1/stores/' . $id)),
+                'nonce' => wp_create_nonce('wp_rest'),
+                'returnUrl' => esc_url_raw($request->returnUrl()),
+            ];
+        }
+
+        $this->render('detail', [
+            'config' => $config,
+            'returnUrl' => $request->returnUrl(),
+            'errorMessage' => $request->screen() === StoreAdminPageRequest::SCREEN_UNKNOWN_ACTION
+                ? 'La acción administrativa solicitada no es válida.'
+                : ($valid ? null : 'Minimarket inválido.'),
         ]);
     }
 
@@ -121,7 +156,7 @@ final class StoresController extends Controller
         }
 
         $affected = $this->executeAction(
-            fn (): int => $this->service->bulkUpdateStatus(
+            fn (): int => $this->service()->bulkUpdateStatus(
                 $ids,
                 $status
             ),
@@ -203,7 +238,7 @@ final class StoresController extends Controller
 
                 $data = $request->validatedForCreate();
 
-                $this->service->create($data);
+                $this->service()->create($data);
             },
             function (): void {
                 $this->redirect('veciahorra-store-create');
@@ -239,7 +274,7 @@ public function edit(): void
         wp_die('ID de minimarket no válido.');
     }
 
-    $store = $this->service->find($id);
+    $store = $this->service()->find($id);
 
     if ($store === null) {
         wp_die('Minimarket no encontrado.');
@@ -263,7 +298,7 @@ private function update(): void
 
             $data = $request->validatedForUpdate();
 
-            $this->service->update($id, $data);
+            $this->service()->update($id, $data);
         },
         function () use ($id): void {
             if ($id > 0) {
@@ -299,7 +334,7 @@ public function delete(): void
 
     $this->executeAction(
         function () use ($id): void {
-            $this->service->delete($id);
+            $this->service()->delete($id);
         },
         function (): void {
             $this->redirect('veciahorra-stores');
