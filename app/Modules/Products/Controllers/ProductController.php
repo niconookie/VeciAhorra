@@ -11,6 +11,7 @@ use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Exceptions\CatalogUnavailableException;
 use VeciAhorra\Exceptions\CatalogValidationException;
 use VeciAhorra\Modules\Products\Exceptions\ProductConcurrencyException;
+use VeciAhorra\Modules\Products\Exceptions\ProductDeletionException;
 use VeciAhorra\Modules\Products\Exceptions\ProductLifecycleException;
 use VeciAhorra\Modules\Products\Requests\ProductBulkRequest;
 use VeciAhorra\Modules\Products\Requests\ProductListRequest;
@@ -156,6 +157,29 @@ final class ProductController
         }
     }
 
+    public function destroy(int $id, array $input): array
+    {
+        try {
+            $request = new ProductRequest($input);
+            $expectedUpdatedAt = $request->validateForDelete();
+            $inspection = $this->service->delete(
+                $id,
+                $expectedUpdatedAt
+            );
+
+            return [
+                'success' => true,
+                'data' => [
+                    'id' => $id,
+                    'deleted' => true,
+                    'classification' => $inspection->classification(),
+                ],
+            ];
+        } catch (Throwable $exception) {
+            return $this->translateException($exception);
+        }
+    }
+
     public function bulkUpdateStatus(array $input): array
     {
         try {
@@ -270,6 +294,17 @@ final class ProductController
                 'error' => [
                     'code' => 'product_concurrency_conflict',
                     'message' => $exception->getMessage(),
+                ],
+            ];
+        }
+
+        if ($exception instanceof ProductDeletionException) {
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => $exception->errorCode(),
+                    'message' => $exception->getMessage(),
+                    'references' => $exception->inspection()->toArray(),
                 ],
             ];
         }

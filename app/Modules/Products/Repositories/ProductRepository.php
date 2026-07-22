@@ -49,6 +49,16 @@ final class ProductRepository extends BaseRepository
     }
 
     /**
+     * Impide el delete generico: Products exige inspeccion y CAS.
+     */
+    public function delete(int $id): int
+    {
+        throw new BadMethodCallException(
+            'Use deleteSafely() para Products.'
+        );
+    }
+
+    /**
      * Ejecuta una unidad atomica y respeta transacciones externas.
      */
     public function transaction(callable $callback): mixed
@@ -124,6 +134,56 @@ final class ProductRepository extends BaseRepository
     public function findById(int $id): ?Product
     {
         return $this->find($id);
+    }
+
+    public function findByIdForUpdate(int $id): ?Product
+    {
+        $row = $this->db()->get_row(
+            $this->db()->prepare(
+                sprintf(
+                    'SELECT * FROM %s WHERE id = %%d FOR UPDATE',
+                    $this->table($this->table)
+                ),
+                $id
+            ),
+            ARRAY_A
+        );
+
+        if ($this->db()->last_error !== '') {
+            throw new PersistenceException(
+                'No fue posible bloquear el producto.'
+            );
+        }
+
+        if ($row === null) {
+            return null;
+        }
+
+        /** @var Product $product */
+        $product = $this->hydrate($row);
+
+        return $product;
+    }
+
+    public function deleteSafely(
+        int $id,
+        string $expectedUpdatedAt
+    ): int {
+        $result = $this->db()->delete(
+            $this->table($this->table),
+            [
+                'id' => $id,
+                'updated_at' => $expectedUpdatedAt,
+            ]
+        );
+
+        if ($result === false) {
+            throw new PersistenceException(
+                'No fue posible eliminar el producto.'
+            );
+        }
+
+        return $result;
     }
 
     /**

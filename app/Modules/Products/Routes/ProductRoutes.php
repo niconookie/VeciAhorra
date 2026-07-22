@@ -144,6 +144,15 @@ final class ProductRoutes
                     ],
                     'args' => $this->idArgs(),
                 ],
+                [
+                    'methods' => 'DELETE',
+                    'callback' => [$this, 'destroy'],
+                    'permission_callback' => [
+                        $this,
+                        'canManageProducts',
+                    ],
+                    'args' => $this->idArgs(),
+                ],
             ]
         );
 
@@ -255,6 +264,23 @@ final class ProductRoutes
                 $body
             )
         );
+    }
+
+    public function destroy(
+        WP_REST_Request $request
+    ): WP_REST_Response {
+        $body = $this->jsonObject($request);
+
+        if ($body instanceof WP_REST_Response) {
+            return $this->noStore($body);
+        }
+
+        return $this->noStore($this->toResponse(
+            $this->controller->destroy(
+                (int) $request->get_url_params()['id'],
+                $body
+            )
+        ));
     }
 
     /**
@@ -473,6 +499,14 @@ final class ProductRoutes
         );
     }
 
+    private function noStore(
+        WP_REST_Response $response
+    ): WP_REST_Response {
+        $response->header('Cache-Control', 'private, no-store');
+
+        return $response;
+    }
+
     /**
      * Convierte el resultado neutral del Controller a REST.
      */
@@ -499,6 +533,10 @@ final class ProductRoutes
     {
         return match ($code) {
             'product_concurrency_conflict' => 409,
+            'product_delete_requires_retirement',
+            'product_delete_historical_references',
+            'product_delete_operational_references',
+            'product_reference_inconsistency' => 409,
             'validation_error' => 422,
             'invalid_product_state',
             'product_transition_not_allowed',

@@ -27,14 +27,21 @@ final class InventoryService
 
     private InventoryReferenceValidator $referenceValidator;
 
+    private ?InventoryCreationCoordinator $creationCoordinator;
+
     public function __construct(
         ?InventoryRepositoryInterface $repository = null,
-        ?InventoryReferenceValidator $referenceValidator = null
+        ?InventoryReferenceValidator $referenceValidator = null,
+        ?InventoryCreationCoordinator $creationCoordinator = null
     ) {
         $this->repository = $repository
             ?? new InventoryRepository();
         $this->referenceValidator = $referenceValidator
             ?? new InventoryReferenceValidator();
+        $this->creationCoordinator = $creationCoordinator
+            ?? ($this->repository instanceof InventoryRepository
+                ? new InventoryCreationCoordinator()
+                : null);
     }
 
     public function paginate(array $filters): array
@@ -72,10 +79,69 @@ final class InventoryService
             'El identificador de minimarket debe ser positivo.',
             'inventory_invalid_store_id'
         );
-        $this->referenceValidator->validate($productId, $minimarketId);
         $this->assertPrice($price);
         $this->assertStock($stock);
         $this->assertAllowedStatus($status);
+
+        if ($this->creationCoordinator === null) {
+            return $this->createValidated(
+                $productId,
+                $minimarketId,
+                $price,
+                $stock,
+                $status
+            );
+        }
+
+        try {
+            return $this->creationCoordinator->execute(
+                $productId,
+                $minimarketId,
+                function () use (
+                    $productId,
+                    $minimarketId,
+                    $price,
+                    $stock,
+                    $status
+                ): int {
+                    $this->referenceValidator->validate(
+                        $productId,
+                        $minimarketId
+                    );
+
+                    return $this->createValidated(
+                        $productId,
+                        $minimarketId,
+                        $price,
+                        $stock,
+                        $status,
+                        true
+                    );
+                }
+            );
+        } catch (PersistenceException $exception) {
+            throw new RuntimeException(
+                'No fue posible crear el inventario.',
+                0,
+                $exception
+            );
+        }
+    }
+
+    private function createValidated(
+        int $productId,
+        int $minimarketId,
+        mixed $price,
+        mixed $stock,
+        string $status,
+        bool $referencesAlreadyValidated = false
+    ): int {
+        if (! $referencesAlreadyValidated) {
+            $this->referenceValidator->validate(
+                $productId,
+                $minimarketId
+            );
+        }
 
         try {
             $existing = $this->repository->findByProductAndMinimarket(
@@ -92,6 +158,10 @@ final class InventoryService
 
         if ($existing !== null) {
             throw $this->duplicateException();
+        }
+
+        if ($this->creationCoordinator !== null) {
+            $this->creationCoordinator->assertProductExists($productId);
         }
 
         $now = current_time('mysql');

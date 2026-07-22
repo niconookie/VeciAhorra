@@ -8,9 +8,12 @@ use InvalidArgumentException;
 use VeciAhorra\Database\Collection;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Products\Domain\ProductLifecycleContract;
+use VeciAhorra\Modules\Products\Domain\ProductReferenceInspection;
 use VeciAhorra\Modules\Products\Exceptions\ProductConcurrencyException;
+use VeciAhorra\Modules\Products\Exceptions\ProductDeletionException;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Products\Repositories\ProductReferenceInspector;
 
 /**
  * Servicio del catálogo maestro de Productos.
@@ -27,13 +30,18 @@ final class ProductService
 
     private ProductLifecycleContract $lifecycle;
 
+    private ProductReferenceInspector $referenceInspector;
+
     public function __construct(
-        ?CatalogValidator $catalogValidator = null
+        ?CatalogValidator $catalogValidator = null,
+        ?ProductReferenceInspector $referenceInspector = null
     ) {
         $this->repository = new ProductRepository();
         $this->catalogValidator = $catalogValidator
             ?? new CatalogValidator();
         $this->lifecycle = new ProductLifecycleContract();
+        $this->referenceInspector = $referenceInspector
+            ?? new ProductReferenceInspector();
     }
 
     /**
@@ -125,6 +133,43 @@ final class ProductService
     public function find(int $id): ?Product
     {
         return $this->repository->findById($id);
+    }
+
+    public function inspectReferences(
+        int $id
+    ): ProductReferenceInspection {
+        $this->requireProduct($id);
+
+        return $this->referenceInspector->inspect($id);
+    }
+
+    public function delete(
+        int $id,
+        string $expectedUpdatedAt
+    ): ProductReferenceInspection {
+        return $this->repository->transaction(function () use (
+            $id,
+            $expectedUpdatedAt
+        ): ProductReferenceInspection {
+            $product = $this->repository->findByIdForUpdate($id);
+
+            if ($product === null) {
+                throw new RecordNotFoundException(
+                    'El producto solicitado no existe.'
+                );
+            }
+
+            $this->assertCurrentVersion($product, $expectedUpdatedAt);
+            $inspection = $this->referenceInspector->inspect($id, true);
+            $this->assertDeletable($inspection);
+            $affected = $this->repository->deleteSafely(
+                $id,
+                $expectedUpdatedAt
+            );
+            $this->assertCasSucceeded($id, $affected);
+
+            return $inspection;
+        });
     }
 
     /**
@@ -654,5 +699,31 @@ final class ProductService
         }
 
         return $this->repository->updateCommercialsAtomically($updates);
+    }
+
+    private function assertDeletable(
+        ProductReferenceInspection $inspection
+    ): void {
+        $classification = $inspection->classification();
+
+        if ($classification === ProductReferenceInspection::DELETABLE) {
+            return;
+        }
+
+        $code = (string) $inspection->reasonCode();
+        $message = match ($classification) {
+            ProductReferenceInspection::INCONSISTENT =>
+                'El producto presenta referencias inconsistentes.',
+            ProductReferenceInspection::RETIRE_REQUIRED =>
+                'El producto debe retirarse y sus referencias gestionarse por separado.',
+            default =>
+                'El producto posee referencias historicas u operativas protegidas.',
+        };
+
+        throw new ProductDeletionException(
+            $code,
+            $message,
+            $inspection
+        );
     }
 }

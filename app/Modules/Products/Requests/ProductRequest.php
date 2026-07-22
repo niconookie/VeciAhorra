@@ -221,6 +221,15 @@ final class ProductRequest
         return $expectedUpdatedAt;
     }
 
+    public function validateForDelete(): string
+    {
+        $this->errors = [];
+        $this->rejectUnexpectedFields(['expected_updated_at']);
+        $this->throwIfInvalid();
+
+        return $this->validateExpectedUpdatedAt();
+    }
+
     /**
      * Devuelve los errores de la última validación.
      *
