@@ -12,7 +12,7 @@ use VeciAhorra\Modules\Inventory\Admin\InventoryPage;
  */
 final class ProductsPage
 {
-    private const PAGE_SLUG = 'veciahorra-products';
+    public const PAGE_SLUG = 'veciahorra-products';
 
     private const PARENT_SLUG = 'veciahorra';
 
@@ -65,9 +65,11 @@ final class ProductsPage
             return;
         }
 
-        wp_enqueue_media();
-
         $baseUrl = VA_PLUGIN_URL . 'assets/admin/products/';
+        $screen = $this->screen();
+        if ($screen !== 'detail') {
+            wp_enqueue_media();
+        }
 
         wp_enqueue_style(
             'veciahorra-products-admin',
@@ -78,7 +80,7 @@ final class ProductsPage
 
         wp_enqueue_script_module(
             'veciahorra-products-admin',
-            $baseUrl . 'app.js',
+            $baseUrl . ($screen === 'detail' ? 'detail-app.js' : 'app.js'),
             [],
             Config::PLUGIN_VERSION
         );
@@ -89,6 +91,12 @@ final class ProductsPage
      */
     public function render(): void
     {
+        $screen = $this->screen();
+        $productId = $this->productId();
+        $listUrl = esc_url_raw(add_query_arg(
+            ['page' => self::PAGE_SLUG],
+            admin_url('admin.php')
+        ));
         $config = [
             'restUrl' => esc_url_raw(
                 rest_url('veciahorra/v1')
@@ -99,10 +107,82 @@ final class ProductsPage
                 ['page' => InventoryPage::PAGE_SLUG],
                 admin_url('admin.php')
             )),
+            'productsUrl' => $listUrl,
+            'screen' => $screen,
+            'productId' => $productId,
+            'listUrl' => $this->listReturnUrl($listUrl),
+            'editUrl' => $productId === null ? null : esc_url_raw(add_query_arg(
+                [
+                    'page' => self::PAGE_SLUG,
+                    'action' => 'edit',
+                    'product_id' => $productId,
+                ],
+                admin_url('admin.php')
+            )),
             'version' => Config::PLUGIN_VERSION,
             'textDomain' => Config::TEXT_DOMAIN,
         ];
 
-        require dirname(__DIR__) . '/Views/index.php';
+        require dirname(__DIR__) . '/Views/'
+            . ($screen === 'detail' ? 'detail.php' : 'index.php');
+    }
+
+    private function screen(): string
+    {
+        $action = isset($_GET['action'])
+            ? sanitize_key(wp_unslash((string) $_GET['action']))
+            : '';
+
+        if ($this->productId() !== null && $action === 'view') {
+            return 'detail';
+        }
+
+        return $this->productId() !== null && $action === 'edit'
+            ? 'edit'
+            : 'list';
+    }
+
+    private function productId(): ?int
+    {
+        $raw = isset($_GET['product_id'])
+            ? wp_unslash((string) $_GET['product_id'])
+            : '';
+
+        return preg_match('/^[1-9]\d*$/', $raw) === 1
+            ? (int) $raw
+            : null;
+    }
+
+    private function listReturnUrl(string $base): string
+    {
+        $allowed = [];
+        $value = fn (string $key): string => isset($_GET[$key])
+            && ! is_array($_GET[$key])
+                ? sanitize_text_field(wp_unslash((string) $_GET[$key]))
+                : '';
+        $term = $value('term');
+        if ($term !== '') $allowed['term'] = $term;
+        $status = $value('status');
+        if (in_array($status, ['draft', 'active', 'inactive'], true)) {
+            $allowed['status'] = $status;
+        }
+        foreach (['category_id', 'brand_id', 'paged'] as $key) {
+            $id = $value($key);
+            if (preg_match('/^[1-9]\d*$/', $id) === 1) {
+                $allowed[$key] = $id;
+            }
+        }
+        $orderBy = $value('order_by');
+        if (in_array($orderBy, [
+            'id', 'name', 'sku', 'created_at', 'updated_at',
+        ], true)) {
+            $allowed['order_by'] = $orderBy;
+        }
+        $direction = strtoupper($value('direction'));
+        if (in_array($direction, ['ASC', 'DESC'], true)) {
+            $allowed['direction'] = $direction;
+        }
+
+        return esc_url_raw(add_query_arg($allowed, $base));
     }
 }

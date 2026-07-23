@@ -195,6 +195,26 @@ export function createProductsStore(api, catalogApi) {
         return executeQuery(state.query, state.inputTerm);
     }
 
+    function loadQuery(query) {
+        const normalized = {
+            ...state.query,
+            term: typeof query?.term === 'string' ? query.term : '',
+            status: ['draft', 'active', 'inactive'].includes(query?.status)
+                ? query.status
+                : '',
+            categoryId: /^[1-9]\d*$/.test(String(query?.categoryId || ''))
+                ? String(query.categoryId)
+                : '',
+            brandId: /^[1-9]\d*$/.test(String(query?.brandId || ''))
+                ? String(query.brandId)
+                : '',
+            page: Number.isInteger(query?.page) && query.page > 0
+                ? query.page
+                : 1,
+        };
+        return executeQuery(normalized, normalized.term);
+    }
+
     function setFilter(field, value) {
         if (!['status', 'categoryId', 'brandId'].includes(field)) {
             return Promise.resolve(false);
@@ -567,6 +587,7 @@ export function createProductsStore(api, catalogApi) {
         loadCatalogs,
         search,
         reload,
+        loadQuery,
         goToPage,
         openCreateForm,
         openEditForm,

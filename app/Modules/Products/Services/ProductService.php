@@ -135,6 +135,17 @@ final class ProductService
         return $this->repository->findById($id);
     }
 
+    public function adminDetail(int $id): ?array
+    {
+        return $this->repository->findAdminDetail($id);
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function adminOffers(int $id): array
+    {
+        return $this->repository->adminOffers($id);
+    }
+
     public function inspectReferences(
         int $id
     ): ProductReferenceInspection {

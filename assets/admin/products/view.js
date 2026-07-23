@@ -268,7 +268,13 @@ function renderContent(nodes, state, actions) {
             renderLoading(nodes.table);
             break;
         case STATUS_SUCCESS:
-            renderTable(nodes.table, state.products, actions, state.operatingIds);
+            renderTable(
+                nodes.table,
+                state.products,
+                actions,
+                state.operatingIds,
+                state.query
+            );
             if (state.error) {
                 const notice = document.createElement('div');
                 notice.className = 'notice notice-error inline';
@@ -311,7 +317,7 @@ function renderError(nodes, error, onReload) {
     nodes.table.replaceChildren(state);
 }
 
-function renderTable(container, products, actions, operatingIds = []) {
+function renderTable(container, products, actions, operatingIds = [], query = {}) {
     const wrapper = document.createElement('div');
     wrapper.className = 'veciahorra-products-admin__table-scroll';
 
@@ -331,7 +337,7 @@ function renderTable(container, products, actions, operatingIds = []) {
     const body = document.createElement('tbody');
     products.forEach((product) => {
         const row = document.createElement('tr');
-        appendProductNameCell(row, product, actions);
+        appendProductNameCell(row, product, actions, query);
         appendCell(
             row,
             `Categoría: ${taxonomyLabel(product.category, 'categoría')}\n`
@@ -366,7 +372,7 @@ function renderTable(container, products, actions, operatingIds = []) {
     container.replaceChildren(wrapper);
 }
 
-function appendProductNameCell(row, product, actions) {
+function appendProductNameCell(row, product, actions, query) {
     const cell = document.createElement('td');
     cell.className = 'veciahorra-products-admin__column-name';
 
@@ -403,6 +409,11 @@ function appendProductNameCell(row, product, actions) {
     if (canEdit || canNavigateInventory) {
         const rowActions = document.createElement('div');
         rowActions.className = 'row-actions';
+        if (typeof actions.productDetailUrl === 'function') {
+            rowActions.append(
+                createLink('Ver', actions.productDetailUrl(product.id, query))
+            );
+        }
 
         if (canEdit) {
             const edit = createButton(

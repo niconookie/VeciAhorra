@@ -124,6 +124,17 @@ final class ProductRoutes
 
         register_rest_route(
             self::NAMESPACE,
+            self::RESOURCE . '/(?P<id>\d+)/admin-detail',
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'adminDetail'],
+                'permission_callback' => [$this, 'canManageProducts'],
+                'args' => $this->idArgs(),
+            ]
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
             self::RESOURCE . '/(?P<id>\d+)',
             [
                 [
@@ -169,6 +180,16 @@ final class ProductRoutes
                 'args' => $this->idArgs(),
             ]
         );
+    }
+
+    public function adminDetail(
+        WP_REST_Request $request
+    ): WP_REST_Response {
+        return $this->noStore($this->toResponse(
+            $this->controller->adminDetail(
+                (int) $request->get_url_params()['id']
+            )
+        ));
     }
 
     /**

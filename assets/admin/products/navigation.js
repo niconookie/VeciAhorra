@@ -18,3 +18,32 @@ export function buildInventoryAdminUrl(baseUrl, productId, intent = 'list') {
 
     return url.toString();
 }
+
+export function buildProductAdminUrl(baseUrl, productId, action = 'view', returnQuery = {}) {
+    if (!/^[1-9]\d*$/.test(String(productId))
+        || !['view', 'edit'].includes(action)) {
+        throw new TypeError('La ruta administrativa de Product no es valida.');
+    }
+    const url = new URL(baseUrl, window.location.origin);
+    if (url.origin !== window.location.origin) {
+        throw new TypeError('La URL administrativa de Product no es valida.');
+    }
+    url.searchParams.set('action', action);
+    url.searchParams.set('product_id', String(productId));
+    const mapping = {
+        term: 'term',
+        status: 'status',
+        categoryId: 'category_id',
+        brandId: 'brand_id',
+        page: 'paged',
+    };
+    Object.entries(mapping).forEach(([source, target]) => {
+        const value = returnQuery[source];
+        if (value !== '' && value !== null && value !== undefined
+            && !(source === 'page' && value === 1)) {
+            url.searchParams.set(target, String(value));
+        }
+    });
+
+    return url.toString();
+}

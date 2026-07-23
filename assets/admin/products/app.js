@@ -2,7 +2,7 @@ import { createProductsApi } from './api.js';
 import { createCatalogApi } from './catalogApi.js';
 import { createProductsStore } from './store.js';
 import { createProductsView } from './view.js';
-import { buildInventoryAdminUrl } from './navigation.js';
+import { buildInventoryAdminUrl, buildProductAdminUrl } from './navigation.js';
 
 try {
     initialize();
@@ -40,13 +40,25 @@ function initialize() {
             'create'
         );
     }
+    if (config.productsUrl !== null) {
+        actions.productDetailUrl = (id, query) => buildProductAdminUrl(
+            config.productsUrl,
+            id,
+            'view',
+            query
+        );
+    }
 
     const view = createProductsView(nodes, actions);
 
     store.subscribe(view.render);
     registerUnsavedChangesProtection(store);
     view.render(store.getState());
-    store.reload();
+    if (config.initialEditId !== null) {
+        store.openEditForm(config.initialEditId);
+    } else {
+        store.loadQuery(config.initialQuery);
+    }
     store.loadCatalogs();
 }
 
@@ -155,6 +167,7 @@ function readConfig() {
     }
 
     let inventoryUrl = null;
+    let productsUrl = null;
 
     if (typeof config.inventoryUrl === 'string' && config.inventoryUrl.trim() !== '') {
         try {
@@ -167,11 +180,30 @@ function readConfig() {
             throw new Error('La URL administrativa de Inventory no es valida.');
         }
     }
+    if (typeof config.productsUrl === 'string' && config.productsUrl !== '') {
+        productsUrl = new URL(config.productsUrl, window.location.origin);
+    }
+    const initialEditId = config.screen === 'edit'
+        && Number.isInteger(config.productId)
+        && config.productId > 0
+        ? config.productId
+        : null;
+    const locationQuery = new URL(window.location.href).searchParams;
+    const initialQuery = {
+        term: locationQuery.get('term') || '',
+        status: locationQuery.get('status') || '',
+        categoryId: locationQuery.get('category_id') || '',
+        brandId: locationQuery.get('brand_id') || '',
+        page: Number(locationQuery.get('paged') || 1),
+    };
 
     return {
         restUrl: restUrl.toString(),
         nonce: config.nonce,
         inventoryUrl: inventoryUrl?.toString() ?? null,
+        productsUrl: productsUrl?.toString() ?? null,
+        initialEditId,
+        initialQuery,
     };
 }
 

@@ -136,6 +136,69 @@ final class ProductRepository extends BaseRepository
         return $this->find($id);
     }
 
+    public function findAdminDetail(int $id): ?array
+    {
+        $sql = sprintf(
+            'SELECT p.*,
+                category.name AS category_name,
+                category.slug AS category_slug,
+                brand.name AS brand_name,
+                brand.slug AS brand_slug,
+                unit.name AS unit_name,
+                unit.slug AS unit_slug
+             FROM %s p
+             LEFT JOIN %s category ON category.term_id = p.category_id
+             LEFT JOIN %s brand ON brand.term_id = p.brand_id
+             LEFT JOIN %s unit ON unit.term_id = p.unit_id
+             WHERE p.id = %%d',
+            $this->table($this->table),
+            $this->db()->terms,
+            $this->db()->terms,
+            $this->db()->terms
+        );
+        $row = $this->db()->get_row(
+            $this->db()->prepare($sql, $id),
+            ARRAY_A
+        );
+
+        if ($this->db()->last_error !== '') {
+            throw new PersistenceException(
+                'No fue posible consultar el detalle administrativo.'
+            );
+        }
+
+        return $row === null ? null : $row;
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function adminOffers(int $productId): array
+    {
+        $sql = sprintf(
+            'SELECT i.id, i.minimarket_id AS store_id,
+                i.status, i.price, i.stock, i.updated_at,
+                s.business_name AS store_name,
+                s.status AS store_status
+             FROM %s i
+             LEFT JOIN %s s ON s.id = i.minimarket_id
+             WHERE i.product_id = %%d
+             ORDER BY i.id ASC',
+            $this->table('inventory'),
+            $this->table('stores')
+        );
+        $rows = $this->db()->get_results(
+            $this->db()->prepare($sql, $productId),
+            ARRAY_A
+        );
+
+        if ($this->db()->last_error !== '') {
+            throw new PersistenceException(
+                'No fue posible consultar las ofertas del producto.'
+            );
+        }
+
+        return is_array($rows) ? $rows : [];
+    }
+
     public function findByIdForUpdate(int $id): ?Product
     {
         $row = $this->db()->get_row(

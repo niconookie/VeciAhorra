@@ -167,6 +167,205 @@ final class ProductController
         }
     }
 
+    public function adminDetail(int $id): array
+    {
+        try {
+            $product = $this->service->adminDetail($id);
+            if ($product === null) {
+                throw new RecordNotFoundException(
+                    'El producto solicitado no existe.'
+                );
+            }
+            $offers = $this->service->adminOffers($id);
+            $inspection = $this->service->inspectReferences($id)->toArray();
+
+            return [
+                'success' => true,
+                'data' => $this->serializeAdminDetail(
+                    $product,
+                    $offers,
+                    $inspection
+                ),
+            ];
+        } catch (Throwable $exception) {
+            return $this->translateException($exception);
+        }
+    }
+
+    private function serializeAdminDetail(
+        array $product,
+        array $offers,
+        array $inspection
+    ): array {
+        $status = (string) $product['status'];
+        $serializedOffers = [];
+        $publicPrices = [];
+        $publicStock = 0;
+
+        foreach ($offers as $offer) {
+            $storeExists = isset($offer['store_name']);
+            $public = $status === 'active'
+                && $offer['status'] === 'active'
+                && (int) $offer['stock'] > 0
+                && (float) $offer['price'] > 0
+                && $offer['store_status'] === 'active';
+            if ($public) {
+                $publicPrices[] = (float) $offer['price'];
+                $publicStock += (int) $offer['stock'];
+            }
+            $serializedOffers[] = [
+                'id' => (int) $offer['id'],
+                'store_id' => (int) $offer['store_id'],
+                'store_name' => $storeExists
+                    ? (string) $offer['store_name']
+                    : null,
+                'store_status' => $storeExists
+                    ? (string) $offer['store_status']
+                    : null,
+                'status' => (string) $offer['status'],
+                'price' => (float) $offer['price'],
+                'stock' => (int) $offer['stock'],
+                'updated_at' => (string) $offer['updated_at'],
+                'publicly_available' => $public,
+                'availability_reason' => $this->offerAvailabilityReason(
+                    $status,
+                    $offer,
+                    $storeExists
+                ),
+            ];
+        }
+
+        $active = count(array_filter(
+            $serializedOffers,
+            static fn (array $offer): bool => $offer['status'] === 'active'
+        ));
+        $inactive = count(array_filter(
+            $serializedOffers,
+            static fn (array $offer): bool => $offer['status'] === 'inactive'
+        ));
+
+        return [
+            'id' => (int) $product['id'],
+            'name' => (string) $product['name'],
+            'slug' => (string) $product['slug'],
+            'sku' => $product['sku'] === null ? null : (string) $product['sku'],
+            'description' => $product['description'] === null
+                ? null
+                : (string) $product['description'],
+            'status' => $status,
+            'created_at' => (string) $product['created_at'],
+            'updated_at' => (string) $product['updated_at'],
+            'image' => $this->detailImage($product['image_id'] ?? null),
+            'taxonomies' => [
+                'category' => $this->detailTaxonomy($product, 'category'),
+                'brand' => $this->detailTaxonomy($product, 'brand'),
+                'unit' => $this->detailTaxonomy($product, 'unit'),
+            ],
+            'inventory' => [
+                'total' => count($serializedOffers),
+                'active' => $active,
+                'inactive' => $inactive,
+                'unknown' => count($serializedOffers) - $active - $inactive,
+                'publicly_available' => count($publicPrices),
+                'minimum_public_price' => $publicPrices === []
+                    ? null
+                    : min($publicPrices),
+                'public_stock' => $publicStock,
+                'offers' => $serializedOffers,
+            ],
+            'publicly_available' => $publicPrices !== [],
+            'references' => [
+                'classification' => $inspection['classification'],
+                'reason_code' => $inspection['reason_code'],
+                'inventory' => $inspection['inventory'],
+                'cart' => $inspection['cart'],
+                'reservations' => $inspection['reservations'],
+                'order_items' => $inspection['order_items'],
+            ],
+            'lifecycle' => [
+                'status' => $status,
+                'allowed_statuses' =>
+                    (new \VeciAhorra\Modules\Products\Domain\ProductLifecycleContract())
+                        ->targets($status),
+                'expected_updated_at' => (string) $product['updated_at'],
+            ],
+        ];
+    }
+
+    private function detailImage(mixed $imageId): array
+    {
+        $id = is_numeric($imageId) ? (int) $imageId : 0;
+        if ($id <= 0) {
+            return ['id' => null, 'url' => null, 'status' => 'absent'];
+        }
+        $attachment = get_post($id);
+        if (! $attachment instanceof \WP_Post) {
+            return [
+                'id' => $id,
+                'url' => null,
+                'status' => 'missing_attachment',
+            ];
+        }
+        if (
+            $attachment->post_type !== 'attachment'
+            || ! str_starts_with((string) $attachment->post_mime_type, 'image/')
+        ) {
+            return ['id' => $id, 'url' => null, 'status' => 'unavailable'];
+        }
+        $url = wp_get_attachment_image_url($id, 'medium');
+
+        return [
+            'id' => $id,
+            'url' => is_string($url) ? esc_url_raw($url) : null,
+            'status' => is_string($url) ? 'valid' : 'unavailable',
+        ];
+    }
+
+    private function detailTaxonomy(array $product, string $key): array
+    {
+        $taxonomy = match ($key) {
+            'category' => 'product_cat',
+            'brand' => 'product_brand',
+            'unit' => 'pa_unidad',
+        };
+        $id = isset($product[$key . '_id'])
+            ? (int) $product[$key . '_id']
+            : 0;
+        $registered = taxonomy_exists($taxonomy);
+        $name = trim((string) ($product[$key . '_name'] ?? ''));
+
+        return [
+            'id' => $id > 0 ? $id : null,
+            'name' => $registered && $name !== '' ? $name : null,
+            'slug' => $registered && $name !== ''
+                ? (string) ($product[$key . '_slug'] ?? '')
+                : null,
+            'status' => ! $registered
+                ? 'taxonomy_unregistered'
+                : ($id <= 0
+                    ? 'unassigned'
+                    : ($name === '' ? 'orphaned' : 'valid')),
+        ];
+    }
+
+    private function offerAvailabilityReason(
+        string $productStatus,
+        array $offer,
+        bool $storeExists
+    ): string {
+        if ($productStatus !== 'active') return 'product_inactive';
+        if ($offer['status'] === 'inactive') return 'inventory_inactive';
+        if (! in_array($offer['status'], ['active', 'inactive'], true)) {
+            return 'inventory_unknown';
+        }
+        if ((int) $offer['stock'] <= 0) return 'out_of_stock';
+        if ((float) $offer['price'] <= 0) return 'invalid_price';
+        if (! $storeExists) return 'store_missing';
+        if ($offer['store_status'] !== 'active') return 'store_inactive';
+
+        return 'publicly_available';
+    }
+
     public function store(array $input): array
     {
         try {
