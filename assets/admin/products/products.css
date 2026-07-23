@@ -146,6 +146,43 @@
 .veciahorra-products-admin__products-table td {
     overflow-wrap: anywhere;
     vertical-align: middle;
+    white-space: pre-line;
+}
+
+.veciahorra-products-admin__identity {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+}
+
+.veciahorra-products-admin__identity img,
+.veciahorra-products-admin__image-fallback {
+    border-radius: 4px;
+    flex: 0 0 56px;
+    height: 56px;
+    object-fit: cover;
+    width: 56px;
+}
+
+.veciahorra-products-admin__image-fallback {
+    align-items: center;
+    background: #f0f0f1;
+    color: #646970;
+    display: flex;
+    font-size: 10px;
+    justify-content: center;
+    text-align: center;
+}
+
+.veciahorra-products-admin__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+}
+
+.veciahorra-products-admin__actions a,
+.veciahorra-products-admin__actions button {
+    min-height: 32px;
 }
 
 .veciahorra-products-admin__column-id {
@@ -464,6 +501,46 @@
 
     .veciahorra-products-admin__reload {
         min-height: 40px;
+    }
+
+    .veciahorra-products-admin__toolbar > select {
+        min-height: 40px;
+        max-width: none;
+        width: 100%;
+    }
+
+    .veciahorra-products-admin__table-scroll {
+        overflow: visible;
+    }
+
+    .veciahorra-products-admin__products-table {
+        min-width: 0;
+    }
+
+    .veciahorra-products-admin__products-table thead {
+        border: 0;
+        clip: rect(0 0 0 0);
+        height: 1px;
+        overflow: hidden;
+        position: absolute;
+        width: 1px;
+    }
+
+    .veciahorra-products-admin__products-table tbody,
+    .veciahorra-products-admin__products-table tr,
+    .veciahorra-products-admin__products-table td {
+        display: block;
+        width: auto;
+    }
+
+    .veciahorra-products-admin__products-table tr {
+        border-bottom: 8px solid #f0f0f1;
+        padding: 12px;
+    }
+
+    .veciahorra-products-admin__products-table td {
+        border: 0;
+        padding: 8px;
     }
 
     .veciahorra-products-admin__pagination {

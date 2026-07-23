@@ -37,16 +37,25 @@ final class ProductController
                 $query['term'],
                 $query['status'],
                 $query['order_by'],
-                $query['direction']
+                $query['direction'],
+                $query['category_id'],
+                $query['brand_id']
             );
             $total = $this->service->count(
                 $query['term'],
-                $query['status']
+                $query['status'],
+                $query['category_id'],
+                $query['brand_id']
             );
+            $rows = $products->toArray();
+            $this->primeImages($rows);
 
             return [
                 'success' => true,
-                'data' => $products->toArray(),
+                'data' => array_map(
+                    [$this, 'serializeAdminListProduct'],
+                    $rows
+                ),
                 'meta' => [
                     'page' => $query['page'],
                     'per_page' => $query['per_page'],
@@ -61,6 +70,81 @@ final class ProductController
         } catch (Throwable $exception) {
             return $this->translateException($exception);
         }
+    }
+
+    private function primeImages(array $products): void
+    {
+        $ids = [];
+        foreach ($products as $product) {
+            $id = isset($product['image_id']) ? (int) $product['image_id'] : 0;
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        if ($ids !== [] && function_exists('_prime_post_caches')) {
+            _prime_post_caches(array_values(array_unique($ids)), false, true);
+        }
+    }
+
+    private function serializeAdminListProduct(array $product): array
+    {
+        $status = (string) ($product['status'] ?? '');
+        $targets = (new \VeciAhorra\Modules\Products\Domain\ProductLifecycleContract())
+            ->targets($status);
+
+        return [
+            'id' => (int) ($product['id'] ?? 0),
+            'name' => (string) ($product['name'] ?? ''),
+            'slug' => (string) ($product['slug'] ?? ''),
+            'sku' => $product['sku'] === null ? null : (string) $product['sku'],
+            'status' => $status,
+            'created_at' => (string) ($product['created_at'] ?? ''),
+            'updated_at' => (string) ($product['updated_at'] ?? ''),
+            'image_id' => isset($product['image_id']) ? (int) $product['image_id'] : null,
+            'image_url' => $this->adminImageUrl($product['image_id'] ?? null),
+            'category' => $this->taxonomyValue($product, 'category'),
+            'brand' => $this->taxonomyValue($product, 'brand'),
+            'unit' => $this->taxonomyValue($product, 'unit'),
+            'inventory' => [
+                'total' => (int) ($product['inventory_total'] ?? 0),
+                'active' => (int) ($product['inventory_active'] ?? 0),
+                'inactive' => (int) ($product['inventory_inactive'] ?? 0),
+            ],
+            'publicly_available' => (int) ($product['publicly_available'] ?? 0) > 0,
+            'allowed_statuses' => $targets,
+        ];
+    }
+
+    private function taxonomyValue(array $product, string $key): array
+    {
+        $id = isset($product[$key . '_id']) ? (int) $product[$key . '_id'] : 0;
+        $name = trim((string) ($product[$key . '_name'] ?? ''));
+        $taxonomy = match ($key) {
+            'category' => 'product_cat',
+            'brand' => 'product_brand',
+            'unit' => 'pa_unidad',
+            default => '',
+        };
+        $registered = $taxonomy !== '' && taxonomy_exists($taxonomy);
+
+        return [
+            'id' => $id > 0 ? $id : null,
+            'name' => $registered && $name !== '' ? $name : null,
+            'available' => $registered && ($id <= 0 || $name !== ''),
+        ];
+    }
+
+    private function adminImageUrl(mixed $imageId): ?string
+    {
+        $id = is_numeric($imageId) ? (int) $imageId : 0;
+        if ($id <= 0) {
+            return null;
+        }
+
+        $url = wp_get_attachment_image_url($id, 'thumbnail');
+
+        return is_string($url) && $url !== '' ? esc_url_raw($url) : null;
     }
 
     public function show(int $id): array

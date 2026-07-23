@@ -189,7 +189,9 @@ final class ProductService
         ?string $term = null,
         ?string $status = null,
         string $orderBy = 'id',
-        string $direction = 'DESC'
+        string $direction = 'DESC',
+        ?int $categoryId = null,
+        ?int $brandId = null
     ): Collection {
         if ($status !== null) {
             $this->assertAllowedStatus($status);
@@ -201,7 +203,9 @@ final class ProductService
             $term,
             $status,
             $orderBy,
-            $direction
+            $direction,
+            $categoryId,
+            $brandId
         );
     }
 
@@ -210,7 +214,9 @@ final class ProductService
      */
     public function count(
         ?string $term = null,
-        ?string $status = null
+        ?string $status = null,
+        ?int $categoryId = null,
+        ?int $brandId = null
     ): int {
         if ($status !== null) {
             $this->assertAllowedStatus($status);
@@ -218,7 +224,9 @@ final class ProductService
 
         return $this->repository->count(
             $term,
-            $status
+            $status,
+            $categoryId,
+            $brandId
         );
     }
 

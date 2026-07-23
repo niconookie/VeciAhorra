@@ -277,7 +277,7 @@ final class ProductRepository extends BaseRepository
 
         $sql = sprintf(
             'SELECT *
-             FROM %s
+             FROM %s p
              %s
              ORDER BY id DESC',
             $this->table($this->table),
@@ -308,12 +308,16 @@ final class ProductRepository extends BaseRepository
         ?string $term = null,
         ?string $status = null,
         string $orderBy = 'id',
-        string $direction = 'DESC'
+        string $direction = 'DESC',
+        ?int $categoryId = null,
+        ?int $brandId = null
     ): Collection {
         $offset = ($page - 1) * $perPage;
         [$where, $params] = $this->buildFilters(
             $term,
-            $status
+            $status,
+            $categoryId,
+            $brandId
         );
 
         $allowed = [
@@ -337,14 +341,48 @@ final class ProductRepository extends BaseRepository
         }
 
         $sql = sprintf(
-            'SELECT *
-             FROM %s
+            'SELECT p.*,
+                category.name AS category_name,
+                brand.name AS brand_name,
+                unit.name AS unit_name,
+                COALESCE(offers.inventory_total, 0) AS inventory_total,
+                COALESCE(offers.inventory_active, 0) AS inventory_active,
+                COALESCE(offers.inventory_inactive, 0) AS inventory_inactive,
+                (
+                    p.status = \'active\'
+                    AND COALESCE(offers.publicly_available, 0) > 0
+                ) AS publicly_available
+             FROM %s p
+             LEFT JOIN %s category ON category.term_id = p.category_id
+             LEFT JOIN %s brand ON brand.term_id = p.brand_id
+             LEFT JOIN %s unit ON unit.term_id = p.unit_id
+             LEFT JOIN (
+                SELECT i.product_id,
+                    COUNT(*) AS inventory_total,
+                    SUM(i.status = \'active\') AS inventory_active,
+                    SUM(i.status = \'inactive\') AS inventory_inactive,
+                    MAX(
+                        i.status = \'active\'
+                        AND i.stock > 0
+                        AND i.price > 0
+                        AND s.status = \'active\'
+                    ) AS publicly_available
+                FROM %s i
+                LEFT JOIN %s s ON s.id = i.minimarket_id
+                GROUP BY i.product_id
+             ) offers ON offers.product_id = p.id
              %s
-             ORDER BY %s %s
+             ORDER BY p.%s %s, p.id %s
              LIMIT %%d OFFSET %%d',
             $this->table($this->table),
+            $this->db()->terms,
+            $this->db()->terms,
+            $this->db()->terms,
+            $this->table('inventory'),
+            $this->table('stores'),
             $where,
             $orderBy,
+            $direction,
             $direction
         );
 
@@ -367,15 +405,19 @@ final class ProductRepository extends BaseRepository
      */
     public function count(
         ?string $term = null,
-        ?string $status = null
+        ?string $status = null,
+        ?int $categoryId = null,
+        ?int $brandId = null
     ): int {
         [$where, $params] = $this->buildFilters(
             $term,
-            $status
+            $status,
+            $categoryId,
+            $brandId
         );
 
         $sql = sprintf(
-            'SELECT COUNT(*) FROM %s %s',
+            'SELECT COUNT(*) FROM %s p %s',
             $this->table($this->table),
             $where
         );
@@ -770,30 +812,47 @@ final class ProductRepository extends BaseRepository
      */
     private function buildFilters(
         ?string $term,
-        ?string $status = null
+        ?string $status = null,
+        ?int $categoryId = null,
+        ?int $brandId = null
     ): array {
         $conditions = [];
         $params = [];
 
         if (! empty($term)) {
             $conditions[] = '(
-                name LIKE %s
-                OR slug LIKE %s
-                OR sku LIKE %s
+                p.name LIKE %s
+                OR p.slug LIKE %s
+                OR p.sku LIKE %s
+                OR p.id = %d
             )';
 
             $term = '%' . $this->db()->esc_like($term) . '%';
 
+            $numericId = ctype_digit(trim($term, '%'))
+                ? (int) trim($term, '%')
+                : 0;
             $params = [
                 $term,
                 $term,
                 $term,
+                $numericId,
             ];
         }
 
         if (! empty($status)) {
-            $conditions[] = 'status = %s';
+            $conditions[] = 'p.status = %s';
             $params[] = $status;
+        }
+
+        if ($categoryId !== null) {
+            $conditions[] = 'p.category_id = %d';
+            $params[] = $categoryId;
+        }
+
+        if ($brandId !== null) {
+            $conditions[] = 'p.brand_id = %d';
+            $params[] = $brandId;
         }
 
         $where = empty($conditions)

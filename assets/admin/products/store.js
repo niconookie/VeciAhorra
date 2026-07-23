@@ -60,10 +60,14 @@ export function createProductsStore(api, catalogApi) {
             term: '',
             page: 1,
             perPage: 20,
+            status: '',
+            categoryId: '',
+            brandId: '',
         },
         products: [],
         meta: null,
         error: null,
+        operatingIds: [],
         catalogs: createInitialCatalogsState(),
         form: createInitialFormState(),
     };
@@ -189,6 +193,53 @@ export function createProductsStore(api, catalogApi) {
         }
 
         return executeQuery(state.query, state.inputTerm);
+    }
+
+    function setFilter(field, value) {
+        if (!['status', 'categoryId', 'brandId'].includes(field)) {
+            return Promise.resolve(false);
+        }
+        return executeQuery({
+            ...state.query,
+            [field]: typeof value === 'string' ? value : '',
+            page: 1,
+        }, state.inputTerm);
+    }
+
+    function clearFilters() {
+        return executeQuery({
+            ...state.query,
+            term: '',
+            status: '',
+            categoryId: '',
+            brandId: '',
+            page: 1,
+        }, '');
+    }
+
+    async function changeListProductStatus(id, status) {
+        const product = state.products.find((item) => item.id === id);
+        if (!product || state.operatingIds.includes(id)
+            || !product.allowedStatuses.includes(status)) {
+            return false;
+        }
+        setState({ operatingIds: [...state.operatingIds, id], error: null });
+        try {
+            const response = await api.updateProductStatus(
+                id, status, product.updatedAt
+            );
+            await executeQuery(state.query, state.inputTerm);
+            return response.data.status === status;
+        } catch (error) {
+            setState({ error: normalizeError(error) });
+            return false;
+        } finally {
+            setState({
+                operatingIds: state.operatingIds.filter(
+                    (productId) => productId !== id
+                ),
+            });
+        }
     }
 
     function goToPage(page) {
@@ -510,6 +561,9 @@ export function createProductsStore(api, catalogApi) {
         getState,
         subscribe,
         setInputTerm,
+        setFilter,
+        clearFilters,
+        changeListProductStatus,
         loadCatalogs,
         search,
         reload,
@@ -882,11 +936,20 @@ function textLength(value) {
 
 function normalizeProduct(product) {
     return {
-        id: displayValue(product.id),
+        id: Number(product.id),
         name: displayValue(product.name),
         sku: displayValue(product.sku),
         status: displayValue(product.status),
         updatedAt: displayValue(product.updated_at),
+        createdAt: displayValue(product.created_at),
+        slug: displayValue(product.slug),
+        imageUrl: product.image_url,
+        category: product.category,
+        brand: product.brand,
+        unit: product.unit,
+        inventory: product.inventory,
+        publiclyAvailable: product.publicly_available,
+        allowedStatuses: product.allowed_statuses,
     };
 }
 

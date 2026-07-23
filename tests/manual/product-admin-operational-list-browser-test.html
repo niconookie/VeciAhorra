@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="../../assets/admin/products/products.css">
+  <title>RUNNING</title>
+</head>
+<body>
+<div id="veciahorra-products-admin" class="wrap veciahorra-products-admin">
+  <header class="veciahorra-products-admin__header">
+    <h1>Productos</h1><button type="button" class="page-title-action">Nuevo producto</button>
+  </header>
+  <div id="veciahorra-products-messages" role="status" aria-live="polite"></div>
+  <main id="veciahorra-products-app">
+    <section id="veciahorra-products-toolbar"></section>
+    <section id="veciahorra-products-table"></section>
+    <nav id="veciahorra-products-pagination"></nav>
+  </main>
+  <script id="veciahorra-products-config" type="application/json">{"restUrl":"https://example.test/wp-json/veciahorra/v1","nonce":"test-nonce","inventoryUrl":"https://example.test/wp-admin/admin.php?page=veciahorra-inventory"}</script>
+</div>
+<pre id="test-results" data-status="running">RUNNING</pre>
+<script type="module">
+const output = document.getElementById('test-results');
+const assertions = [];
+const listCalls = [];
+const errors = [];
+let slowResolve = null;
+let lifecyclePending = null;
+let lifecycleResolve = null;
+let productThreeFailures = 0;
+const wait = async () => {
+  for (let index=0; index<30; index++) await Promise.resolve();
+};
+const assert = (condition, message) => {
+  if (!condition) throw new Error(message);
+  assertions.push(message);
+};
+addEventListener('error', (event)=>errors.push(`pageerror:${event.message}`));
+addEventListener('unhandledrejection', (event)=>errors.push(`rejection:${event.reason}`));
+const originalConsoleError = console.error;
+console.error = (...args) => { errors.push(`console:${args.join(' ')}`); originalConsoleError(...args); };
+const response = (payload, status=200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  text: async () => JSON.stringify(payload),
+});
+const catalog = (name) => response({success:true,data:[
+  {id:1,name:`${name} Uno`},{id:2,name:`${name} Dos`}
+]});
+const product = (id, overrides={}) => ({
+  id,
+  name: overrides.name ?? `Producto ${id}`,
+  slug: overrides.slug ?? `producto-${id}`,
+  sku: overrides.sku ?? `SKU-${id}`,
+  status: overrides.status ?? 'active',
+  created_at:'2026-07-01 10:00:00',
+  updated_at:overrides.updated_at ?? '2026-07-23 10:00:00',
+  image_id:overrides.image_id ?? null,
+  image_url:overrides.image_url ?? null,
+  category:overrides.category ?? {id:1,name:'Categoría Uno',available:true},
+  brand:overrides.brand ?? {id:1,name:'Marca Uno',available:true},
+  unit:overrides.unit ?? {id:1,name:'Unidad Uno',available:true},
+  inventory:overrides.inventory ?? {total:0,active:0,inactive:0},
+  publicly_available:overrides.publicly_available ?? false,
+  allowed_statuses:overrides.allowed_statuses ?? ['inactive'],
+});
+const initial = [
+  product(1,{name:'Producto público',image_id:9,image_url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==',inventory:{total:2,active:1,inactive:1},publicly_available:true}),
+  product(2,{name:'Producto sin imagen',status:'draft',category:{id:null,name:null,available:true},brand:{id:77,name:null,available:false},inventory:{total:1,active:1,inactive:0},allowed_statuses:['active','inactive']}),
+  product(3,{name:'Producto sin ofertas',status:'inactive',inventory:{total:0,active:0,inactive:0},allowed_statuses:['active']}),
+];
+window.fetch = async (url, options={}) => {
+  const parsed = new URL(String(url));
+  const path = parsed.pathname;
+  if (path.endsWith('/categories')) return catalog('Categoría');
+  if (path.endsWith('/brands')) return catalog('Marca');
+  if (path.endsWith('/units')) return catalog('Unidad');
+  if (/\/products\/\d+\/status$/.test(path)) {
+    const payload = JSON.parse(options.body);
+    const lifecycleId=Number(path.match(/products\/(\d+)/)[1]);
+    lifecyclePending = {payload, options};
+    if (lifecycleId===2) return response({success:false,error:{code:'product_concurrency_conflict',message:'conflict'}},409);
+    if (lifecycleId===3) {
+      productThreeFailures++;
+      return productThreeFailures===1
+        ? response({success:false,error:{code:'product_transition_not_allowed',message:'Estado invalido'}},422)
+        : response({success:false,error:{code:'internal_error',message:'Fallo servidor'}},500);
+    }
+    return new Promise((resolve)=>{lifecycleResolve=()=>resolve(response({success:true,data:{id:lifecycleId,status:payload.status,updated_at:'2026-07-23 10:01:00'}}));});
+  }
+  if (path.endsWith('/products') || path.endsWith('/products/search')) {
+    listCalls.push({url:String(url),options});
+    const term = parsed.searchParams.get('term') || '';
+    if (term === 'slow' && !parsed.searchParams.has('category_id')) {
+      return new Promise((resolve)=>{slowResolve=()=>resolve(response({success:true,data:[product(90,{name:'Obsoleto'})],meta:{page:1,per_page:20,total:1,total_pages:1}}));});
+    }
+    if (term === 'error') return response({success:false,error:{code:'internal_error',message:'Error REST'}},500);
+    const data = term === 'none' ? [] : term === 'fast' ? [product(91,{name:'Vigente'})] : initial;
+    const page = Number(parsed.searchParams.get('page') || 1);
+    return response({success:true,data,meta:{page,per_page:20,total:data.length,total_pages:data.length ? 2 : 0}});
+  }
+  return response({success:false,error:{code:'unexpected',message:path}},500);
+};
+try {
+  const configNode=document.getElementById('veciahorra-products-config');
+  const config=JSON.parse(configNode.textContent);
+  config.inventoryUrl=location.href.split('?')[0]+'?page=veciahorra-inventory';
+  configNode.textContent=JSON.stringify(config);
+  await import('../../assets/admin/products/app.js');
+  await wait();
+  const root=document.getElementById('veciahorra-products-admin');
+  const table=document.getElementById('veciahorra-products-table');
+  assert(listCalls.length===1,`una unica carga inicial: ${listCalls.length} / ${document.getElementById('veciahorra-products-messages').textContent}`);
+  assert(
+    table.querySelectorAll('tbody tr').length===3,
+    `render de Products: ${table.textContent} / ${document.getElementById('veciahorra-products-messages').textContent}`
+  );
+  assert(table.querySelector('img[alt="Imagen de Producto público"]'),'imagen valida');
+  assert(table.querySelectorAll('.veciahorra-products-admin__image-fallback').length===2,'fallback de imagen');
+  assert(table.textContent.includes('Categoría Uno'),'taxonomia valida');
+  assert(table.textContent.includes('Sin categoría'),'taxonomia ausente');
+  assert(table.textContent.includes('Referencia no disponible'),'taxonomia huerfana');
+  assert(table.textContent.includes('Sin ofertas'),'cero ofertas');
+  assert(table.textContent.includes('1 ofertas') && table.textContent.includes('2 ofertas'),'una y multiples ofertas');
+  assert(table.textContent.includes('Disponible públicamente') && table.textContent.includes('Sin disponibilidad pública'),'disponibilidad derivada');
+  assert(table.querySelector('a[href*="product_id=3"][href*="action=create"]'),'enlace Crear oferta');
+  assert(table.querySelector('a[href*="product_id=1"]:not([href*="action=create"])'),'enlace Ver ofertas');
+  assert([...table.querySelectorAll('button')].some((button)=>button.textContent==='Editar'),'accion Editar');
+  const status=document.querySelector('select[aria-label="Filtrar por estado"]');
+  status.value='draft'; status.dispatchEvent(new Event('change')); await wait();
+  assert(new URL(listCalls.at(-1).url).searchParams.get('status')==='draft','filtro estado');
+  const category=document.querySelector('select[aria-label="Filtrar por categoría"]');
+  category.value='1'; category.dispatchEvent(new Event('change')); await wait();
+  assert(new URL(listCalls.at(-1).url).searchParams.get('category_id')==='1','filtro categoria combinado');
+  const brand=document.querySelector('select[aria-label="Filtrar por marca"]');
+  brand.value='2'; brand.dispatchEvent(new Event('change')); await wait();
+  const combined=new URL(listCalls.at(-1).url);
+  assert(combined.searchParams.get('brand_id')==='2' && combined.searchParams.get('status')==='draft','filtro marca combinado');
+  assert(combined.searchParams.get('page')==='1','filtros reinician pagina');
+  document.getElementById('veciahorra-products-search').value='none';
+  document.getElementById('veciahorra-products-search').dispatchEvent(new Event('input'));
+  document.querySelector('form[role="search"]').requestSubmit(); await wait();
+  assert(table.textContent.includes('Limpia o cambia los filtros'),'vacio filtrado');
+  document.querySelector('form[role="search"] button[type="button"]').click(); await wait();
+  assert(!new URL(listCalls.at(-1).url).searchParams.has('status'),'limpiar filtros');
+  document.getElementById('veciahorra-products-search').value='slow';
+  document.getElementById('veciahorra-products-search').dispatchEvent(new Event('input'));
+  document.querySelector('form[role="search"]').requestSubmit(); await wait();
+  category.value='1'; category.dispatchEvent(new Event('change')); await wait();
+  slowResolve(); await wait();
+  assert(!table.textContent.includes('Obsoleto'),'respuesta obsoleta descartada');
+  document.getElementById('veciahorra-products-search').value='fast';
+  document.getElementById('veciahorra-products-search').dispatchEvent(new Event('input'));
+  document.querySelector('form[role="search"]').requestSubmit(); await wait();
+  assert(table.textContent.includes('Vigente'),'busqueda');
+  document.querySelector('.veciahorra-products-admin__reload').click(); await wait();
+  assert(new URL(listCalls.at(-1).url).searchParams.get('term')==='fast','recarga conserva consulta');
+  document.querySelector('form[role="search"] button[type="button"]').click(); await wait();
+  const deactivate=[...table.querySelectorAll('.veciahorra-products-admin__actions button')].find((button)=>button.textContent==='Desactivar');
+  deactivate.click(); deactivate.click();
+  await wait();
+  assert(
+    [...table.querySelectorAll('.veciahorra-products-admin__actions button')]
+      .find((button)=>button.textContent==='Desactivar').disabled,
+    'doble clic bloqueado'
+  );
+  assert(lifecyclePending.payload.expected_updated_at==='2026-07-23 10:00:00','payload CAS');
+  assert(lifecyclePending.payload.status==='inactive','lifecycle exitoso');
+  lifecycleResolve(); await wait();
+  const rowFor=(name)=>[...table.querySelectorAll('tbody tr')].find((row)=>row.textContent.includes(name));
+  rowFor('Producto sin imagen').querySelector('.veciahorra-products-admin__actions button').click();
+  await wait();
+  assert(document.getElementById('veciahorra-products-messages').textContent.includes('otra sesión'),'conflicto 409 visible');
+  rowFor('Producto sin ofertas').querySelector('.veciahorra-products-admin__actions button').click();
+  await wait();
+  assert(document.getElementById('veciahorra-products-messages').textContent.includes('Estado invalido'),'error lifecycle 422');
+  rowFor('Producto sin ofertas').querySelector('.veciahorra-products-admin__actions button').click();
+  await wait();
+  assert(document.getElementById('veciahorra-products-messages').textContent.includes('Fallo servidor'),'error lifecycle 500');
+  const pagination=document.querySelector('#veciahorra-products-pagination button:last-of-type');
+  pagination.click(); await wait();
+  assert(new URL(listCalls.at(-1).url).searchParams.get('page')==='2','paginacion');
+  document.getElementById('veciahorra-products-search').value='error';
+  document.getElementById('veciahorra-products-search').dispatchEvent(new Event('input'));
+  document.querySelector('form[role="search"]').requestSubmit(); await wait();
+  assert(document.getElementById('veciahorra-products-messages').textContent.includes('Error REST'),'error REST visible');
+  assert(table.getAttribute('aria-busy')==='false','aria-busy finaliza');
+  assert(document.getElementById('veciahorra-products-messages').getAttribute('aria-live')==='polite','aria-live');
+  const beforeDuplicate=listCalls.length;
+  await import('../../assets/admin/products/app.js');
+  await wait();
+  assert(listCalls.length===beforeDuplicate,'inicializacion unica por modulo');
+  document.querySelector('form[role="search"] button[type="button"]').click();
+  await wait();
+  await wait();
+  const rows=[...table.querySelectorAll('tbody tr')];
+  if (innerWidth <= 782) {
+    assert(rows.every((row)=>getComputedStyle(row).display==='block'),'modo tarjeta movil/tablet');
+  } else {
+    assert(rows.every((row)=>getComputedStyle(row).display==='table-row'),'tabla en escritorio');
+  }
+  assert(document.documentElement.scrollWidth<=document.documentElement.clientWidth+1,'sin overflow responsive');
+  const focusTarget=table.querySelector('a,button');
+  focusTarget.focus();
+  assert(document.activeElement===focusTarget,'navegacion y foco nativo');
+  assert(listCalls[0].options.headers.get('X-WP-Nonce')==='test-nonce','nonce REST');
+  assert(errors.length===0,'consola y pageerror limpios');
+  output.dataset.status='pass';
+  output.textContent=JSON.stringify({assertions:assertions.length,listCalls:listCalls.length,errors:errors.length,browser:navigator.userAgent});
+  document.title='PASS';
+} catch(error) {
+  output.dataset.status='fail';
+  output.textContent=JSON.stringify({message:error.message,stack:error.stack,assertions:assertions.length,errors});
+  document.title='FAIL';
+}
+</script>
+</body>
+</html>

@@ -19,7 +19,8 @@ function initialize() {
     const actions = {
         onInputTerm: (term) => store.setInputTerm(term),
         onSearch: () => store.search(),
-        onClear: () => store.search(''),
+        onClear: () => store.clearFilters(),
+        onFilter: (field, value) => store.setFilter(field, value),
         onReload: () => store.reload(),
         onPage: (page) => store.goToPage(page),
         onNew: () => openCreateForm(store),
@@ -27,6 +28,7 @@ function initialize() {
         onFormField: (field, value) => store.setFormField(field, value),
         onSave: () => store.saveProduct(),
         onStatus: (status) => store.changeProductStatus(status),
+        onListStatus: (id, status) => store.changeListProductStatus(id, status),
         onBack: () => returnToList(store),
     };
 

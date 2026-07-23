@@ -68,9 +68,40 @@ export function createProductsView(nodes, actions) {
 
     searchForm.append(searchLabel, searchInput, searchButton, clearButton);
 
+    const statusFilter = document.createElement('select');
+    statusFilter.setAttribute('aria-label', 'Filtrar por estado');
+    [
+        ['', 'Todos los estados'],
+        ['draft', 'Borrador'],
+        ['active', 'Activo'],
+        ['inactive', 'Inactivo'],
+    ].forEach(([value, label]) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        statusFilter.append(option);
+    });
+    statusFilter.addEventListener('change', () => {
+        actions.onFilter('status', statusFilter.value);
+    });
+    const categoryFilter = createCatalogFilter(
+        'Categoría', 'Todas las categorías',
+        (value) => actions.onFilter('categoryId', value)
+    );
+    const brandFilter = createCatalogFilter(
+        'Marca', 'Todas las marcas',
+        (value) => actions.onFilter('brandId', value)
+    );
+
     const reloadButton = createButton('Recargar', actions.onReload);
     reloadButton.classList.add('button', 'veciahorra-products-admin__reload');
-    nodes.toolbar.replaceChildren(searchForm, reloadButton);
+    nodes.toolbar.replaceChildren(
+        searchForm,
+        statusFilter,
+        categoryFilter,
+        brandFilter,
+        reloadButton
+    );
 
     searchInput.addEventListener('input', () => {
         actions.onInputTerm(searchInput.value);
@@ -107,7 +138,21 @@ export function createProductsView(nodes, actions) {
         }
 
         const loading = state.status === STATUS_LOADING;
-        const hasSearch = state.inputTerm !== '' || state.query.term !== '';
+        const hasSearch = state.inputTerm !== '' || state.query.term !== ''
+            || state.query.status !== '' || state.query.categoryId !== ''
+            || state.query.brandId !== '';
+        syncCatalogFilter(
+            categoryFilter,
+            state.catalogs.categories.data,
+            state.query.categoryId,
+            'Todas las categorías'
+        );
+        syncCatalogFilter(
+            brandFilter,
+            state.catalogs.brands.data,
+            state.query.brandId,
+            'Todas las marcas'
+        );
 
         nodes.toolbar.hidden = false;
         nodes.table.setAttribute('aria-label', 'Tabla de productos');
@@ -124,6 +169,10 @@ export function createProductsView(nodes, actions) {
         searchButton.disabled = loading;
         clearButton.disabled = loading || !hasSearch;
         reloadButton.disabled = loading;
+        statusFilter.disabled = loading;
+        categoryFilter.disabled = loading;
+        brandFilter.disabled = loading;
+        statusFilter.value = state.query.status;
         nodes.table.classList.toggle('is-loading', loading);
         nodes.table.setAttribute('aria-busy', loading ? 'true' : 'false');
 
@@ -144,6 +193,33 @@ export function createProductsView(nodes, actions) {
     }
 
     return { render };
+}
+
+function createCatalogFilter(label, emptyLabel, onChange) {
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', `Filtrar por ${label.toLowerCase()}`);
+    select.dataset.emptyLabel = emptyLabel;
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+}
+
+function syncCatalogFilter(select, items, selected, emptyLabel) {
+    const signature = JSON.stringify(items);
+    if (select.dataset.signature !== signature) {
+        select.dataset.signature = signature;
+        select.replaceChildren();
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = emptyLabel;
+        select.append(empty);
+        items.forEach((item) => {
+            const option = document.createElement('option');
+            option.value = String(item.id);
+            option.textContent = item.name;
+            select.append(option);
+        });
+    }
+    select.value = selected;
 }
 
 function renderProductFormView(nodes, productForm, state, newProductButton) {
@@ -175,12 +251,14 @@ function renderLoading(container) {
     container.replaceChildren(state);
 }
 
-function renderEmpty(container, term) {
+function renderEmpty(container, query) {
     const state = document.createElement('div');
     state.className = 'veciahorra-products-admin__state veciahorra-products-admin__state--empty';
-    state.textContent = term === ''
-        ? 'No hay productos para mostrar.'
-        : `No se encontraron productos para «${term}».`;
+    const filtered = query.term !== '' || query.status !== ''
+        || query.categoryId !== '' || query.brandId !== '';
+    state.textContent = filtered
+        ? 'No hay productos que coincidan. Limpia o cambia los filtros.'
+        : 'No hay productos para mostrar. Crea el primer producto.';
     container.replaceChildren(state);
 }
 
@@ -190,10 +268,20 @@ function renderContent(nodes, state, actions) {
             renderLoading(nodes.table);
             break;
         case STATUS_SUCCESS:
-            renderTable(nodes.table, state.products, actions);
+            renderTable(nodes.table, state.products, actions, state.operatingIds);
+            if (state.error) {
+                const notice = document.createElement('div');
+                notice.className = 'notice notice-error inline';
+                const message = document.createElement('p');
+                message.textContent = state.error.status === 409
+                    ? 'El producto cambió en otra sesión. Recarga los datos antes de volver a intentar.'
+                    : state.error.message;
+                notice.append(message);
+                nodes.messages.replaceChildren(notice);
+            }
             break;
         case STATUS_EMPTY:
-            renderEmpty(nodes.table, state.query.term);
+            renderEmpty(nodes.table, state.query);
             break;
         case STATUS_ERROR:
             renderError(nodes, state.error, actions.onReload);
@@ -223,7 +311,7 @@ function renderError(nodes, error, onReload) {
     nodes.table.replaceChildren(state);
 }
 
-function renderTable(container, products, actions) {
+function renderTable(container, products, actions, operatingIds = []) {
     const wrapper = document.createElement('div');
     wrapper.className = 'veciahorra-products-admin__table-scroll';
 
@@ -232,7 +320,7 @@ function renderTable(container, products, actions) {
 
     const head = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    ['ID', 'Nombre', 'SKU', 'Estado', 'Actualizado'].forEach((label) => {
+    ['Producto', 'Clasificación', 'Estado y publicación', 'Ofertas', 'Acciones'].forEach((label) => {
         const cell = document.createElement('th');
         cell.scope = 'col';
         cell.textContent = label;
@@ -243,11 +331,33 @@ function renderTable(container, products, actions) {
     const body = document.createElement('tbody');
     products.forEach((product) => {
         const row = document.createElement('tr');
-        appendCell(row, product.id, 'veciahorra-products-admin__column-id');
         appendProductNameCell(row, product, actions);
-        appendCell(row, product.sku, 'veciahorra-products-admin__column-sku');
-        appendCell(row, statusLabel(product.status), 'veciahorra-products-admin__column-status');
-        appendCell(row, product.updatedAt, 'veciahorra-products-admin__column-updated');
+        appendCell(
+            row,
+            `Categoría: ${taxonomyLabel(product.category, 'categoría')}\n`
+                + `Marca: ${taxonomyLabel(product.brand, 'marca')}\n`
+                + `Unidad: ${taxonomyLabel(product.unit, 'unidad')}`,
+            'veciahorra-products-admin__column-taxonomies'
+        );
+        appendCell(
+            row,
+            `${statusLabel(product.status)}\n`
+                + (product.publiclyAvailable
+                    ? 'Disponible públicamente'
+                    : 'Sin disponibilidad pública')
+                + `\nVersión: ${product.updatedAt}`,
+            'veciahorra-products-admin__column-status'
+        );
+        appendCell(
+            row,
+            product.inventory.total === 0
+                ? 'Sin ofertas'
+                : `${product.inventory.total} ofertas\n`
+                    + `${product.inventory.active} activas · `
+                    + `${product.inventory.inactive} inactivas`,
+            'veciahorra-products-admin__column-inventory'
+        );
+        appendActionCell(row, product, actions, operatingIds.includes(product.id));
         body.append(row);
     });
 
@@ -260,9 +370,29 @@ function appendProductNameCell(row, product, actions) {
     const cell = document.createElement('td');
     cell.className = 'veciahorra-products-admin__column-name';
 
+    const identity = document.createElement('div');
+    identity.className = 'veciahorra-products-admin__identity';
+    if (product.imageUrl) {
+        const image = document.createElement('img');
+        image.src = product.imageUrl;
+        image.alt = `Imagen de ${product.name}`;
+        image.loading = 'lazy';
+        image.addEventListener('error', () => {
+            const fallback = createImageFallback(product.name);
+            image.replaceWith(fallback);
+        }, { once: true });
+        identity.append(image);
+    } else {
+        identity.append(createImageFallback(product.name));
+    }
+    const details = document.createElement('div');
     const name = document.createElement('strong');
     name.textContent = product.name;
-    cell.append(name);
+    const meta = document.createElement('small');
+    meta.textContent = `ID ${product.id} · ${product.sku || 'Sin SKU'}`;
+    details.append(name, document.createElement('br'), meta);
+    identity.append(details);
+    cell.append(identity);
 
     const canEdit = typeof actions.onEdit === 'function';
     const canNavigateInventory = (
@@ -283,17 +413,51 @@ function appendProductNameCell(row, product, actions) {
             rowActions.append(edit);
         }
 
-        if (canNavigateInventory) {
-            rowActions.append(
-                createLink('Ver ofertas', actions.inventoryListUrl(product.id)),
-                createLink('Crear oferta', actions.inventoryCreateUrl(product.id))
-            );
-        }
-
         cell.append(rowActions);
     }
 
     row.append(cell);
+}
+
+function createImageFallback(productName) {
+    const fallback = document.createElement('span');
+    fallback.className = 'veciahorra-products-admin__image-fallback';
+    fallback.textContent = 'Sin imagen';
+    fallback.setAttribute('role', 'img');
+    fallback.setAttribute('aria-label', `Sin imagen para ${productName}`);
+    return fallback;
+}
+
+function appendActionCell(row, product, actions, operating) {
+    const cell = document.createElement('td');
+    cell.className = 'veciahorra-products-admin__actions';
+    if (typeof actions.inventoryListUrl === 'function') {
+        cell.append(product.inventory.total > 0
+            ? createLink('Ver ofertas', actions.inventoryListUrl(product.id))
+            : createLink('Crear oferta', actions.inventoryCreateUrl(product.id)));
+    }
+    product.allowedStatuses.forEach((status) => {
+        const button = createButton(
+            status === 'active' ? 'Activar' : 'Desactivar',
+            () => emit(actions.onListStatus, product.id, status)
+        );
+        button.classList.add('button-link');
+        button.disabled = operating;
+        cell.append(button);
+    });
+    row.append(cell);
+}
+
+function taxonomyLabel(value, label) {
+    if (value && value.available === false) {
+        return 'Referencia no disponible';
+    }
+    if (!value || value.id === null) {
+        return `Sin ${label}`;
+    }
+    return value.available && value.name
+        ? value.name
+        : 'Referencia no disponible';
 }
 
 function renderPagination(container, state, actions) {
@@ -347,6 +511,7 @@ function createContentKey(state) {
         term: state.query.term,
         products: state.products,
         error: state.error,
+        operatingIds: state.operatingIds,
     });
 }
 

@@ -22,6 +22,7 @@ final class ProductListRequest
     private const DEFAULT_DIRECTION = 'ASC';
 
     private const ALLOWED_STATUSES = [
+        'draft',
         'active',
         'inactive',
     ];
@@ -64,6 +65,8 @@ final class ProductListRequest
      *     per_page: int,
      *     term: string|null,
      *     status: string|null,
+     *     category_id: int|null,
+     *     brand_id: int|null,
      *     order_by: string,
      *     direction: string
      * }
@@ -84,6 +87,8 @@ final class ProductListRequest
             ),
             'term' => $this->validatedTerm(),
             'status' => $this->validatedStatus(),
+            'category_id' => $this->validatedOptionalId('category_id'),
+            'brand_id' => $this->validatedOptionalId('brand_id'),
             'order_by' => $this->validatedOrderBy(),
             'direction' => $this->validatedDirection(),
         ];
@@ -91,6 +96,26 @@ final class ProductListRequest
         $this->throwIfInvalid();
 
         return $data;
+    }
+
+    private function validatedOptionalId(string $field): ?int
+    {
+        if (! $this->has($field)) {
+            return null;
+        }
+
+        $value = $this->value($field);
+
+        if (! $this->isPositiveInteger($value)) {
+            $this->errors[] = sprintf(
+                'El parametro %s debe ser un entero mayor o igual a 1.',
+                $field
+            );
+
+            return null;
+        }
+
+        return (int) $value;
     }
 
     /**

@@ -96,9 +96,12 @@ export function createProductsApi({ restUrl, nonce }) {
         };
     }
 
-    async function getProducts({ term = '', page = 1, perPage = 20 } = {}) {
+    async function getProducts({
+        term = '', page = 1, perPage = 20,
+        status = '', categoryId = '', brandId = '',
+    } = {}) {
         const response = await request(
-            buildProductsUrl({ term, page, perPage }),
+            buildProductsUrl({ term, page, perPage, status, categoryId, brandId }),
             { method: 'GET' }
         );
 
@@ -167,7 +170,7 @@ export function createProductsApi({ restUrl, nonce }) {
     };
 }
 
-function buildProductsUrl({ term, page, perPage }) {
+function buildProductsUrl({ term, page, perPage, status, categoryId, brandId }) {
     const normalizedTerm = typeof term === 'string' ? term.trim() : '';
     const endpoint = normalizedTerm === '' ? '/products' : '/products/search';
     const params = new URLSearchParams({
@@ -177,6 +180,15 @@ function buildProductsUrl({ term, page, perPage }) {
 
     if (normalizedTerm !== '') {
         params.set('term', normalizedTerm);
+    }
+    if (['draft', 'active', 'inactive'].includes(status)) {
+        params.set('status', status);
+    }
+    if (/^[1-9]\d*$/.test(String(categoryId))) {
+        params.set('category_id', String(categoryId));
+    }
+    if (/^[1-9]\d*$/.test(String(brandId))) {
+        params.set('brand_id', String(brandId));
     }
 
     return `${endpoint}?${params.toString()}`;
@@ -311,7 +323,13 @@ function isProduct(product) {
         && isNonEmptyString(product.name)
         && (typeof product.sku === 'string' || product.sku === null)
         && isNonEmptyString(product.status)
-        && isNonEmptyString(product.updated_at);
+        && isNonEmptyString(product.updated_at)
+        && isObject(product.inventory)
+        && Number.isInteger(product.inventory.total)
+        && Number.isInteger(product.inventory.active)
+        && Number.isInteger(product.inventory.inactive)
+        && typeof product.publicly_available === 'boolean'
+        && Array.isArray(product.allowed_statuses);
 }
 
 function isPositiveInteger(value) {

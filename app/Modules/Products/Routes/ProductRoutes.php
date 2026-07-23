@@ -179,9 +179,9 @@ final class ProductRoutes
     ): WP_REST_Response {
         $input = $request->get_query_params();
 
-        return $this->toResponse(
+        return $this->noStore($this->toResponse(
             $this->controller->index($input)
-        );
+        ));
     }
 
     /**

@@ -84,6 +84,8 @@ $defaults = [
     'per_page' => 20,
     'term' => null,
     'status' => null,
+    'category_id' => null,
+    'brand_id' => null,
     'order_by' => 'name',
     'direction' => 'ASC',
 ];
@@ -144,7 +146,25 @@ test('13. status ACTIVE se normaliza', function (): void {
     assertSameValue('active', $result['status']);
 });
 
-test('14. status invalido', fn () => assertInvalid(['status' => 'draft']));
+test('14. status draft', function (): void {
+    $result = (new ProductListRequest(['status' => 'draft']))->validated();
+    assertSameValue('draft', $result['status']);
+});
+test('14b. status invalido', fn () => assertInvalid(['status' => 'archived']));
+
+test('14c. filtros taxonomicos validos', function (): void {
+    $result = (new ProductListRequest([
+        'category_id' => '12',
+        'brand_id' => 34,
+    ]))->validated();
+    assertSameValue(12, $result['category_id']);
+    assertSameValue(34, $result['brand_id']);
+});
+
+test('14d. filtros taxonomicos invalidos', function (): void {
+    assertInvalid(['category_id' => 0]);
+    assertInvalid(['brand_id' => 'abc']);
+});
 
 test('15. order_by name', function (): void {
     $result = (new ProductListRequest(['order_by' => 'name']))->validated();
