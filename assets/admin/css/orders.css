@@ -1,0 +1,12 @@
+.veciahorra-orders-admin { max-width: 1440px; }
+.veciahorra-orders-admin__filters { display: grid; grid-template-columns: repeat(4, minmax(10rem, 1fr)); gap: 1rem; margin: 1.5rem 0; padding: 1rem; background: #fff; }
+.veciahorra-orders-admin__filters label { display: grid; gap: .35rem; font-weight: 600; }
+.orders-list { display: grid; gap: 1rem; margin: 1rem 0; padding: 0; list-style: none; }
+.orders-list__item { min-width: 0; padding: 1rem; border: 1px solid #c3c4c7; border-left: 4px solid #2271b1; background: #fff; overflow-wrap: anywhere; }
+.orders-list__item h2 { margin: 0 0 .5rem; font-size: 1.1rem; }
+.orders-list__states { font-weight: 600; }
+.orders-list__future { color: #50575e; }
+#veciahorra-orders-pagination { display: flex; align-items: center; justify-content: center; gap: .75rem; }
+#veciahorra-orders-status { min-height: 1.5rem; }
+@media (max-width: 1024px) { .veciahorra-orders-admin__filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .veciahorra-orders-admin__filters { grid-template-columns: minmax(0, 1fr); } #veciahorra-orders-pagination { flex-wrap: wrap; } }

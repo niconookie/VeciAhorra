@@ -20,6 +20,13 @@ use VeciAhorra\Modules\Checkout\Routes\CheckoutRoutes;
 use VeciAhorra\Modules\CustomerPanel\Routes\CustomerPanelRoutes;
 use VeciAhorra\Modules\Delivery\Routes\DeliveryRoutes;
 use VeciAhorra\Modules\Orders\Routes\OrderRoutes;
+use VeciAhorra\Modules\Orders\Admin\OrdersPage;
+use VeciAhorra\Modules\Orders\Contracts\OrderAdminReadRepositoryInterface;
+use VeciAhorra\Modules\Orders\Repositories\OrderAdminReadRepository;
+use VeciAhorra\Modules\Orders\Routes\OrdersAdminRoutes;
+use VeciAhorra\Modules\Orders\Services\OrderAdminReadService;
+use VeciAhorra\Modules\Orders\Services\OrderOperationalFactsAssembler;
+use VeciAhorra\Modules\Orders\Domain\Operational\OrderOperationalStateResolver;
 use VeciAhorra\Modules\Payments\Routes\PaymentRoutes;
 use VeciAhorra\Modules\Payments\Gateway\DummyPaymentGateway;
 use VeciAhorra\Modules\Payments\Gateway\MockPaymentGateway;
@@ -109,6 +116,19 @@ final class Application
             OrderPaymentConfirmationInterface::class,
             fn (): OrderPaymentConfirmationAdapter => $this->container->make(
                 OrderPaymentConfirmationAdapter::class
+            )
+        );
+        $this->container->bind(
+            OrderAdminReadRepositoryInterface::class,
+            static fn (): OrderAdminReadRepository => new OrderAdminReadRepository()
+        );
+        $this->container->bind(
+            OrderAdminReadService::class,
+            fn (): OrderAdminReadService => new OrderAdminReadService(
+                $this->container->make(OrderAdminReadRepositoryInterface::class),
+                new OrderOperationalFactsAssembler(),
+                new OrderOperationalStateResolver(),
+                gmdate('Y-m-d\TH:i:s\Z')
             )
         );
     }
@@ -205,6 +225,8 @@ final class Application
         );
         $inventoryPage->register();
 
+        $this->container->make(OrdersPage::class)->register();
+
         /*
         |--------------------------------------------------------------------------
         | Módulos
@@ -272,6 +294,14 @@ final class Application
         add_action(
             'rest_api_init',
             [$orderRoutes, 'register']
+        );
+
+        $ordersAdminRoutes = $this->container->make(
+            OrdersAdminRoutes::class
+        );
+        add_action(
+            'rest_api_init',
+            [$ordersAdminRoutes, 'register']
         );
 
         $paymentRoutes = $this->container->make(
