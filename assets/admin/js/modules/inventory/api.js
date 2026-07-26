@@ -91,9 +91,12 @@ export function createInventoryApi({ restUrl, nonce }) {
         return { payload, status: response.status };
     }
 
-    function getInventory(filters = {}) {
-        return request(buildInventoryUrl(filters), { method: 'GET' })
-            .then((response) => assertResponse(response, isInventoryResponse));
+    function getInventory(filters = {}, { signal } = {}) {
+        return request(buildInventoryUrl(filters), { method: 'GET', signal })
+            .then((response) => assertResponse(
+                response,
+                isInventoryAdminResponse
+            ));
     }
 
     function getInventoryItem(id) {
@@ -207,12 +210,18 @@ export function buildInventoryUrl({
     productId = '',
     minimarketId = '',
     status = '',
+    availability = '',
+    cause = '',
     page = 1,
     perPage = 20,
+    orderBy = 'updated_at',
+    direction = 'DESC',
 } = {}) {
     const params = new URLSearchParams({
         page: String(page),
         per_page: String(perPage),
+        order_by: String(orderBy),
+        direction: String(direction),
     });
 
     [
@@ -220,6 +229,8 @@ export function buildInventoryUrl({
         ['product_id', productId],
         ['minimarket_id', minimarketId],
         ['status', status],
+        ['availability', availability],
+        ['cause', cause],
     ].forEach(([name, value]) => {
         const normalized = String(value ?? '').trim();
 
@@ -228,18 +239,19 @@ export function buildInventoryUrl({
         }
     });
 
-    return `/inventory?${params.toString()}`;
+    return `/inventory/admin?${params.toString()}`;
 }
 
-function isInventoryResponse(payload) {
+function isInventoryAdminResponse(payload) {
     return isObject(payload)
         && payload.success === true
         && Array.isArray(payload.data)
-        && payload.data.every(isInventoryRow)
+        && payload.data.every(isInventoryAdminRow)
         && isObject(payload.meta)
         && ['page', 'per_page', 'total', 'total_pages'].every(
             (field) => Number.isInteger(payload.meta[field])
-        );
+        )
+        && typeof payload.meta.snapshot_consistent === 'boolean';
 }
 
 function isDetailResponse(payload) {
@@ -368,6 +380,64 @@ function isInventoryRow(row) {
         && ['active', 'inactive'].includes(row.status)
         && typeof row.updated_at === 'string'
         && row.updated_at.trim() !== '';
+}
+
+function isInventoryAdminRow(row) {
+    return isObject(row)
+        && isPositiveInteger(row.id)
+        && isAdministrativeEntity(row.product)
+        && isAdministrativeEntity(row.store)
+        && isNonNegativeNumber(row.price)
+        && isNonNegativeInteger(row.stock)
+        && typeof row.status === 'string'
+        && isObject(row.availability)
+        && typeof row.availability.is_publicly_available === 'boolean'
+        && isCause(row.availability.primary_cause)
+        && (!Object.hasOwn(row.availability, 'blocking_causes')
+            || (
+                Array.isArray(row.availability.blocking_causes)
+                && row.availability.blocking_causes.every(isCause)
+            ))
+        && Array.isArray(row.availability.blocking_codes)
+        && row.availability.blocking_codes.every(isSafeCode)
+        && Array.isArray(row.availability.warning_codes)
+        && row.availability.warning_codes.every(isSafeCode)
+        && (!Object.hasOwn(row.availability, 'warnings')
+            || (
+                Array.isArray(row.availability.warnings)
+                && row.availability.warnings.every(isCause)
+            ))
+        && isObject(row.references)
+        && ['has_cart_items', 'has_active_reservations', 'has_history']
+            .every((field) => typeof row.references[field] === 'boolean')
+        && ['complete', 'failed', 'partial'].includes(
+            row.references.inspection_status
+        )
+        && typeof row.updated_at === 'string'
+        && isObject(row.actions)
+        && typeof row.actions.view === 'boolean'
+        && typeof row.actions.edit === 'boolean'
+        && !Object.hasOwn(row.actions, 'delete')
+        && isObject(row.routes);
+}
+
+function isAdministrativeEntity(entity) {
+    return isObject(entity)
+        && isPositiveInteger(entity.id)
+        && typeof entity.exists === 'boolean'
+        && (entity.name === null || typeof entity.name === 'string')
+        && (entity.status === null || typeof entity.status === 'string');
+}
+
+function isCause(cause) {
+    return isObject(cause)
+        && isSafeCode(cause.code)
+        && typeof cause.label === 'string'
+        && typeof cause.severity === 'string';
+}
+
+function isSafeCode(value) {
+    return typeof value === 'string' && /^[a-z][a-z0-9_]*$/.test(value);
 }
 
 function isPositiveInteger(value) {

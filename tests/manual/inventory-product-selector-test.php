@@ -124,7 +124,12 @@ function removeSelectorProfile(string $directory): void
 
 $profile = sys_get_temp_dir() . '/veciahorra-inventory-selector-' . getmypid();
 $command = [
-    selectorBrowser(), '--headless=new', '--disable-gpu', '--no-first-run',
+    selectorBrowser(), '--headless=new', '--disable-gpu',
+    '--disable-gpu-sandbox',
+    '--disable-features=CanvasOopRasterization,UseD3D12',
+    '--disable-background-mode', '--disable-background-networking',
+    '--disable-component-update', '--disable-extensions', '--no-sandbox',
+    '--no-first-run',
     '--no-default-browser-check', '--allow-file-access-from-files',
     '--user-data-dir=' . $profile, '--virtual-time-budget=12000', '--dump-dom',
     selectorFileUrl(__DIR__ . '/inventory-product-selector-test.html'),

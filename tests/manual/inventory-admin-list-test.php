@@ -83,13 +83,13 @@ foreach (
 }
 
 assertInventoryAdmin(
-    str_contains($api, "return `/inventory?")
+    str_contains($api, "return `/inventory/admin?")
         && str_contains($api, "method: 'GET'"),
-    'El API client no solicita GET /inventory.'
+    'El API client no solicita GET /inventory/admin.'
 );
 
 foreach (
-    ['ID', 'Product ID', 'Minimarket ID', 'Price', 'Stock', 'Status', 'Updated At']
+    ['Product', 'Store', 'Oferta', 'Disponibilidad', 'Referencias', 'Acciones']
     as $column
 ) {
     assertInventoryAdmin(
@@ -104,8 +104,12 @@ foreach (
         "['product_id', productId]",
         "['minimarket_id', minimarketId]",
         "['status', status]",
+        "['availability', availability]",
+        "['cause', cause]",
         'per_page: String(perPage)',
         'page: String(page)',
+        'order_by: String(orderBy)',
+        'direction: String(direction)',
     ] as $queryFragment
 ) {
     assertInventoryAdmin(
@@ -125,7 +129,7 @@ assertInventoryAdmin(
 foreach (
     [
         'Cargando inventario...',
-        'No hay registros de inventario para mostrar.',
+        'Inventory todavía no tiene ofertas.',
         'No fue posible cargar el inventario.',
     ] as $message
 ) {

@@ -102,12 +102,86 @@
 
 .veciahorra-inventory-admin__items-table {
     border: 0;
-    min-width: 850px;
+    table-layout: auto;
+    width: 100%;
 }
 
 .veciahorra-inventory-admin__items-table th,
 .veciahorra-inventory-admin__items-table td {
-    vertical-align: middle;
+    vertical-align: top;
+}
+
+.veciahorra-inventory-admin__items-table caption {
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    width: 1px;
+}
+
+.veciahorra-inventory-admin__items-table td > * {
+    display: block;
+    margin-bottom: 6px;
+}
+
+.veciahorra-inventory-admin__items-table td > *:last-child {
+    margin-bottom: 0;
+}
+
+.veciahorra-inventory-admin__entity-link {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.veciahorra-inventory-admin__meta {
+    color: #646970;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.veciahorra-inventory-admin__cause {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.veciahorra-inventory-admin__badge {
+    border-radius: 999px;
+    box-sizing: border-box;
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    max-width: 100%;
+    padding: 3px 8px;
+    width: fit-content;
+}
+
+.veciahorra-inventory-admin__badge--success {
+    background: #edfaef;
+    color: #116329;
+}
+
+.veciahorra-inventory-admin__badge--warning {
+    background: #fcf0c3;
+    color: #674e00;
+}
+
+.veciahorra-inventory-admin__badge--error {
+    background: #fbeaea;
+    color: #8a2424;
+}
+
+.veciahorra-inventory-admin__badge--neutral {
+    background: #f0f0f1;
+    color: #3c434a;
+}
+
+.veciahorra-inventory-admin__actions {
+    min-width: 110px;
+}
+
+.veciahorra-inventory-admin__actions a {
+    display: block;
+    margin-bottom: 6px;
 }
 
 .veciahorra-inventory-admin__form {
@@ -210,6 +284,65 @@
 
     .veciahorra-inventory-admin__form-actions .button {
         width: 100%;
+    }
+
+    .veciahorra-inventory-admin__table-scroll {
+        overflow: visible;
+    }
+
+    .veciahorra-inventory-admin__items-table,
+    .veciahorra-inventory-admin__items-table tbody,
+    .veciahorra-inventory-admin__items-table tr,
+    .veciahorra-inventory-admin__items-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .veciahorra-inventory-admin__items-table thead {
+        height: 1px;
+        overflow: hidden;
+        position: absolute;
+        width: 1px;
+    }
+
+    .veciahorra-inventory-admin__items-table tbody {
+        box-sizing: border-box;
+        display: grid;
+        gap: 12px;
+        padding: 12px;
+    }
+
+    .veciahorra-inventory-admin__items-table tr {
+        background: #fff;
+        border: 1px solid #c3c4c7;
+        box-sizing: border-box;
+        padding: 4px 14px;
+    }
+
+    .veciahorra-inventory-admin__items-table td {
+        border-bottom: 1px solid #dcdcde;
+        box-sizing: border-box;
+        padding: 12px 0;
+    }
+
+    .veciahorra-inventory-admin__items-table td::before {
+        color: #50575e;
+        content: attr(data-label);
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .04em;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+    }
+
+    .veciahorra-inventory-admin__items-table td:last-child {
+        border-bottom: 0;
+    }
+
+    .veciahorra-inventory-admin__actions a {
+        display: inline-block;
+        margin: 0 12px 6px 0;
     }
 }
 .veciahorra-inventory-admin__context {

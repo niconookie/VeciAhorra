@@ -110,8 +110,8 @@ assertProductInventoryContext(
 );
 assertProductInventoryContext(
     str_contains($inventoryView, 'Ofertas de:')
-        && str_contains($inventoryView, 'Ver todas las ofertas')
-        && str_contains($inventoryView, 'Este producto todavia no tiene ofertas.')
+        && str_contains($inventoryView, 'Retirar contexto Product')
+        && str_contains($inventoryView, 'No hay ofertas que coincidan con los filtros.')
         && str_contains($inventoryView, 'Crear primera oferta'),
     'Faltan estados visibles o recuperacion del contexto.'
 );
@@ -170,6 +170,13 @@ $command = [
     contextBrowser(),
     '--headless=new',
     '--disable-gpu',
+    '--disable-gpu-sandbox',
+    '--disable-features=CanvasOopRasterization,UseD3D12',
+    '--disable-background-mode',
+    '--disable-background-networking',
+    '--disable-component-update',
+    '--disable-extensions',
+    '--no-sandbox',
     '--no-first-run',
     '--no-default-browser-check',
     '--allow-file-access-from-files',
@@ -241,6 +248,13 @@ foreach (
         contextBrowser(),
         '--headless=new',
         '--disable-gpu',
+        '--disable-gpu-sandbox',
+        '--disable-features=CanvasOopRasterization,UseD3D12',
+        '--disable-background-mode',
+        '--disable-background-networking',
+        '--disable-component-update',
+        '--disable-extensions',
+        '--no-sandbox',
         '--no-first-run',
         '--no-default-browser-check',
         '--allow-file-access-from-files',

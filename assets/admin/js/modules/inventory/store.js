@@ -14,8 +14,12 @@ const DEFAULT_FILTERS = {
     productId: '',
     minimarketId: '',
     status: '',
+    availability: '',
+    cause: '',
     page: 1,
     perPage: 20,
+    orderBy: 'updated_at',
+    direction: 'DESC',
 };
 
 const DEFAULT_VALUES = {
@@ -26,7 +30,7 @@ const DEFAULT_VALUES = {
     status: 'active',
 };
 
-export function createInventoryStore(api) {
+export function createInventoryStore(api, { onQueryChange = null } = {}) {
     let state = {
         currentView: VIEW_LIST,
         status: STATUS_IDLE,
@@ -39,8 +43,10 @@ export function createInventoryStore(api) {
         form: initialForm(),
     };
     let latestRequest = 0;
+    let listController = null;
     let latestFormRequest = 0;
     let listNeedsReload = false;
+    let destroyed = false;
     const listeners = new Set();
 
     function getState() {
@@ -52,11 +58,13 @@ export function createInventoryStore(api) {
             throw new TypeError('El listener del store debe ser una funcion.');
         }
 
+        if (destroyed) return () => {};
         listeners.add(listener);
         return () => listeners.delete(listener);
     }
 
     function setState(next) {
+        if (destroyed) return;
         state = { ...state, ...next };
         listeners.forEach((listener) => listener(snapshot(state)));
     }
@@ -102,6 +110,25 @@ export function createInventoryStore(api) {
             { ...DEFAULT_FILTERS, productId, minimarketId },
             { ...DEFAULT_FILTERS, productId, minimarketId }
         );
+    }
+
+    function initializeList(query) {
+        latestFormRequest++;
+        setState({
+            currentView: VIEW_LIST,
+            form: initialForm(),
+        });
+        return execute({ ...DEFAULT_FILTERS, ...query }, {
+            ...DEFAULT_FILTERS,
+            ...query,
+        }, false);
+    }
+
+    function prepareListQuery(query) {
+        setState({
+            inputs: { ...DEFAULT_FILTERS, ...query },
+            query: { ...DEFAULT_FILTERS, ...query },
+        });
     }
 
     function reload() {
@@ -395,6 +422,10 @@ export function createInventoryStore(api) {
             await execute(state.query, state.inputs);
         }
 
+        if (state.items.length === 0) {
+            await execute(state.query, state.inputs, false);
+        }
+
         return true;
     }
 
@@ -462,8 +493,37 @@ export function createInventoryStore(api) {
         return execute({ ...DEFAULT_FILTERS, minimarketId }, { ...DEFAULT_FILTERS, minimarketId });
     }
 
-    async function execute(query, inputs) {
+    function applyListContext(context, query) {
+        const id = context.kind === 'store'
+            ? Number(query.minimarketId)
+            : Number(query.productId);
+        setState({
+            context: {
+                status: 'ready',
+                intent: 'list',
+                kind: context.kind,
+                product: context.kind === 'product'
+                    ? { id, name: `Product #${id}`, status: 'unknown' }
+                    : null,
+                store: context.kind === 'store'
+                    ? { id, name: `Store #${id}`, status: 'unknown' }
+                    : null,
+                message: null,
+            },
+        });
+        return initializeList(query);
+    }
+
+    async function execute(query, inputs, pushHistory = true) {
+        if (destroyed) return false;
         const requestId = ++latestRequest;
+        listController?.abort();
+        listController = typeof AbortController === 'function'
+            ? new AbortController()
+            : null;
+        if (typeof onQueryChange === 'function') {
+            onQueryChange({ ...query }, pushHistory);
+        }
         setState({
             status: STATUS_LOADING,
             inputs: { ...inputs },
@@ -474,17 +534,23 @@ export function createInventoryStore(api) {
         });
 
         try {
-            const response = await api.getInventory(query);
+            const response = await api.getInventory(query, {
+                signal: listController?.signal,
+            });
 
-            if (requestId !== latestRequest) {
+            if (destroyed || requestId !== latestRequest) {
                 return false;
             }
 
             if (response.meta.total_pages > 0 && response.meta.page > response.meta.total_pages) {
-                return execute({ ...query, page: response.meta.total_pages }, inputs);
+                return execute(
+                    { ...query, page: 1 },
+                    { ...inputs, page: 1 }
+                );
             }
 
             const items = response.data.map(normalizeItem);
+            refreshContextFromItems(items);
             setState({
                 status: items.length === 0 ? STATUS_EMPTY : STATUS_SUCCESS,
                 items,
@@ -492,7 +558,10 @@ export function createInventoryStore(api) {
             });
             return true;
         } catch (error) {
-            if (requestId !== latestRequest) {
+            if (destroyed || requestId !== latestRequest) {
+                return false;
+            }
+            if (error?.name === 'AbortError') {
                 return false;
             }
 
@@ -527,7 +596,42 @@ export function createInventoryStore(api) {
         rejectContext,
         applyContext,
         applyStoreContext,
+        applyListContext,
+        initializeList,
+        prepareListQuery,
+        destroy() {
+            if (destroyed) return;
+            destroyed = true;
+            latestRequest++;
+            latestFormRequest++;
+            listController?.abort();
+            listController = null;
+            listeners.clear();
+        },
     };
+
+    function refreshContextFromItems(items) {
+        if (state.context.status !== 'ready' || items.length === 0) return;
+        if (state.context.kind === 'product') {
+            const product = items.find(
+                (item) => item.product.id === state.context.product.id
+            )?.product;
+            if (product) state.context.product = {
+                id: product.id,
+                name: product.name || `Product #${product.id}`,
+                status: product.status || 'unknown',
+            };
+        } else {
+            const store = items.find(
+                (item) => item.store.id === state.context.store.id
+            )?.store;
+            if (store) state.context.store = {
+                id: store.id,
+                name: store.name || `Store #${store.id}`,
+                status: store.status || 'unknown',
+            };
+        }
+    }
 }
 
 function initialForm(mode = FORM_CREATE) {
@@ -643,12 +747,42 @@ function nonNegativeNumber(value) {
 function normalizeItem(item) {
     return {
         id: Number(item.id),
-        productId: Number(item.product_id),
-        minimarketId: Number(item.minimarket_id),
+        product: {
+            id: Number(item.product.id),
+            exists: item.product.exists,
+            name: item.product.name,
+            sku: item.product.sku ?? null,
+            status: item.product.status,
+        },
+        store: {
+            id: Number(item.store.id),
+            exists: item.store.exists,
+            name: item.store.name,
+            locationLabel: item.store.location_label ?? null,
+            status: item.store.status,
+            lifecycleState: item.store.lifecycle_state ?? null,
+        },
         price: Number(item.price),
         stock: Number(item.stock),
         status: item.status,
+        availability: {
+            ...item.availability,
+            primary_cause: { ...item.availability.primary_cause },
+            blocking_causes: Array.isArray(item.availability.blocking_causes)
+                ? item.availability.blocking_causes.map((cause) => ({ ...cause }))
+                : [],
+            blocking_codes: [...item.availability.blocking_codes],
+            warnings: Array.isArray(item.availability.warnings)
+                ? item.availability.warnings.map((cause) => ({ ...cause }))
+                : [],
+            warning_codes: [...item.availability.warning_codes],
+        },
+        references: { ...item.references },
+        actions: { ...item.actions },
+        routes: { ...item.routes },
+        createdAt: item.created_at,
         updatedAt: item.updated_at,
+        version: item.version,
     };
 }
 
@@ -678,7 +812,26 @@ function snapshot(source) {
         ...source,
         inputs: { ...source.inputs },
         query: { ...source.query },
-        items: source.items.map((item) => ({ ...item })),
+        items: source.items.map((item) => ({
+            ...item,
+            product: { ...item.product },
+            store: { ...item.store },
+            availability: {
+                ...item.availability,
+                primary_cause: { ...item.availability.primary_cause },
+                blocking_causes: item.availability.blocking_causes.map(
+                    (cause) => ({ ...cause })
+                ),
+                blocking_codes: [...item.availability.blocking_codes],
+                warnings: item.availability.warnings.map(
+                    (cause) => ({ ...cause })
+                ),
+                warning_codes: [...item.availability.warning_codes],
+            },
+            references: { ...item.references },
+            actions: { ...item.actions },
+            routes: { ...item.routes },
+        })),
         meta: source.meta === null ? null : { ...source.meta },
         error: source.error === null ? null : { ...source.error },
         context: {

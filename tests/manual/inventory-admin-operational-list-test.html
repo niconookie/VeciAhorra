@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="../../assets/admin/css/inventory.css">
+  <title>RUNNING</title>
+</head>
+<body>
+<div id="veciahorra-inventory-admin" class="wrap veciahorra-inventory-admin">
+  <header><h1>Inventario</h1><button type="button" class="page-title-action">Nuevo inventario</button></header>
+  <div id="veciahorra-inventory-messages" role="status" aria-live="polite"></div>
+  <main id="veciahorra-inventory-app" class="veciahorra-inventory-admin__main">
+    <section id="veciahorra-inventory-toolbar"></section>
+    <section id="veciahorra-inventory-table" class="veciahorra-inventory-admin__table"></section>
+    <nav id="veciahorra-inventory-pagination"></nav>
+  </main>
+  <script id="veciahorra-inventory-config" type="application/json">{"restUrl":"http://127.0.0.1/wp-json/veciahorra/v1","nonce":"test-nonce","adminUrl":"http://127.0.0.1/admin.php?page=veciahorra-inventory","storeAdminUrl":"http://127.0.0.1/admin.php?page=veciahorra-stores"}</script>
+</div>
+<pre id="test-results" data-status="running">RUNNING</pre>
+<script type="module">
+const output=document.getElementById('test-results');
+const assertions=[]; const calls=[]; const errors=[];
+const requestedWidth=Number(new URL(location.href).searchParams.get('test_width'))||innerWidth;
+const root=document.getElementById('veciahorra-inventory-admin');
+if(requestedWidth<innerWidth){root.style.width=`${requestedWidth}px`;root.style.maxWidth='100%';}
+const assert=(value,message)=>{if(!value)throw new Error(message);assertions.push(message);};
+const wait=async(ms=0)=>{if(ms)await new Promise(resolve=>setTimeout(resolve,ms));for(let i=0;i<30;i++)await Promise.resolve();};
+addEventListener('error',event=>errors.push(`pageerror:${event.message}`));
+addEventListener('unhandledrejection',event=>errors.push(`rejection:${event.reason}`));
+const originalError=console.error;
+console.error=(...args)=>{errors.push(`console:${args.join(' ')}`);originalError(...args);};
+const response=(payload,status=200)=>({ok:status>=200&&status<300,status,text:async()=>JSON.stringify(payload)});
+const availability=(code='publicly_available',warnings=[])=>({
+  is_publicly_available:code==='publicly_available',
+  primary_cause:{code,label:{publicly_available:'Pública',out_of_stock:'Sin stock disponible',store_status_unknown:'Estado Store desconocido'}[code]||code,message:'Diagnóstico',severity:code==='publicly_available'?'success':'warning'},
+  blocking_causes:code==='publicly_available'?[]:[{code,label:code,message:'Diagnóstico',severity:'warning'}],
+  blocking_codes:code==='publicly_available'?[]:[code],
+  warnings:warnings.map(code=>({code,label:code,message:code,severity:'warning'})),
+  warning_codes:warnings,
+  dimensions:{},evaluated_policy:'effective-v1'
+});
+const row=(id,overrides={})=>({
+  id,
+  product:{id:overrides.productId||10,exists:overrides.productExists??true,name:overrides.productName??'Arroz Integral',sku:overrides.sku??'SKU-10',status:overrides.productStatus??'active'},
+  store:{id:overrides.storeId||20,exists:overrides.storeExists??true,name:overrides.storeName??'Almacén Central',location_label:'Santiago',status:overrides.storeStatus??'active',lifecycle_state:overrides.lifecycle??'active'},
+  price:'1250.00',stock:overrides.stock??7,status:overrides.status??'active',
+  availability:availability(overrides.cause,overrides.warnings||[]),
+  references:{has_cart_items:overrides.cart??true,has_active_reservations:overrides.reservations??true,has_history:overrides.history??true,inspection_status:overrides.inspection||'complete'},
+  created_at:'2026-07-01 10:00:00',updated_at:'2026-07-25 10:00:00',version:'2026-07-25 10:00:00',
+  actions:{view:true,edit:overrides.edit??true,activate:false,deactivate:true},
+  routes:{
+    detail:`http://127.0.0.1/admin.php?page=veciahorra-inventory&action=view&inventory_id=${id}`,
+    product:overrides.productExists===false?null:`http://127.0.0.1/admin.php?page=veciahorra-products&action=view&product_id=${overrides.productId||10}`,
+    store:overrides.storeExists===false?null:`http://127.0.0.1/admin.php?page=veciahorra-stores&action=view&id=${overrides.storeId||20}`
+  }
+});
+const initial=[
+  row(1),
+  row(2,{productName:'Producto sin stock',cause:'out_of_stock',stock:0,cart:false,reservations:false,history:true}),
+  row(3,{productId:11,productName:null,productExists:false,storeStatus:'mystery',cause:'store_status_unknown',status:'mystery',warnings:['store_lifecycle_inconsistent'],inspection:'failed',edit:false})
+];
+let slowResolve=null;
+let retryFailed=false;
+window.fetch=async(url,options={})=>{
+  const parsed=new URL(String(url)); calls.push({url:String(url),options});
+  assert(parsed.pathname.endsWith('/inventory/admin'),'solo endpoint admin');
+  const search=parsed.searchParams.get('search')||'';
+  if(search==='slow'){
+    return new Promise((resolve,reject)=>{
+      slowResolve=()=>resolve(response({success:true,data:[row(90,{productName:'Obsoleto'})],meta:{page:1,per_page:20,total:1,total_pages:1,order_by:'updated_at',direction:'DESC',snapshot_consistent:false}}));
+      options.signal?.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')));
+    });
+  }
+  if(search==='error500')return response({success:false,error:{code:'inventory_read_failed',message:'No fue posible leer Inventory Admin.'}},500);
+  if(search==='error422')return response({success:false,error:{code:'invalid_admin_query',message:'Consulta inválida.'}},422);
+  if(search==='error401')return response({success:false,error:{code:'rest_forbidden',message:'Autenticación requerida.'}},401);
+  if(search==='error403')return response({success:false,error:{code:'rest_forbidden',message:'Acceso denegado.'}},403);
+  if(search==='invalidjson')return {ok:true,status:200,text:async()=>'{invalid'};
+  if(search==='network')throw new TypeError('network');
+  if(search==='retry-once'&&!retryFailed){retryFailed=true;throw new TypeError('network');}
+  const data=search==='none'?[]:search==='fast'?[row(91,{productName:'Vigente'})]:initial;
+  const page=Number(parsed.searchParams.get('page')||1);
+  return response({success:true,data,meta:{page,per_page:20,total:data.length,total_pages:data.length?2:0,order_by:parsed.searchParams.get('order_by')||'updated_at',direction:parsed.searchParams.get('direction')||'DESC',snapshot_consistent:false}});
+};
+try{
+  const origin=location.origin;
+  const configNode=document.getElementById('veciahorra-inventory-config');
+  const config=JSON.parse(configNode.textContent);
+  config.restUrl=`${origin}/wp-json/veciahorra/v1`;
+  config.adminUrl=`${origin}/admin.php?page=veciahorra-inventory`;
+  config.storeAdminUrl=`${origin}/admin.php?page=veciahorra-stores`;
+  configNode.textContent=JSON.stringify(config);
+  history.replaceState({},'',`${origin}/admin.php?page=veciahorra-inventory&product_id=10`);
+  await import('../../assets/admin/js/modules/inventory/app.js'); await wait();
+  const navigation=await import('../../assets/admin/js/modules/inventory/list-navigation.js');
+  assert(!navigation.readInventoryListUrl(`${config.adminUrl}&unknown=x`,config.adminUrl).valid,'rechaza parámetro desconocido');
+  assert(!navigation.readInventoryListUrl(`${config.adminUrl}&status=active&status=inactive`,config.adminUrl).valid,'rechaza duplicados');
+  assert(!navigation.readInventoryListUrl(`${config.adminUrl}&availability=public&cause=out_of_stock`,config.adminUrl).valid,'rechaza filtros incompatibles');
+  const legacy=navigation.readInventoryListUrl(`${config.adminUrl}&minimarket_id=20&return_store_id=20`,config.adminUrl);
+  assert(legacy.valid&&legacy.query.minimarketId==='20'&&new URL(legacy.canonicalUrl).searchParams.get('store_id')==='20'&&!new URL(legacy.canonicalUrl).searchParams.has('minimarket_id'),'contexto Store legado canonicalizado');
+  assert(navigation.safeAdministrativeRoute('https://evil.test/admin.php?page=veciahorra-products&action=view&product_id=1','veciahorra-products')===null,'rechaza ruta externa');
+  assert(navigation.safeAdministrativeRoute('javascript:alert(1)','veciahorra-products')===null&&navigation.safeAdministrativeRoute('//evil.test/admin.php?page=veciahorra-products&action=view&product_id=1','veciahorra-products')===null,'rechaza javascript y protocol-relative');
+  const editContract=navigation.readInventoryEditUrl(`${config.adminUrl}&action=edit&inventory_id=7&return_search=arroz&return_paged=2`,config.adminUrl);
+  assert(editContract.valid&&editContract.id===7&&editContract.query.search==='arroz'&&editContract.query.page===2,'edición durable y retorno tipado');
+  assert(!navigation.readInventoryEditUrl(`${config.adminUrl}&action=view&inventory_id=7`,config.adminUrl).valid,'no procesa action view como edición');
+  const table=document.getElementById('veciahorra-inventory-table');
+  assert(calls.length===1,'una llamada inicial');
+  assert(table.querySelectorAll('tbody tr').length===3,'varias ofertas');
+  assert(table.textContent.includes('Arroz Integral')&&table.textContent.includes('Almacén Central'),'Product y Store');
+  assert(table.textContent.includes('$1.250,00')&&table.textContent.includes('Stock registrado: 7'),'precio y stock sin reinterpretarlo como disponible');
+  assert(table.textContent.includes('Disponible públicamente')&&table.textContent.includes('Sin stock disponible'),'disponibilidad y causa');
+  assert(table.textContent.includes('Tiene referencias en Cart')&&table.textContent.includes('Tiene reservas activas')&&table.textContent.includes('Tiene historial'),'referencias cualitativas');
+  assert(table.textContent.includes('Lifecycle Store inconsistente')&&table.textContent.includes('Inspección no disponible'),'warnings');
+  assert(table.textContent.includes('Estado Inventory desconocido'),'estado desconocido');
+  assert(!table.textContent.includes('Eliminar')&&!table.textContent.includes('Delete'),'sin Delete');
+  const view=table.querySelector('a[href*="action=view"][href*="inventory_id=1"]');
+  const edit=table.querySelector('a[href*="action=edit"][href*="inventory_id=1"]');
+  assert(view&&edit,'enlaces Ver y Editar');
+  assert(view.href.includes('return_product_id=10'),'retorno tipado');
+  assert(document.querySelector('.veciahorra-inventory-admin__context a').href.includes('page=veciahorra-inventory')&&!document.querySelector('.veciahorra-inventory-admin__context a').href.includes('product_id'),'retirar contexto');
+  const status=document.querySelector('select[name="status"]');
+  status.value='inactive';status.dispatchEvent(new Event('change'));await wait();
+  assert(new URL(calls.at(-1).url).searchParams.get('status')==='inactive','filtro estado');
+  assert(new URL(location.href).searchParams.get('status')==='inactive','URL durable filtro');
+  const availability=document.querySelector('select[name="availability"]');
+  availability.value='not_public';availability.dispatchEvent(new Event('change'));await wait();
+  const cause=document.querySelector('select[name="cause"]');
+  cause.value='out_of_stock';cause.dispatchEvent(new Event('change'));await wait();
+  assert(new URL(calls.at(-1).url).searchParams.get('cause')==='out_of_stock','causa combinada');
+  const sort=document.querySelector('select[name="orderBy"]');
+  sort.value='price';sort.dispatchEvent(new Event('change'));await wait();
+  const direction=document.querySelector('select[name="direction"]');
+  direction.value='ASC';direction.dispatchEvent(new Event('change'));await wait();
+  assert(new URL(calls.at(-1).url).searchParams.get('order_by')==='price'&&new URL(calls.at(-1).url).searchParams.get('direction')==='ASC','orden');
+  const search=document.querySelector('input[name="search"]');
+  const beforeDebounce=calls.length;search.value='fast';search.dispatchEvent(new Event('input'));await wait(100);
+  assert(calls.length===beforeDebounce,'debounce espera');
+  await wait(400);assert(table.textContent.includes('Vigente'),'debounce carga');
+  search.value='slow';search.dispatchEvent(new Event('input'));await wait(400);
+  search.value='fast';search.dispatchEvent(new Event('input'));await wait(400);
+  slowResolve?.();await wait();assert(!table.textContent.includes('Obsoleto'),'cancelación/respuesta obsoleta');
+  search.value='none';search.dispatchEvent(new Event('input'));await wait(400);
+  assert(table.textContent.includes('No hay ofertas que coincidan con la búsqueda'),'vacío contextual');
+  for(const term of ['error401','error403','error422','error500','invalidjson','network']){
+    search.value=term;search.dispatchEvent(new Event('input'));await wait(400);
+    assert(document.getElementById('veciahorra-inventory-messages').textContent.trim()!=='','error visible');
+    assert([...document.querySelectorAll('button')].some(button=>button.textContent==='Reintentar'),'reintento');
+  }
+  search.value='retry-once';search.dispatchEvent(new Event('input'));await wait(400);
+  document.querySelector('#veciahorra-inventory-messages button').click();await wait();
+  assert(table.querySelectorAll('tbody tr').length===3,'reintento funcional limpia el error');
+  search.value=' arroz & té ';search.dispatchEvent(new Event('input'));await wait(400);
+  assert(new URL(calls.at(-1).url).searchParams.get('search')==='arroz & té','búsqueda recortada y caracteres especiales seguros');
+  search.value='';search.dispatchEvent(new Event('input'));await wait(400);
+  assert(!new URL(location.href).searchParams.has('search'),'búsqueda vacía eliminada de URL');
+  const next=document.querySelector('#veciahorra-inventory-pagination button:last-child');
+  next.click();await wait();
+  assert(new URL(calls.at(-1).url).searchParams.get('page')==='2'&&new URL(location.href).searchParams.get('paged')==='2','paginación durable');
+  assert(calls.every(call=>call.options.headers.get('X-WP-Nonce')==='test-nonce'),'nonce REST');
+  assert(calls.every(call=>call.options.credentials==='same-origin'),'credenciales');
+  assert(document.getElementById('veciahorra-inventory-messages').getAttribute('aria-live')==='polite','aria-live');
+  const focus=table.querySelector('a');focus.focus();assert(document.activeElement===focus,'foco teclado');
+  const rows=[...table.querySelectorAll('tbody tr')];
+  if(innerWidth<=782)assert(rows.every(row=>getComputedStyle(row).display==='block'),'tarjetas responsive');
+  else assert(rows.every(row=>getComputedStyle(row).display==='table-row'),'tabla escritorio');
+  assert(root.scrollWidth<=root.clientWidth+1,'sin overflow horizontal');
+  history.pushState({},'',`${config.adminUrl}&search=fast`);
+  dispatchEvent(new PopStateEvent('popstate'));await wait();
+  assert(table.textContent.includes('Vigente')&&new URL(calls.at(-1).url).searchParams.get('search')==='fast','popstate reproduce estado durable');
+  const storeModule=await import('../../assets/admin/js/modules/inventory/store.js');
+  let fallbackOptions=null;let fallbackResolve;
+  const fallbackStore=storeModule.createInventoryStore({getInventory:(_query,options)=>{fallbackOptions=options;return new Promise(resolve=>{fallbackResolve=resolve;});}});
+  const savedAbort=window.AbortController;window.AbortController=undefined;
+  const fallbackPending=fallbackStore.initializeList({});await wait();
+  assert(fallbackOptions.signal===undefined,'fallback sin AbortController');
+  fallbackStore.destroy();
+  fallbackResolve({success:true,data:initial,meta:{page:1,per_page:20,total:3,total_pages:1,snapshot_consistent:false}});
+  await fallbackPending;
+  assert(fallbackStore.getState().status===storeModule.STATUS_LOADING,'store destruido ignora mutaciones tardías');
+  window.AbortController=savedAbort;
+  assert(errors.length===0,'consola limpia');
+  output.dataset.status='pass';
+  output.textContent=JSON.stringify({assertions:assertions.length,calls:calls.length,errors:errors.length,width:requestedWidth,browserWidth:innerWidth});
+  document.title='PASS';
+}catch(error){
+  output.dataset.status='fail';output.textContent=JSON.stringify({message:error.message,stack:error.stack,assertions:assertions.length,errors});document.title='FAIL';
+}
+</script>
+</body>
+</html>

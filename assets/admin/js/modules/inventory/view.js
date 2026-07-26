@@ -10,22 +10,23 @@ import {
 } from './store.js';
 import { createProductSelector } from './product-selector.js';
 import { createStoreSelector } from './store-selector.js';
+import { safeAdministrativeRoute } from './list-navigation.js';
 
 export function createInventoryView(nodes, actions) {
     const newButton = nodes.root.querySelector('.page-title-action');
     const form = document.createElement('form');
     form.className = 'veciahorra-inventory-admin__filters';
 
-    const search = createInput('search', 'Buscar', 'Buscar inventario');
-    const productId = createInput('productId', 'Product ID', 'Product ID', 'number');
-    const minimarketId = createInput(
-        'minimarketId',
-        'Minimarket ID',
-        'Minimarket ID',
-        'number'
+    const search = createInput(
+        'search',
+        'Buscar ofertas',
+        'Product, SKU, Store o ID'
     );
     const status = createStatusSelect();
-    const perPage = createPerPageSelect();
+    const availability = createAvailabilitySelect();
+    const cause = createCauseSelect();
+    const orderBy = createOrderSelect();
+    const direction = createDirectionSelect();
     const searchButton = createButton('Buscar');
     searchButton.type = 'submit';
     searchButton.classList.add('button-primary');
@@ -34,10 +35,11 @@ export function createInventoryView(nodes, actions) {
 
     form.append(
         search.wrapper,
-        productId.wrapper,
-        minimarketId.wrapper,
         status.wrapper,
-        perPage.wrapper,
+        availability.wrapper,
+        cause.wrapper,
+        orderBy.wrapper,
+        direction.wrapper,
         searchButton,
         clearButton
     );
@@ -46,15 +48,39 @@ export function createInventoryView(nodes, actions) {
     contextPanel.className = 'veciahorra-inventory-admin__context';
     nodes.toolbar.replaceChildren(contextPanel, form, reloadButton);
 
-    const controls = { search, productId, minimarketId, status, perPage };
+    const controls = { search, status, availability, cause, orderBy, direction };
+    let searchTimer = null;
 
     Object.entries(controls).forEach(([name, control]) => {
-        control.element.addEventListener('input', () => {
+        control.element.addEventListener(name === 'search' ? 'input' : 'change', () => {
             actions.onFilter(name, control.element.value);
+            if (name === 'search') {
+                window.clearTimeout(searchTimer);
+                searchTimer = window.setTimeout(actions.onSearch, 350);
+            } else {
+                if (name === 'cause' && control.element.value !== '') {
+                    const expected = availabilityForCause(
+                        control.element.value
+                    );
+                    availability.element.value = expected;
+                    actions.onFilter('availability', expected);
+                }
+                if (
+                    name === 'availability'
+                    && cause.element.value !== ''
+                    && availabilityForCause(cause.element.value)
+                        !== control.element.value
+                ) {
+                    cause.element.value = '';
+                    actions.onFilter('cause', '');
+                }
+                actions.onSearch();
+            }
         });
     });
     form.addEventListener('submit', (event) => {
         event.preventDefault();
+        window.clearTimeout(searchTimer);
         actions.onSearch();
     });
 
@@ -64,6 +90,7 @@ export function createInventoryView(nodes, actions) {
 
     const inventoryForm = createInventoryForm(actions);
     let focusedFormKey = null;
+    let pendingPaginationFocus = false;
 
     function render(state) {
         if (state.currentView === VIEW_FORM) {
@@ -107,7 +134,10 @@ export function createInventoryView(nodes, actions) {
         ));
 
         nodes.toolbar.hidden = false;
-        renderContext(contextPanel, state.context, actions);
+        renderContext(contextPanel, state.context, {
+            ...actions,
+            currentQuery: state.query,
+        });
         setButtonDisabled(newButton, loading);
 
         Object.entries(controls).forEach(([name, control]) => {
@@ -117,22 +147,43 @@ export function createInventoryView(nodes, actions) {
                 control.element.value = value;
             }
 
-            control.element.disabled = loading || (
-                state.context.status === 'ready' && ((name === 'productId' && state.context.kind !== 'store') || (name === 'minimarketId' && state.context.kind === 'store'))
-            );
+            control.element.disabled = false;
         });
 
-        searchButton.disabled = loading;
-        clearButton.disabled = loading || !hasFilters;
+        searchButton.disabled = false;
+        clearButton.disabled = !hasFilters;
         reloadButton.disabled = loading;
         nodes.table.classList.toggle('is-loading', loading);
         nodes.table.setAttribute('aria-busy', loading ? 'true' : 'false');
         nodes.messages.replaceChildren();
+        announceListState(nodes.messages, state);
         renderContent(nodes, state, actions);
-        renderPagination(nodes.pagination, state, actions);
+        renderPagination(nodes.pagination, state, {
+            ...actions,
+            onPage(page) {
+                pendingPaginationFocus = true;
+                return actions.onPage(page);
+            },
+        });
+        if (pendingPaginationFocus && !loading) {
+            pendingPaginationFocus = false;
+            queueMicrotask(() => {
+                const target = nodes.pagination.querySelector(
+                    'button:not(:disabled)'
+                );
+                target?.focus();
+            });
+        }
     }
 
-    return { render };
+    return {
+        render,
+        destroy() {
+            window.clearTimeout(searchTimer);
+            searchTimer = null;
+            inventoryForm.deactivate();
+        },
+    };
 }
 
 function renderContent(nodes, state, actions) {
@@ -151,16 +202,13 @@ function renderContent(nodes, state, actions) {
             renderState(nodes.table, 'Cargando inventario...');
             break;
         case STATUS_SUCCESS:
-            renderTable(nodes.table, state.items, actions);
+            renderTable(nodes.table, state.items, {
+                ...actions,
+                currentQuery: state.query,
+            });
             break;
         case STATUS_EMPTY:
-            renderState(
-                nodes.table,
-                state.context.status === 'ready'
-                    ? (state.context.kind === 'store' ? 'Este minimarket todavia no tiene ofertas.' : 'Este producto todavia no tiene ofertas.')
-                    : 'No hay registros de inventario para mostrar.',
-                'veciahorra-inventory-admin__state--empty'
-            );
+            renderEmpty(nodes.table, state, actions);
             if (state.context.status === 'ready') {
                 nodes.table.firstElementChild.append(
                     createLink(
@@ -188,7 +236,9 @@ function renderTable(container, items, actions) {
     const head = document.createElement('thead');
     const header = document.createElement('tr');
 
-    ['ID', 'Product ID', 'Minimarket ID', 'Price', 'Stock', 'Status', 'Updated At', 'Acciones']
+    const caption = document.createElement('caption');
+    caption.textContent = 'Ofertas de Inventory';
+    ['Product', 'Store', 'Oferta', 'Disponibilidad', 'Referencias', 'Acciones']
         .forEach((label) => {
             const cell = document.createElement('th');
             cell.scope = 'col';
@@ -201,24 +251,155 @@ function renderTable(container, items, actions) {
 
     items.forEach((item) => {
         const row = document.createElement('tr');
-        appendCell(row, item.id);
-        appendCell(row, item.productId);
-        appendCell(row, item.minimarketId);
-        appendCell(row, formatPrice(item.price));
-        appendCell(row, item.stock);
-        appendCell(row, statusLabel(item.status));
-        appendCell(row, item.updatedAt);
+        row.append(entityCell('Product', item.product, item.routes.product, 'veciahorra-products'));
+        row.append(storeCell(item.store, item.routes.store));
+        row.append(offerCell(item));
+        row.append(availabilityCell(item.availability));
+        row.append(referencesCell(item.references));
         const actionsCell = document.createElement('td');
-        const edit = createButton('Editar', () => actions.onEdit(item.id));
-        edit.classList.add('button-link');
-        actionsCell.append(edit);
+        actionsCell.dataset.label = 'Acciones';
+        actionsCell.className = 'veciahorra-inventory-admin__actions';
+        if (item.actions.view) {
+            actionsCell.append(createLink(
+                `Ver oferta #${item.id}`,
+                actions.actionUrl('view', item.id, actions.currentQuery)
+            ));
+        }
+        if (item.actions.edit) {
+            const editUrl = actions.actionUrl(
+                'edit',
+                item.id,
+                actions.currentQuery
+            );
+            const edit = createLink(`Editar oferta #${item.id}`, editUrl);
+            edit.addEventListener('click', (event) => {
+                event.preventDefault();
+                window.history.pushState({ inventoryEdit: item.id }, '', editUrl);
+                actions.onEdit(item.id);
+            });
+            actionsCell.append(edit);
+        }
         row.append(actionsCell);
         body.append(row);
     });
 
-    table.append(head, body);
+    table.append(caption, head, body);
     wrapper.append(table);
     container.replaceChildren(wrapper);
+}
+
+function entityCell(label, entity, route, expectedPage) {
+    const cell = document.createElement('td');
+    cell.dataset.label = label;
+    const name = document.createElement('strong');
+    name.textContent = entity.exists
+        ? (entity.name || `${label} #${entity.id}`)
+        : `${label} no disponible`;
+    const safeRoute = safeAdministrativeRoute(route, expectedPage);
+    if (safeRoute && entity.exists) {
+        const link = createLink(name.textContent, safeRoute);
+        link.className = 'veciahorra-inventory-admin__entity-link';
+        cell.append(link);
+    } else {
+        cell.append(name);
+    }
+    const meta = document.createElement('span');
+    meta.className = 'veciahorra-inventory-admin__meta';
+    meta.textContent = [
+        entity.sku ? `SKU ${entity.sku}` : null,
+        `#${entity.id}`,
+        entity.status ? stateText(entity.status) : 'Estado desconocido',
+    ].filter(Boolean).join(' · ');
+    cell.append(meta);
+    return cell;
+}
+
+function storeCell(store, route) {
+    const cell = entityCell('Store', store, route, 'veciahorra-stores');
+    if (store.locationLabel) {
+        const location = document.createElement('span');
+        location.className = 'veciahorra-inventory-admin__meta';
+        location.textContent = store.locationLabel;
+        cell.append(location);
+    }
+    return cell;
+}
+
+function offerCell(item) {
+    const cell = document.createElement('td');
+    cell.dataset.label = 'Oferta';
+    const price = document.createElement('strong');
+    price.textContent = `$${formatPrice(item.price)}`;
+    const stock = document.createElement('span');
+    stock.textContent = `Stock registrado: ${item.stock}`;
+    cell.append(price, stock, badge(
+        item.status === 'active'
+            ? 'Inventory activa'
+            : item.status === 'inactive'
+                ? 'Inventory inactiva'
+                : 'Estado Inventory desconocido',
+        item.status === 'active'
+            ? 'success'
+            : item.status === 'inactive' ? 'neutral' : 'error'
+    ));
+    const id = document.createElement('span');
+    id.className = 'veciahorra-inventory-admin__meta';
+    id.textContent = `Inventory #${item.id}`;
+    cell.append(id);
+    return cell;
+}
+
+function availabilityCell(availability) {
+    const cell = document.createElement('td');
+    cell.dataset.label = 'Disponibilidad';
+    const primaryCode = availability.primary_cause.code;
+    cell.append(badge(
+        availability.is_publicly_available
+            ? 'Disponible públicamente'
+            : 'No disponible públicamente',
+        availability.is_publicly_available
+            ? 'success'
+            : causeSeverity(primaryCode)
+    ));
+    const cause = document.createElement('span');
+    cause.className = 'veciahorra-inventory-admin__cause';
+    cause.textContent = availability.primary_cause.label
+        || causeLabel(primaryCode);
+    cell.append(cause);
+    availability.blocking_codes
+        .filter((code) => code !== primaryCode)
+        .forEach((code) => {
+            cell.append(badge(
+                `Bloqueo adicional: ${causeLabel(code)}`,
+                causeSeverity(code)
+            ));
+        });
+    availability.warning_codes.forEach((code) => {
+        cell.append(badge(`Advertencia: ${warningLabel(code)}`, 'warning'));
+    });
+    return cell;
+}
+
+function referencesCell(references) {
+    const cell = document.createElement('td');
+    cell.dataset.label = 'Referencias';
+    if (references.inspection_status !== 'complete') {
+        cell.append(badge('Inspección no disponible', 'error'));
+        return cell;
+    }
+    const labels = [
+        references.has_cart_items ? 'Tiene referencias en Cart' : null,
+        references.has_active_reservations ? 'Tiene reservas activas' : null,
+        references.has_history ? 'Tiene historial' : null,
+    ].filter(Boolean);
+    if (labels.length === 0) {
+        const empty = document.createElement('span');
+        empty.textContent = 'Sin referencias conocidas';
+        cell.append(empty);
+    } else {
+        labels.forEach((label) => cell.append(badge(label, 'neutral')));
+    }
+    return cell;
 }
 
 function createInventoryForm(actions) {
@@ -447,7 +628,18 @@ function renderContext(container, context, actions) {
     label.textContent = `Ofertas de: ${entity.name} (#${entity.id})`;
     const status = document.createElement('span');
     status.textContent = ` Estado: ${context.kind === 'store' ? storeStatusLabel(entity.status) : statusLabel(entity.status)}. `;
-    const all = createLink('Ver todas las ofertas', actions.allInventoryUrl);
+    const withoutContext = {
+        ...actions.currentQuery,
+        productId: '',
+        minimarketId: '',
+        page: 1,
+    };
+    const all = createLink(
+        context.kind === 'store'
+            ? 'Retirar contexto Store'
+            : 'Retirar contexto Product',
+        actions.listUrl(withoutContext)
+    );
     const create = createLink(
         'Crear oferta',
         context.kind === 'store' ? actions.contextualStoreCreateUrl(entity.id) : actions.contextualCreateUrl(entity.id),
@@ -456,6 +648,44 @@ function renderContext(container, context, actions) {
     container.hidden = false;
     const back = context.kind === 'store' ? createLink('Volver al minimarket', actions.storeDetailUrl(entity.id)) : null;
     container.replaceChildren(...[label, status, all, create, back].filter(Boolean));
+}
+
+function renderEmpty(container, state, actions) {
+    const hasSearch = String(state.query.search).trim() !== '';
+    const hasFilters = [
+        'status',
+        'availability',
+        'cause',
+        'productId',
+        'minimarketId',
+    ].some((key) => String(state.query[key] ?? '').trim() !== '');
+    const outOfRange = state.meta !== null
+        && state.meta.total > 0
+        && state.meta.page > state.meta.totalPages;
+    const message = outOfRange
+        ? 'Esta página quedó fuera de rango por cambios concurrentes.'
+        : hasSearch
+            ? 'No hay ofertas que coincidan con la búsqueda.'
+            : hasFilters
+                ? 'No hay ofertas que coincidan con los filtros.'
+                : 'Inventory todavía no tiene ofertas.';
+    renderState(
+        container,
+        message,
+        'veciahorra-inventory-admin__state--empty'
+    );
+    const stateNode = container.firstElementChild;
+    if (outOfRange) {
+        stateNode.append(createButton(
+            'Volver a la primera página',
+            () => actions.onPage(1)
+        ));
+    } else if (hasSearch || hasFilters) {
+        stateNode.append(createButton(
+            hasSearch ? 'Limpiar búsqueda y filtros' : 'Retirar filtros',
+            actions.onClear
+        ));
+    }
 }
 
 function renderContextError(container, message, allInventoryUrl) {
@@ -572,6 +802,8 @@ function renderPagination(container, state, actions) {
 function renderError(nodes, error, onReload) {
     const notice = document.createElement('div');
     notice.className = 'notice notice-error inline veciahorra-inventory-admin__notice';
+    notice.setAttribute('role', 'alert');
+    notice.tabIndex = -1;
     const message = document.createElement('p');
     message.textContent = error?.message || 'No fue posible cargar el inventario.';
     const retry = createButton('Reintentar', onReload);
@@ -582,6 +814,21 @@ function renderError(nodes, error, onReload) {
         'La lista de inventario no esta disponible.',
         'veciahorra-inventory-admin__state--error'
     );
+    queueMicrotask(() => notice.focus());
+}
+
+function announceListState(container, state) {
+    if (![STATUS_LOADING, STATUS_SUCCESS, STATUS_EMPTY].includes(state.status)) {
+        return;
+    }
+    const announcement = document.createElement('span');
+    announcement.className = 'screen-reader-text';
+    announcement.textContent = state.status === STATUS_LOADING
+        ? 'Cargando ofertas de Inventory.'
+        : state.status === STATUS_EMPTY
+            ? 'No se encontraron ofertas.'
+            : `Se cargaron ${state.items.length} ofertas.`;
+    container.append(announcement);
 }
 
 function renderState(container, message, modifier = '') {
@@ -615,18 +862,57 @@ function createInput(name, label, placeholder, type = 'search') {
 }
 
 function createStatusSelect() {
-    return createSelect('status', 'Status', [
+    return createSelect('status', 'Estado Inventory', [
         ['', 'Todos'],
         ['active', 'Activo'],
         ['inactive', 'Inactivo'],
+        ['unknown', 'Desconocido'],
     ]);
 }
 
-function createPerPageSelect() {
-    return createSelect('perPage', 'Por pagina', [
-        ['20', '20'],
-        ['50', '50'],
-        ['100', '100'],
+function createAvailabilitySelect() {
+    return createSelect('availability', 'Disponibilidad', [
+        ['', 'Todas'],
+        ['public', 'Disponible públicamente'],
+        ['not_public', 'No disponible'],
+        ['diagnostic_error', 'Error de diagnóstico'],
+    ]);
+}
+
+function createCauseSelect() {
+    return createSelect('cause', 'Causa primaria', [
+        ['', 'Todas las causas'],
+        ['inventory_inactive', 'Inventory inactiva'],
+        ['product_not_public', 'Product no público'],
+        ['store_not_active', 'Store no activo'],
+        ['invalid_public_price', 'Precio no publicable'],
+        ['out_of_stock', 'Sin stock'],
+        ['product_missing', 'Product inexistente'],
+        ['store_missing', 'Store inexistente'],
+        ['inventory_status_unknown', 'Estado Inventory desconocido'],
+        ['product_status_unknown', 'Estado Product desconocido'],
+        ['store_status_unknown', 'Estado Store desconocido'],
+        ['reference_mismatch', 'Referencia contradictoria'],
+        ['publicly_available', 'Pública'],
+    ]);
+}
+
+function createOrderSelect() {
+    return createSelect('orderBy', 'Ordenar por', [
+        ['updated_at', 'Última actualización'],
+        ['product_name', 'Product'],
+        ['store_name', 'Store'],
+        ['price', 'Precio'],
+        ['stock', 'Stock'],
+        ['status', 'Estado'],
+        ['id', 'Inventory ID'],
+    ]);
+}
+
+function createDirectionSelect() {
+    return createSelect('direction', 'Dirección', [
+        ['DESC', 'Descendente'],
+        ['ASC', 'Ascendente'],
     ]);
 }
 
@@ -676,10 +962,81 @@ function setButtonDisabled(button, disabled) {
     button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
 }
 
-function appendCell(row, value) {
-    const cell = document.createElement('td');
-    cell.textContent = String(value);
-    row.append(cell);
+function badge(label, severity) {
+    const element = document.createElement('span');
+    element.className = [
+        'veciahorra-inventory-admin__badge',
+        `veciahorra-inventory-admin__badge--${severity}`,
+    ].join(' ');
+    element.textContent = label;
+    return element;
+}
+
+function warningLabel(code) {
+    return {
+        store_lifecycle_inconsistent: 'Lifecycle Store inconsistente',
+        reference_mismatch: 'Referencias inconsistentes',
+    }[code] || 'Advertencia operacional';
+}
+
+function causeLabel(code) {
+    return {
+        product_reference_invalid: 'Referencia Product inválida',
+        store_reference_invalid: 'Referencia Store inválida',
+        product_missing: 'Product inexistente',
+        store_missing: 'Store inexistente',
+        reference_mismatch: 'Referencia contradictoria',
+        inventory_status_unknown: 'Estado Inventory desconocido',
+        inventory_inactive: 'Inventory inactiva',
+        product_status_unknown: 'Estado Product desconocido',
+        product_not_public: 'Product no público',
+        store_status_unknown: 'Estado Store desconocido',
+        store_not_active: 'Store no activo',
+        invalid_public_price: 'Precio no publicable',
+        out_of_stock: 'Sin stock',
+        publicly_available: 'Pública',
+    }[code] || `Causa no reconocida: ${code}`;
+}
+
+function causeSeverity(code) {
+    if (code === 'publicly_available') return 'success';
+    if (code === 'inventory_inactive') return 'neutral';
+    if ([
+        'product_reference_invalid',
+        'store_reference_invalid',
+        'product_missing',
+        'store_missing',
+        'reference_mismatch',
+        'inventory_status_unknown',
+        'product_status_unknown',
+        'store_status_unknown',
+    ].includes(code)) return 'error';
+    return 'warning';
+}
+
+function stateText(status) {
+    return {
+        active: 'Activo',
+        inactive: 'Inactivo',
+        draft: 'Borrador',
+        pending: 'Pendiente',
+        rejected: 'Rechazado',
+    }[status] || 'Estado desconocido';
+}
+
+function availabilityForCause(cause) {
+    if (cause === 'publicly_available') return 'public';
+    if ([
+        'product_reference_invalid',
+        'store_reference_invalid',
+        'product_missing',
+        'store_missing',
+        'reference_mismatch',
+        'inventory_status_unknown',
+        'product_status_unknown',
+        'store_status_unknown',
+    ].includes(cause)) return 'diagnostic_error';
+    return 'not_public';
 }
 
 function formatPrice(value) {

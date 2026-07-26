@@ -7,7 +7,7 @@ namespace VeciAhorra\Modules\Inventory\Admin;
 use VeciAhorra\Core\Config;
 
 /**
- * Registra y renderiza la lista administrativa de Inventory.
+ * Registra y renderiza el listado operacional administrativo de Inventory.
  */
 final class InventoryPage
 {

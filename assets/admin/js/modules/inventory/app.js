@@ -7,6 +7,12 @@ import {
     contextProductErrorMessage,
     readAdminContext,
 } from './context.js';
+import {
+    buildInventoryActionUrl,
+    buildInventoryListUrl,
+    readInventoryEditUrl,
+    readInventoryListUrl,
+} from './list-navigation.js';
 
 try {
     initialize();
@@ -18,7 +24,18 @@ function initialize() {
     const config = readConfig();
     const nodes = findRequiredNodes();
     const api = createInventoryApi(config);
-    const store = createInventoryStore(api);
+    if (nodes.root.dataset.inventoryInitialized === 'true') return;
+    nodes.root.dataset.inventoryInitialized = 'true';
+    const store = createInventoryStore(api, {
+        onQueryChange(query, push) {
+            const url = buildInventoryListUrl(config.adminUrl, query);
+            window.history[push ? 'pushState' : 'replaceState'](
+                { inventoryList: true },
+                '',
+                url
+            );
+        },
+    });
     const view = createInventoryView(nodes, {
         onFilter: (name, value) => store.setFilter(name, value),
         onSearch: () => store.applyFilters(),
@@ -41,11 +58,68 @@ function initialize() {
         contextualCreateUrl: (id) => buildContextUrl(config.adminUrl, id, 'create'),
         contextualStoreCreateUrl: (id) => buildStoreContextUrl(config.adminUrl, id, 'create'),
         storeDetailUrl: (id) => buildStoreDetailUrl(config.storeAdminUrl, id),
+        actionUrl: (action, id, query) =>
+            buildInventoryActionUrl(config.adminUrl, action, id, query),
+        listUrl: (query) => buildInventoryListUrl(config.adminUrl, query),
     });
 
-    store.subscribe(view.render);
+    const unsubscribe = store.subscribe(view.render);
     view.render(store.getState());
-    initializeContext(store, api, readAdminContext(window.location.href));
+    initializeRoute(store, api, config);
+    const onPopState = () => initializeRoute(store, api, config);
+    const destroy = () => {
+        window.removeEventListener('popstate', onPopState);
+        unsubscribe();
+        view.destroy();
+        store.destroy();
+        delete nodes.root.dataset.inventoryInitialized;
+    };
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('pagehide', destroy, { once: true });
+}
+
+function initializeRoute(store, api, config) {
+    const raw = new URL(window.location.href);
+    if (raw.searchParams.get('action') === 'create') {
+        initializeContext(store, api, readAdminContext(window.location.href));
+        return;
+    }
+    if (raw.searchParams.get('action') === 'edit') {
+        const edit = readInventoryEditUrl(window.location.href, config.adminUrl);
+        if (!edit.valid) {
+            store.rejectContext(edit.message);
+            return;
+        }
+        window.history.replaceState(
+            { inventoryEdit: edit.id },
+            '',
+            edit.canonicalUrl
+        );
+        store.prepareListQuery(edit.query);
+        store.openEditForm(edit.id);
+        return;
+    }
+
+    const parsed = readInventoryListUrl(window.location.href, config.adminUrl);
+    if (!parsed.valid) {
+        store.rejectContext(parsed.message);
+        return;
+    }
+    if (parsed.query.productId) {
+        store.applyListContext(
+            { kind: 'product' },
+            parsed.query
+        );
+        return;
+    }
+    if (parsed.query.minimarketId) {
+        store.applyListContext(
+            { kind: 'store' },
+            parsed.query
+        );
+        return;
+    }
+    store.initializeList(parsed.query);
 }
 
 function openCreateForm(store, adminUrl) {
@@ -75,6 +149,11 @@ function returnToList(store, adminUrl, storeAdminUrl) {
         return;
     }
 
+    window.history.replaceState(
+        { inventoryList: true },
+        '',
+        buildInventoryListUrl(adminUrl, store.getState().query)
+    );
     store.returnToList();
 }
 
