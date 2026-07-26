@@ -252,6 +252,41 @@ export function readInventoryEditUrl(href, baseAdminUrl) {
     };
 }
 
+export function readInventoryDetailUrl(href, baseAdminUrl) {
+    const url = new URL(href, window.location.origin);
+    const base = validatedBase(baseAdminUrl);
+    const identityKeys = ['page', 'action', 'inventory_id'];
+    const id = positiveId(url.searchParams.get('inventory_id'));
+
+    if (
+        url.origin !== base.origin
+        || url.pathname !== base.pathname
+        || url.searchParams.get('page') !== 'veciahorra-inventory'
+        || url.searchParams.get('action') !== 'view'
+        || id === null
+        || id === ''
+        || identityKeys.some((key) => url.searchParams.getAll(key).length !== 1)
+        || [...url.searchParams.keys()].some((key) => key.includes('['))
+    ) {
+        return { valid: false, message: 'La URL de detalle no es válida.' };
+    }
+
+    const query = safeReturnQuery(url);
+
+    return {
+        valid: true,
+        id: Number(id),
+        query,
+        canonicalUrl: buildInventoryActionUrl(
+            baseAdminUrl,
+            'view',
+            Number(id),
+            query
+        ),
+        listUrl: buildInventoryListUrl(baseAdminUrl, query),
+    };
+}
+
 export function safeAdministrativeRoute(value, expectedPage) {
     if (typeof value !== 'string' || value.trim() === '') return null;
     try {
@@ -321,6 +356,62 @@ function returnEnum(url, key, allowed, fallback, uppercase = false) {
 function returnPerPage(value) {
     if (value === null || value === '') return 20;
     return ['20', '50', '100'].includes(value) ? Number(value) : null;
+}
+
+function safeReturnQuery(url) {
+    const single = (key) => url.searchParams.getAll(key).length <= 1;
+    const text = single('return_search')
+        ? (url.searchParams.get('return_search') || '').trim()
+        : '';
+    const query = {
+        search: text.length <= 100 ? text : '',
+        productId: single('return_product_id')
+            ? positiveId(url.searchParams.get('return_product_id')) ?? ''
+            : '',
+        minimarketId: single('return_minimarket_id')
+            ? positiveId(url.searchParams.get('return_minimarket_id')) ?? ''
+            : '',
+        status: single('return_status')
+            ? returnEnum(url, 'return_status', STATUS, '') ?? ''
+            : '',
+        availability: single('return_availability')
+            ? returnEnum(url, 'return_availability', AVAILABILITY, '') ?? ''
+            : '',
+        cause: single('return_cause')
+            ? returnEnum(url, 'return_cause', CAUSES, '') ?? ''
+            : '',
+        page: single('return_paged')
+            ? positivePage(url.searchParams.get('return_paged'), 1) ?? 1
+            : 1,
+        perPage: single('return_per_page')
+            ? returnPerPage(url.searchParams.get('return_per_page')) ?? 20
+            : 20,
+        orderBy: single('return_order_by')
+            ? returnEnum(
+                url,
+                'return_order_by',
+                SORT,
+                'updated_at'
+            ) ?? 'updated_at'
+            : 'updated_at',
+        direction: single('return_direction')
+            ? returnEnum(
+                url,
+                'return_direction',
+                ORDER,
+                'DESC',
+                true
+            ) ?? 'DESC'
+            : 'DESC',
+    };
+
+    if (query.productId !== '' && query.minimarketId !== '') {
+        query.minimarketId = '';
+    }
+    if (incompatible(query.availability, query.cause)) {
+        query.cause = '';
+    }
+    return query;
 }
 
 function incompatible(availability, cause) {

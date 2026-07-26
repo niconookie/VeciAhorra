@@ -7,13 +7,16 @@ import {
     FORM_CREATE,
     FORM_EDIT,
     VIEW_FORM,
+    VIEW_DETAIL,
 } from './store.js';
 import { createProductSelector } from './product-selector.js';
 import { createStoreSelector } from './store-selector.js';
 import { safeAdministrativeRoute } from './list-navigation.js';
+import { renderInventoryDetail } from './detail-view.js';
 
 export function createInventoryView(nodes, actions) {
     const newButton = nodes.root.querySelector('.page-title-action');
+    const pageHeading = nodes.root.querySelector('h1');
     const form = document.createElement('form');
     form.className = 'veciahorra-inventory-admin__filters';
 
@@ -93,6 +96,31 @@ export function createInventoryView(nodes, actions) {
     let pendingPaginationFocus = false;
 
     function render(state) {
+        if (state.currentView === VIEW_DETAIL) {
+            nodes.toolbar.hidden = true;
+            nodes.pagination.replaceChildren();
+            nodes.messages.replaceChildren();
+            setButtonDisabled(newButton, true);
+            if (pageHeading) {
+                pageHeading.textContent = `Detalle de Inventory #${state.detail.id}`;
+            }
+            const loading = state.detail.status === STATUS_LOADING;
+            nodes.root.setAttribute('aria-busy', loading ? 'true' : 'false');
+            nodes.table.setAttribute('aria-busy', loading ? 'true' : 'false');
+            renderInventoryDetail(nodes.table, state.detail, {
+                returnUrl: actions.listUrl(state.detail.returnQuery),
+                editUrl: actions.actionUrl(
+                    'edit',
+                    state.detail.id,
+                    state.detail.returnQuery
+                ),
+                onEdit: actions.onDetailEdit,
+                onRetry: actions.onDetailRetry,
+            });
+            return;
+        }
+        if (pageHeading) pageHeading.textContent = 'Inventario';
+        nodes.root.setAttribute('aria-busy', 'false');
         if (state.currentView === VIEW_FORM) {
             nodes.toolbar.hidden = true;
             nodes.pagination.replaceChildren();

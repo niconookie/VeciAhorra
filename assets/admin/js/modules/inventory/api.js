@@ -104,6 +104,23 @@ export function createInventoryApi({ restUrl, nonce }) {
             .then((response) => assertResponse(response, isDetailResponse));
     }
 
+    function getInventoryAdminDetail(id, { signal } = {}) {
+        if (!isPositiveInteger(id)) {
+            throw new InventoryApiError({
+                type: 'invalid_request',
+                code: 'invalid_inventory_id',
+                message: 'El identificador de Inventory no es válido.',
+            });
+        }
+        return request(`/inventory/${String(id)}/admin`, {
+            method: 'GET',
+            signal,
+        }).then((response) => assertResponse(
+            response,
+            (payload) => isInventoryAdminDetailResponse(payload, Number(id))
+        ));
+    }
+
     function getProduct(id) {
         if (!isPositiveInteger(id)) {
             throw new InventoryApiError({
@@ -196,6 +213,7 @@ export function createInventoryApi({ restUrl, nonce }) {
     return {
         getInventory,
         getInventoryItem,
+        getInventoryAdminDetail,
         getProduct,
         getStore,
         searchProducts,
@@ -419,6 +437,118 @@ function isInventoryAdminRow(row) {
         && typeof row.actions.edit === 'boolean'
         && !Object.hasOwn(row.actions, 'delete')
         && isObject(row.routes);
+}
+
+function isInventoryAdminDetailResponse(payload, expectedId) {
+    const item = payload?.data;
+    const availability = item?.availability;
+    const references = item?.references;
+    return isObject(payload)
+        && payload.success === true
+        && isObject(item)
+        && isObject(item.identity)
+        && Number(item.identity.id) === expectedId
+        && isPositiveInteger(item.identity.id)
+        && typeof item.identity.created_at === 'string'
+        && typeof item.identity.updated_at === 'string'
+        && isObject(item.offer)
+        && isNonNegativeInteger(item.offer.product_id)
+        && isNonNegativeInteger(item.offer.minimarket_id)
+        && isObservedPrice(item.offer.price)
+        && Number.isInteger(Number(item.offer.stock))
+        && typeof item.offer.status === 'string'
+        && isDetailProduct(item.product)
+        && isDetailStore(item.store)
+        && isObject(availability)
+        && typeof availability.is_publicly_available === 'boolean'
+        && isCause(availability.primary_cause)
+        && causeCollection(availability, 'blocking_causes', 'blocking_codes')
+        && causeCollection(availability, 'warnings', 'warning_codes')
+        && isObject(availability.dimensions)
+        && ['references', 'inventory', 'product', 'store', 'price', 'stock']
+            .every((key) => isObject(availability.dimensions[key]))
+        && typeof availability.evaluated_policy === 'string'
+        && isDetailReferences(references)
+        && isObject(item.lifecycle)
+        && typeof item.lifecycle.status === 'string'
+        && Array.isArray(item.lifecycle.allowed_actions)
+        && item.lifecycle.allowed_actions.every(isSafeCode)
+        && isObject(item.concurrency)
+        && typeof item.concurrency.version === 'string'
+        && item.concurrency.mode === 'last_write_wins'
+        && typeof item.concurrency.last_observed_at === 'string'
+        && isObject(item.actions)
+        && typeof item.actions.edit === 'boolean'
+        && !Object.hasOwn(item.actions, 'delete')
+        && isObject(item.routes);
+}
+
+function isDetailProduct(product) {
+    return isObject(product)
+        && typeof product.exists === 'boolean'
+        && isNonNegativeInteger(product.id)
+        && ['name', 'slug', 'sku', 'status'].every(
+            (key) => product[key] === null || typeof product[key] === 'string'
+        )
+        && isObject(product.image)
+        && (product.image.id === null || isPositiveInteger(product.image.id))
+        && (product.image.url === null || typeof product.image.url === 'string')
+        && ['absent', 'missing_attachment', 'unavailable', 'valid']
+            .includes(product.image.status);
+}
+
+function isDetailStore(store) {
+    return isObject(store)
+        && typeof store.exists === 'boolean'
+        && isNonNegativeInteger(store.id)
+        && ['name', 'status', 'onboarding_status', 'approved_at', 'lifecycle_state']
+            .every((key) => store[key] === null || typeof store[key] === 'string')
+        && isObject(store.location)
+        && ['commune', 'city', 'region'].every(
+            (key) => store.location[key] === null
+                || typeof store.location[key] === 'string'
+        );
+}
+
+function causeCollection(availability, objectsKey, codesKey) {
+    const objectsPresent = Object.hasOwn(availability, objectsKey);
+    const codesPresent = Object.hasOwn(availability, codesKey);
+    return (objectsPresent || codesPresent)
+        && (!objectsPresent || (
+            Array.isArray(availability[objectsKey])
+            && availability[objectsKey].every(isCause)
+        ))
+        && (!codesPresent || (
+            Array.isArray(availability[codesKey])
+            && availability[codesKey].every(isSafeCode)
+        ));
+}
+
+function isObservedPrice(value) {
+    return (typeof value === 'string' && value.trim() !== '')
+        || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function isDetailReferences(references) {
+    const reservations = references?.reservations;
+    return isObject(references)
+        && ['complete', 'failed', 'partial'].includes(
+            references.inspection_status
+        )
+        && typeof references.classification === 'string'
+        && isObject(references.cart)
+        && isNonNegativeInteger(references.cart.total)
+        && isObject(reservations)
+        && ['total', 'active', 'released', 'expired', 'consumed', 'unknown']
+            .every((key) => isNonNegativeInteger(reservations[key]))
+        && (
+            reservations.active_quantity === null
+            || isNonNegativeInteger(reservations.active_quantity)
+        )
+        && isObject(references.order_items)
+        && isNonNegativeInteger(references.order_items.total)
+        && Array.isArray(references.warning_codes)
+        && references.warning_codes.every(isSafeCode);
 }
 
 function isAdministrativeEntity(entity) {

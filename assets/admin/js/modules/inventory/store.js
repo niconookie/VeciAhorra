@@ -6,6 +6,7 @@ export const STATUS_ERROR = 'error';
 
 export const VIEW_LIST = 'list';
 export const VIEW_FORM = 'form';
+export const VIEW_DETAIL = 'detail';
 export const FORM_CREATE = 'create';
 export const FORM_EDIT = 'edit';
 
@@ -41,12 +42,15 @@ export function createInventoryStore(api, { onQueryChange = null } = {}) {
         error: null,
         context: { status: 'none', intent: 'list', kind: null, product: null, store: null, message: null },
         form: initialForm(),
+        detail: initialDetail(),
     };
     let latestRequest = 0;
     let listController = null;
     let latestFormRequest = 0;
     let listNeedsReload = false;
     let destroyed = false;
+    let latestDetailRequest = 0;
+    let detailController = null;
     const listeners = new Set();
 
     function getState() {
@@ -71,6 +75,18 @@ export function createInventoryStore(api, { onQueryChange = null } = {}) {
 
     function setForm(form) {
         setState({ form: { ...form } });
+    }
+
+    function cancelListRequest() {
+        latestRequest++;
+        listController?.abort();
+        listController = null;
+    }
+
+    function cancelDetailRequest() {
+        latestDetailRequest++;
+        detailController?.abort();
+        detailController = null;
     }
 
     function setFilter(name, value) {
@@ -114,6 +130,7 @@ export function createInventoryStore(api, { onQueryChange = null } = {}) {
 
     function initializeList(query) {
         latestFormRequest++;
+        cancelDetailRequest();
         setState({
             currentView: VIEW_LIST,
             form: initialForm(),
@@ -129,6 +146,68 @@ export function createInventoryStore(api, { onQueryChange = null } = {}) {
             inputs: { ...DEFAULT_FILTERS, ...query },
             query: { ...DEFAULT_FILTERS, ...query },
         });
+    }
+
+    async function openDetail(id, query) {
+        if (!Number.isSafeInteger(Number(id)) || Number(id) <= 0 || destroyed) {
+            return false;
+        }
+        cancelListRequest();
+        const requestId = ++latestDetailRequest;
+        detailController?.abort();
+        detailController = typeof AbortController === 'function'
+            ? new AbortController()
+            : null;
+        latestFormRequest++;
+        setState({
+            currentView: VIEW_DETAIL,
+            query: { ...DEFAULT_FILTERS, ...query },
+            inputs: { ...DEFAULT_FILTERS, ...query },
+            detail: {
+                ...initialDetail(),
+                id: Number(id),
+                status: STATUS_LOADING,
+                returnQuery: { ...DEFAULT_FILTERS, ...query },
+            },
+        });
+        try {
+            const response = await api.getInventoryAdminDetail(id, {
+                signal: detailController?.signal,
+            });
+            if (destroyed || requestId !== latestDetailRequest) return false;
+            setState({
+                detail: {
+                    id: Number(id),
+                    status: STATUS_SUCCESS,
+                    item: cloneValue(response.data),
+                    error: null,
+                    returnQuery: { ...DEFAULT_FILTERS, ...query },
+                },
+            });
+            return true;
+        } catch (error) {
+            if (
+                destroyed
+                || requestId !== latestDetailRequest
+                || error?.name === 'AbortError'
+            ) return false;
+            setState({
+                detail: {
+                    id: Number(id),
+                    status: STATUS_ERROR,
+                    item: null,
+                    error: normalizeError(error),
+                    returnQuery: { ...DEFAULT_FILTERS, ...query },
+                },
+            });
+            return false;
+        }
+    }
+
+    function retryDetail() {
+        return state.detail.id === null
+            ? Promise.resolve(false)
+            : openDetail(state.detail.id, state.detail.returnQuery);
     }
 
     function reload() {
@@ -153,6 +232,8 @@ export function createInventoryStore(api, { onQueryChange = null } = {}) {
             return false;
         }
 
+        cancelListRequest();
+        cancelDetailRequest();
         latestFormRequest++;
         setState({ currentView: VIEW_FORM, form: initialForm(FORM_CREATE) });
         return true;
@@ -163,6 +244,8 @@ export function createInventoryStore(api, { onQueryChange = null } = {}) {
             return false;
         }
 
+        cancelListRequest();
+        cancelDetailRequest();
         const requestId = ++latestFormRequest;
         setState({
             currentView: VIEW_FORM,
@@ -437,6 +520,9 @@ export function createInventoryStore(api, { onQueryChange = null } = {}) {
     }
 
     function rejectContext(message) {
+        cancelListRequest();
+        cancelDetailRequest();
+        latestFormRequest++;
         setState({
             status: STATUS_ERROR,
             context: { status: 'error', intent: 'list', kind: null, product: null, store: null, message },
@@ -516,6 +602,7 @@ export function createInventoryStore(api, { onQueryChange = null } = {}) {
 
     async function execute(query, inputs, pushHistory = true) {
         if (destroyed) return false;
+        cancelDetailRequest();
         const requestId = ++latestRequest;
         listController?.abort();
         listController = typeof AbortController === 'function'
@@ -599,13 +686,14 @@ export function createInventoryStore(api, { onQueryChange = null } = {}) {
         applyListContext,
         initializeList,
         prepareListQuery,
+        openDetail,
+        retryDetail,
         destroy() {
             if (destroyed) return;
             destroyed = true;
-            latestRequest++;
             latestFormRequest++;
-            listController?.abort();
-            listController = null;
+            cancelListRequest();
+            cancelDetailRequest();
             listeners.clear();
         },
     };
@@ -651,6 +739,16 @@ function initialForm(mode = FORM_CREATE) {
         storeLocked: false,
         selectedProduct: null,
         selectedStore: null,
+    };
+}
+
+function initialDetail() {
+    return {
+        id: null,
+        status: STATUS_IDLE,
+        item: null,
+        error: null,
+        returnQuery: { ...DEFAULT_FILTERS },
     };
 }
 
@@ -797,6 +895,8 @@ function normalizeMeta(meta) {
 
 function normalizeError(error) {
     return {
+        type: typeof error?.type === 'string' ? error.type : 'unknown',
+        status: Number.isInteger(error?.status) ? error.status : null,
         code: typeof error?.code === 'string' ? error.code : 'unknown_error',
         field: typeof error?.field === 'string' ? error.field : null,
         reason: typeof error?.reason === 'string' ? error.reason : null,
@@ -860,5 +960,25 @@ function snapshot(source) {
                 ? null
                 : { ...source.form.selectedStore },
         },
+        detail: {
+            ...source.detail,
+            item: source.detail.item === null
+                ? null
+                : cloneValue(source.detail.item),
+            error: source.detail.error === null
+                ? null
+                : { ...source.detail.error },
+            returnQuery: { ...source.detail.returnQuery },
+        },
     };
+}
+
+function cloneValue(value) {
+    if (Array.isArray(value)) return value.map(cloneValue);
+    if (value !== null && typeof value === 'object') {
+        return Object.fromEntries(
+            Object.entries(value).map(([key, item]) => [key, cloneValue(item)])
+        );
+    }
+    return value;
 }

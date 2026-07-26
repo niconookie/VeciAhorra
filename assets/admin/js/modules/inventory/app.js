@@ -10,6 +10,7 @@ import {
 import {
     buildInventoryActionUrl,
     buildInventoryListUrl,
+    readInventoryDetailUrl,
     readInventoryEditUrl,
     readInventoryListUrl,
 } from './list-navigation.js';
@@ -44,6 +45,8 @@ function initialize() {
         onPage: (page) => store.goToPage(page),
         onNew: () => openCreateForm(store, config.adminUrl),
         onEdit: (id) => store.openEditForm(id),
+        onDetailEdit: (id) => openDetailEdit(store, config.adminUrl, id),
+        onDetailRetry: () => store.retryDetail(),
         onFormField: (field, value) => store.setFormField(field, value),
         onProductSelected: (product) => store.selectProduct(product),
         onProductCleared: () => store.clearSelectedProduct(),
@@ -51,8 +54,10 @@ function initialize() {
         onStoreSelected: (selectedStore) => store.selectStore(selectedStore),
         onStoreCleared: () => store.clearSelectedStore(),
         searchStores: (term, options) => api.searchStores(term, options),
-        onSave: () => store.save(),
-        onCancel: () => returnToList(store, config.adminUrl, config.storeAdminUrl),
+        onSave: () => saveAndReturn(store, config.adminUrl),
+        onCancel: () => window.history.state?.returnDetail
+            ? returnFromForm(store, config.adminUrl, config.storeAdminUrl)
+            : returnToList(store, config.adminUrl, config.storeAdminUrl),
         allInventoryUrl: config.adminUrl,
         contextualListUrl: (id) => buildContextUrl(config.adminUrl, id),
         contextualCreateUrl: (id) => buildContextUrl(config.adminUrl, id, 'create'),
@@ -91,12 +96,32 @@ function initializeRoute(store, api, config) {
             return;
         }
         window.history.replaceState(
-            { inventoryEdit: edit.id },
+            { ...(window.history.state || {}), inventoryEdit: edit.id },
             '',
             edit.canonicalUrl
         );
         store.prepareListQuery(edit.query);
         store.openEditForm(edit.id);
+        return;
+    }
+    if (raw.searchParams.get('action') === 'view') {
+        const detail = readInventoryDetailUrl(
+            window.location.href,
+            config.adminUrl
+        );
+        if (!detail.valid) {
+            store.rejectContext(detail.message);
+            return;
+        }
+        window.history.replaceState(
+            {
+                inventoryDetail: detail.id,
+                returnQuery: detail.query,
+            },
+            '',
+            detail.canonicalUrl
+        );
+        store.openDetail(detail.id, detail.query);
         return;
     }
 
@@ -155,6 +180,59 @@ function returnToList(store, adminUrl, storeAdminUrl) {
         buildInventoryListUrl(adminUrl, store.getState().query)
     );
     store.returnToList();
+}
+
+function openDetailEdit(store, adminUrl, id) {
+    const query = store.getState().detail.returnQuery;
+    const editUrl = buildInventoryActionUrl(adminUrl, 'edit', id, query);
+    window.history.pushState(
+        { inventoryEdit: id, returnDetail: id, returnQuery: query },
+        '',
+        editUrl
+    );
+    store.prepareListQuery(query);
+    store.openEditForm(id);
+}
+
+function returnFromForm(store, adminUrl, storeAdminUrl) {
+    const historyState = window.history.state;
+    if (
+        Number.isSafeInteger(Number(historyState?.returnDetail))
+        && Number(historyState.returnDetail) > 0
+    ) {
+        const id = Number(historyState.returnDetail);
+        const query = historyState.returnQuery || store.getState().query;
+        const url = buildInventoryActionUrl(adminUrl, 'view', id, query);
+        window.history.replaceState(
+            { inventoryDetail: id, returnQuery: query },
+            '',
+            url
+        );
+        store.openDetail(id, query);
+        return;
+    }
+    returnToList(store, adminUrl, storeAdminUrl);
+}
+
+async function saveAndReturn(store, adminUrl) {
+    const historyState = window.history.state;
+    const saved = await store.save();
+    if (
+        saved
+        && Number.isSafeInteger(Number(historyState?.returnDetail))
+        && Number(historyState.returnDetail) > 0
+    ) {
+        const id = Number(historyState.returnDetail);
+        const query = historyState.returnQuery || store.getState().query;
+        const url = buildInventoryActionUrl(adminUrl, 'view', id, query);
+        window.history.replaceState(
+            { inventoryDetail: id, returnQuery: query },
+            '',
+            url
+        );
+        await store.openDetail(id, query);
+    }
+    return saved;
 }
 
 async function initializeContext(store, api, context) {
