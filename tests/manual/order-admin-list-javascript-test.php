@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__, 2) . '/assets/admin/js/modules/orders/';
 $all = '';
-foreach (['api.js', 'state.js', 'view.js', 'navigation.js', 'app.js'] as $file) {
+foreach (['api.js', 'state.js', 'view.js', 'navigation.js', 'detail-navigation.js', 'app.js'] as $file) {
     $all .= file_get_contents($root . $file);
 }
 $checks = [

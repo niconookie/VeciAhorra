@@ -78,8 +78,13 @@ final class OrderAdminPageRequest
 
     public function returnUrl(): string
     {
+        $encoded = array_map(
+            static fn (string|int $value): string => rawurlencode((string) $value),
+            $this->returnQuery
+        );
+
         return add_query_arg(
-            ['page' => 'veciahorra-orders'] + $this->returnQuery,
+            ['page' => 'veciahorra-orders'] + $encoded,
             admin_url('admin.php')
         );
     }

@@ -1,0 +1,233 @@
+<!doctype html>
+<meta charset="utf-8">
+<pre id="results" data-status="running">RUNNING</pre>
+<script type="module">
+const results = document.getElementById('results');
+let assertions = 0;
+function assert(value, message) {
+    assertions += 1;
+    if (!value) throw new Error(`${message} (assertion ${assertions})`);
+}
+
+try {
+    let calls = 0;
+    window.fetch = () => { calls += 1; throw new Error('unexpected fetch'); };
+    const { buildOrderDetailUrl } = await import(
+        '../../assets/admin/js/modules/orders/detail-navigation.js?navigation-test=1'
+    );
+    assert(typeof buildOrderDetailUrl === 'function', 'single public builder available');
+    assert(calls === 0, 'import performs no request');
+
+    const fullContext = {
+        search: 'té &="東京" %26 action=edit <b>',
+        store_id: 3,
+        order_status: 'paid',
+        fulfillment_mode: 'pickup',
+        date_from: '2026-07-01',
+        date_to: '2026-07-27',
+        sort: 'updated',
+        paged: 4,
+        per_page: 50,
+        nonce: 'secret',
+        customer_id: 88,
+        dto: { private: true },
+    };
+    const untouched = JSON.stringify(fullContext);
+    const built = buildOrderDetailUrl({
+        adminUrl: 'https://example.test/wp-admin/admin.php?page=old&token=secret#fragment',
+        orderId: '25',
+        listContext: fullContext,
+    });
+    const url = new URL(built);
+    assert(url.origin === 'https://example.test', 'admin origin preserved');
+    assert(url.pathname === '/wp-admin/admin.php', 'admin path preserved');
+    assert(url.hash === '', 'fragment removed');
+    assert(url.searchParams.getAll('page').join() === 'veciahorra-orders', 'single canonical page');
+    assert(url.searchParams.getAll('action').join() === 'view', 'single canonical action');
+    assert(url.searchParams.getAll('order_id').join() === '25', 'single canonical id');
+    const mapping = [
+        ['search', 'return_search'], ['store_id', 'return_store_id'],
+        ['order_status', 'return_order_status'], ['fulfillment_mode', 'return_fulfillment_mode'],
+        ['date_from', 'return_date_from'], ['date_to', 'return_date_to'],
+        ['sort', 'return_sort'], ['paged', 'return_paged'], ['per_page', 'return_per_page'],
+    ];
+    for (const [source, target] of mapping) {
+        assert(url.searchParams.get(target) === String(fullContext[source]), `${target} mapped`);
+        assert(url.searchParams.getAll(target).length === 1, `${target} unique`);
+    }
+    assert(
+        [...url.searchParams.keys()].join(',') === [
+            'page', 'action', 'order_id', ...mapping.map((entry) => entry[1]),
+        ].join(','),
+        'parameter order deterministic'
+    );
+    assert(JSON.stringify(fullContext) === untouched, 'context not mutated');
+    for (const forbidden of ['token', 'nonce', '_wpnonce', 'customer_id', 'dto']) {
+        assert(!url.searchParams.has(forbidden), `${forbidden} absent`);
+    }
+    assert(url.searchParams.get('return_search') === fullContext.search, 'special search round trips');
+    assert(!url.searchParams.has('edit') && url.searchParams.get('action') === 'view', 'search creates no parameter');
+    assert(calls === 0, 'building performs no request');
+
+    const invalidIds = [
+        0, -1, 1.5, '0', '-1', '1.5', '1e2', ' 2', '2 ', '+2', '02',
+        '2x', [], {}, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1,
+        String(Number.MAX_SAFE_INTEGER + 1),
+    ];
+    for (const orderId of invalidIds) {
+        assert(buildOrderDetailUrl({
+            adminUrl: '/wp-admin/admin.php',
+            orderId,
+            listContext: fullContext,
+        }) === null, `invalid id rejected: ${String(orderId)}`);
+    }
+    assert(buildOrderDetailUrl({
+        adminUrl: '/wp-admin/admin.php',
+        orderId: Number.MAX_SAFE_INTEGER,
+        listContext: {},
+    })?.includes(`order_id=${Number.MAX_SAFE_INTEGER}`), 'maximum safe id accepted');
+    assert(buildOrderDetailUrl({
+        adminUrl: 'javascript:alert(1)',
+        orderId: 1,
+        listContext: {},
+    }) === null, 'unsafe admin URL rejected');
+
+    const partial = new URL(buildOrderDetailUrl({
+        adminUrl: '/wp-admin/admin.php?unknown=x',
+        orderId: 8,
+        listContext: {
+            search: 'seguro',
+            store_id: '01',
+            order_status: 'cancelled',
+            fulfillment_mode: 'delivery',
+            date_from: '2026-02-30',
+            date_to: '2026-07-20',
+            sort: 'oldest',
+            paged: 0,
+            per_page: 100,
+            unknown: 'value',
+        },
+    }), location.origin);
+    assert(partial.searchParams.get('return_search') === 'seguro', 'valid search retained');
+    assert(!partial.searchParams.has('return_store_id'), 'invalid store omitted');
+    assert(!partial.searchParams.has('return_order_status'), 'invalid status omitted');
+    assert(partial.searchParams.get('return_fulfillment_mode') === 'delivery', 'valid mode retained');
+    assert(!partial.searchParams.has('return_date_from'), 'impossible date omitted');
+    assert(partial.searchParams.get('return_date_to') === '2026-07-20', 'single valid date retained');
+    assert(partial.searchParams.get('return_sort') === 'oldest', 'valid sort retained');
+    assert(!partial.searchParams.has('return_paged'), 'invalid page omitted');
+    assert(partial.searchParams.get('return_per_page') === '100', 'per page 100 retained');
+    assert(!partial.searchParams.has('unknown'), 'unknown context omitted');
+
+    for (const perPage of [20, 50, 100]) {
+        const value = new URL(buildOrderDetailUrl({
+            adminUrl: '/wp-admin/admin.php', orderId: 2, listContext: { per_page: perPage },
+        }), location.origin);
+        assert(value.searchParams.get('return_per_page') === String(perPage), `${perPage} accepted`);
+    }
+    for (const perPage of [0, 10, 25, '050', 101]) {
+        const value = new URL(buildOrderDetailUrl({
+            adminUrl: '/wp-admin/admin.php', orderId: 2, listContext: { per_page: perPage },
+        }), location.origin);
+        assert(!value.searchParams.has('return_per_page'), `${perPage} rejected`);
+    }
+
+    const onlyFrom = new URL(buildOrderDetailUrl({
+        adminUrl: '/wp-admin/admin.php', orderId: 2,
+        listContext: { date_from: '2026-07-10', date_to: 'invalid' },
+    }), location.origin);
+    assert(onlyFrom.searchParams.get('return_date_from') === '2026-07-10', 'single from retained');
+    assert(!onlyFrom.searchParams.has('return_date_to'), 'invalid to omitted');
+    const range = new URL(buildOrderDetailUrl({
+        adminUrl: '/wp-admin/admin.php', orderId: 2,
+        listContext: { date_from: '2026-07-10', date_to: '2026-07-20' },
+    }), location.origin);
+    assert(range.searchParams.get('return_date_from') === '2026-07-10', 'range from retained');
+    assert(range.searchParams.get('return_date_to') === '2026-07-20', 'range to retained');
+    const inverted = new URL(buildOrderDetailUrl({
+        adminUrl: '/wp-admin/admin.php', orderId: 2,
+        listContext: { date_from: '2026-07-20', date_to: '2026-07-10', sort: 'newest' },
+    }), location.origin);
+    assert(!inverted.searchParams.has('return_date_from'), 'inverted from removed');
+    assert(!inverted.searchParams.has('return_date_to'), 'inverted to removed');
+    assert(inverted.searchParams.get('return_sort') === 'newest', 'inverted range preserves companion');
+
+    const { createOrdersView } = await import(
+        '../../assets/admin/js/modules/orders/view.js?navigation-test=1'
+    );
+    const form = document.createElement('form');
+    const clear = document.createElement('button');
+    const list = document.createElement('main');
+    const status = document.createElement('div');
+    const pagination = document.createElement('nav');
+    const view = createOrdersView(
+        { form, clear, list, status, pagination },
+        {
+            query() {},
+            page() {},
+            detailUrl(orderId, listContext) {
+                return buildOrderDetailUrl({
+                    adminUrl: '/wp-admin/admin.php',
+                    orderId,
+                    listContext,
+                });
+            },
+        }
+    );
+    const viewContext = { search: 'filtro & seguro', sort: 'oldest', paged: 2, per_page: 50 };
+    const validItem = {
+        id: 7, store: { id: 2 }, dimensions: {}, allowed_actions: ['view'],
+        mutable_actions: [], primary_state: 'paid',
+    };
+    const invalidItems = [
+        { ...validItem, id: 0 },
+        { ...validItem, id: '7' },
+        { ...validItem, allowed_actions: [] },
+        { ...validItem, allowed_actions: 'view' },
+        { ...validItem, allowed_actions: ['view', 'edit'] },
+    ];
+    view.render({
+        status: 'success',
+        query: viewContext,
+        data: {
+            items: [validItem, ...invalidItems],
+            pagination: {
+                page: 2, per_page: 50, total: 6, total_pages: 3,
+                previous_page: 1, next_page: 3,
+            },
+        },
+        error: null,
+    });
+    let links = list.querySelectorAll('a.orders-list__view');
+    assert(links.length === 1, 'only authorized compatible row renders action');
+    assert(links[0].textContent === 'Ver', 'real link has accessible text');
+    assert(links[0].getAttribute('href') === buildOrderDetailUrl({
+        adminUrl: '/wp-admin/admin.php', orderId: 7, listContext: viewContext,
+    }), 'view href comes from navigation authority');
+    assert(links[0].tagName === 'A' && links[0].href !== '', 'action is keyboard-capable real anchor');
+    assert(validItem.mutable_actions.length === 0, 'mutable actions remain empty');
+    links[0].dispatchEvent(new MouseEvent('click', { ctrlKey: true }));
+    assert(calls === 0, 'modified click is not intercepted or fetched');
+    view.render({
+        status: 'success',
+        query: viewContext,
+        data: {
+            items: [validItem],
+            pagination: {
+                page: 2, per_page: 50, total: 1, total_pages: 1,
+                previous_page: null, next_page: null,
+            },
+        },
+        error: null,
+    });
+    links = list.querySelectorAll('a.orders-list__view');
+    assert(links.length === 1, 'rerender does not duplicate link');
+    view.destroy();
+
+    results.dataset.status = 'pass';
+    results.textContent = `PASS order-admin-detail-navigation-browser-test assertions=${assertions} requests=${calls}`;
+} catch (error) {
+    results.dataset.status = 'fail';
+    results.textContent = `FAIL ${error.message}\n${error.stack || ''}`;
+}
+</script>

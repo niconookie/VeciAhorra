@@ -37,7 +37,9 @@ function validPayload(payload) {
 function validItem(item) {
     return object(item) && Number.isInteger(item.id) && item.id > 0
         && typeof item.primary_state === 'string' && object(item.dimensions)
-        && ['view'].every((action) => item.allowed_actions?.includes(action))
+        && Array.isArray(item.allowed_actions)
+        && item.allowed_actions.length === 1
+        && item.allowed_actions[0] === 'view'
         && Array.isArray(item.mutable_actions) && item.mutable_actions.length === 0;
 }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }

@@ -6,24 +6,31 @@ const sorts = new Set(['newest', 'oldest', 'updated', 'total_desc', 'total_asc']
 
 export function readOrdersUrl(url) {
     const source = new URL(url, window.location.origin);
-    const query = { ...defaults };
+    const values = {};
     const unique = new Set();
     for (const [name] of source.searchParams) {
         if (name !== 'page' && (!allowed.has(name) || unique.has(name))) continue;
         unique.add(name);
-        const value = source.searchParams.get(name);
-        if (name === 'search' && validSearch(value)) query.search = value;
-        if (name === 'store_id' && positive(value)) query.store_id = value;
-        if (name === 'order_status' && statuses.has(value)) query.order_status = value;
-        if (name === 'fulfillment_mode' && modes.has(value)) query.fulfillment_mode = value;
-        if ((name === 'date_from' || name === 'date_to') && date(value)) query[name] = value;
-        if (name === 'sort' && sorts.has(value)) query.sort = value;
-        if (name === 'paged' && positive(value)) query.paged = Number(value);
-        if (name === 'per_page' && ['20', '50', '100'].includes(value)) query.per_page = Number(value);
+        values[name] = source.searchParams.get(name);
     }
+    return { ...defaults, ...normalizeOrdersListContext(values) };
+}
+
+export function normalizeOrdersListContext(source) {
+    if (source === null || typeof source !== 'object' || Array.isArray(source)) return {};
+    const query = {};
+    if (validSearch(source.search)) query.search = source.search;
+    if (positive(source.store_id)) query.store_id = String(source.store_id);
+    if (statuses.has(source.order_status)) query.order_status = source.order_status;
+    if (modes.has(source.fulfillment_mode)) query.fulfillment_mode = source.fulfillment_mode;
+    if (date(source.date_from)) query.date_from = source.date_from;
+    if (date(source.date_to)) query.date_to = source.date_to;
+    if (sorts.has(source.sort)) query.sort = source.sort;
+    if (positive(source.paged)) query.paged = Number(source.paged);
+    if (['20', '50', '100'].includes(String(source.per_page))) query.per_page = Number(source.per_page);
     if (query.date_from && query.date_to && query.date_from > query.date_to) {
-        query.date_from = '';
-        query.date_to = '';
+        delete query.date_from;
+        delete query.date_to;
     }
     return query;
 }
@@ -50,10 +57,19 @@ export function toApiParams(query) {
     return params;
 }
 
-function positive(value) { return /^[1-9]\d*$/.test(value || ''); }
-function date(value) { return /^\d{4}-\d{2}-\d{2}$/.test(value || ''); }
+function positive(value) {
+    const literal = typeof value === 'number' ? String(value) : value;
+    return typeof literal === 'string' && /^[1-9]\d*$/.test(literal)
+        && Number.isSafeInteger(Number(literal));
+}
+function date(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
 function validSearch(value) {
-    return typeof value === 'string' && value.length > 0 && value.length <= 100
-        && value.trim() === value && (!/^[+\-.]?\d/i.test(value) || positive(value))
+    return typeof value === 'string' && Array.from(value).length > 0
+        && Array.from(value).length <= 100 && value.trim() === value
+        && (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value) || positive(value))
         && (!value.toLowerCase().startsWith('checkout:') || /^checkout:[1-9]\d*$/i.test(value));
 }

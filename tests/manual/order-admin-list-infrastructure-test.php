@@ -12,6 +12,7 @@ $files = [
     'state' => $root . '/assets/admin/js/modules/orders/state.js',
     'ui' => $root . '/assets/admin/js/modules/orders/view.js',
     'navigation' => $root . '/assets/admin/js/modules/orders/navigation.js',
+    'detailNavigation' => $root . '/assets/admin/js/modules/orders/detail-navigation.js',
     'application' => $root . '/app/Core/Application.php',
 ];
 $source = array_map(static fn (string $file): string => file_get_contents($file) ?: '', $files);
@@ -37,7 +38,9 @@ $assert(str_contains($source['state'], 'AbortController') && str_contains($sourc
 $assert(substr_count($source['app'], 'state.load(') === 2, 'Carga fuera de inicial/popstate.');
 $assert(! str_contains($source['ui'], 'fetch('), 'Vista realiza solicitudes.');
 $assert(! str_contains($source['ui'], 'innerHTML'), 'Vista usa HTML no confiable.');
-$assert(str_contains($source['ui'], 'Detalle disponible en el próximo hito'), 'Decision view ausente.');
+$assert(str_contains($source['ui'], "link.textContent = 'Ver'"), 'Accion view ausente.');
+$assert(! str_contains($source['ui'], 'return_search'), 'Vista duplica contexto de retorno.');
+$assert(str_contains($source['detailNavigation'], 'buildOrderDetailUrl'), 'Constructor de detalle ausente.');
 $assert(str_contains($source['navigation'], "url.searchParams.set('page', 'veciahorra-orders')"), 'URL no canonica.');
 $assert(str_contains($source['application'], 'OrderAdminReadRepositoryInterface::class'), 'Binding ausente.');
 $assert(str_contains($source['application'], 'OrdersAdminRoutes::class') && str_contains($source['application'], 'OrdersPage::class'), 'Bootstrap incompleto.');

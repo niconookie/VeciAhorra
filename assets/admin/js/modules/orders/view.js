@@ -15,7 +15,9 @@ export function createOrdersView(nodes, actions) {
         render(state) {
             nodes.list.setAttribute('aria-busy', String(state.status === 'loading'));
             nodes.status.textContent = message(state);
-            if (state.status === 'success') renderItems(nodes.list, state.data.items);
+            if (state.status === 'success') {
+                renderItems(nodes.list, state.data.items, state.query, actions.detailUrl);
+            }
             if (state.status === 'empty') nodes.list.replaceChildren(empty(state.query));
             if (state.status === 'error') nodes.list.replaceChildren(errorNode(state.error));
             if (state.data) renderPagination(nodes.pagination, state.data.pagination);
@@ -34,7 +36,7 @@ export function createOrdersView(nodes, actions) {
     };
 }
 
-function renderItems(root, items) {
+function renderItems(root, items, query, detailUrl) {
     const list = document.createElement('ol'); list.className = 'orders-list';
     items.forEach((item) => {
         const row = document.createElement('li'); row.className = 'orders-list__item';
@@ -45,10 +47,29 @@ function renderItems(root, items) {
         states.textContent = `${label(item.primary_state)} · Financiero: ${label(item.dimensions?.financial)} · Fulfillment: ${label(item.dimensions?.fulfillment)} · ${label(item.consistency_state)}`;
         const attention = document.createElement('p');
         attention.textContent = item.requires_attention ? `Requiere atención: ${item.warning_count ?? 0} warnings, ${item.blocker_count ?? 0} blockers` : 'Sin atención requerida';
-        const future = document.createElement('span'); future.className = 'orders-list__future'; future.textContent = 'Detalle disponible en el próximo hito';
-        row.append(title, store, summary, states, attention, future); list.append(row);
+        const action = viewAction(item, query, detailUrl);
+        row.append(title, store, summary, states, attention);
+        if (action !== null) row.append(action);
+        list.append(row);
     });
     root.replaceChildren(list);
+}
+function viewAction(item, query, detailUrl) {
+    if (
+        item === null || typeof item !== 'object' || Array.isArray(item)
+        || !Number.isSafeInteger(item.id) || item.id <= 0
+        || !Array.isArray(item.allowed_actions)
+        || item.allowed_actions.length !== 1
+        || item.allowed_actions[0] !== 'view'
+        || typeof detailUrl !== 'function'
+    ) return null;
+    const href = detailUrl(item.id, query);
+    if (typeof href !== 'string' || href === '') return null;
+    const link = document.createElement('a');
+    link.className = 'orders-list__view';
+    link.href = href;
+    link.textContent = 'Ver';
+    return link;
 }
 function renderPagination(root, pagination) {
     root.replaceChildren();

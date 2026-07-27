@@ -1,6 +1,7 @@
 import { createOrdersApi } from './api.js';
 import { createOrdersState } from './state.js';
 import { buildOrdersUrl, readOrdersUrl } from './navigation.js';
+import { buildOrderDetailUrl } from './detail-navigation.js';
 import { createOrdersView } from './view.js';
 
 initialize();
@@ -29,6 +30,11 @@ export function initialize() {
     view = createOrdersView(nodes, {
         query: (next) => apply({ ...next, paged: 1 }),
         page: (paged) => apply({ paged }),
+        detailUrl: (orderId, listContext) => buildOrderDetailUrl({
+            adminUrl: config.adminUrl,
+            orderId,
+            listContext,
+        }),
     });
     view.sync(query);
     apply(query, false);
