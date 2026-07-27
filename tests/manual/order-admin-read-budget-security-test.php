@@ -54,6 +54,9 @@ $timeline = $detail['operational']['timeline'];
 $inspector = $detail['inspector'];
 $assert($afterDetail === 3 && $timeline !== [] && is_array($inspector), 'detail, timeline and inspector stay at three queries');
 $assert($detailRepository->queryCount === $afterDetail, 'DTO access performs zero queries');
+$assert($detail['customer'] === ['relationship_status' => 'linked'], 'customer projection adds no query or PII');
+$assert(! array_key_exists('public_id', $detail['payment']['session']), 'payment session public ID is not exposed');
+$assert($detail['operational']['allowed_actions'] === ['view'] && $detail['operational']['mutable_actions'] === [], 'detail actions remain read-only');
 
 foreach (['count', 'page', 'facts', 'detail'] as $failure) {
     $failing = new InstrumentedOrderAdminReadRepository([$rows[0]], [1 => $bundles[1]]);

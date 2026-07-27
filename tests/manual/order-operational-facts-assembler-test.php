@@ -122,9 +122,33 @@ $unsafeBundle['payment_sessions'][0]['token'] = 'secret-token';
 $unsafeBundle['payment_sessions'][0]['provider_payload'] = ['private' => true];
 $unsafeBundle['deliveries'][] = ['id' => 1, 'customer_id' => 7, 'latitude' => '-33.1'];
 $unsafeBundle['delivery_tracking'][] = ['id' => 2, 'event' => 'assigned', 'latitude' => '-33.1', 'created_at' => '2026-07-26 10:12:00'];
-$safe = json_encode($assembler->safeDetail($base, $unsafeBundle), JSON_THROW_ON_ERROR);
+$safeDetail = $assembler->safeDetail($base, $unsafeBundle);
+$assert($safeDetail['customer'] === ['relationship_status' => 'linked'], 'confirmed customer relation is linked');
+$unknownCustomerBase = $base;
+$unknownCustomerBase['customer_id'] = null;
+$unknownCustomer = $assembler->safeDetail($unknownCustomerBase, $unsafeBundle);
+$assert($unknownCustomer['customer'] === ['relationship_status' => 'unknown'], 'unconfirmed customer relation is unknown');
+foreach ([$safeDetail, $unknownCustomer] as $customerDetail) {
+    $assert(
+        in_array($customerDetail['customer']['relationship_status'], ['linked', 'unknown'], true),
+        'customer relation belongs to the closed enum'
+    );
+}
+$assert(! array_key_exists('public_id', $safeDetail['payment']['session']), 'safe payment session excludes public ID');
+
+$unorderedBundle = $bundle;
+$unorderedBundle['order_items'][] = [
+    'id' => 1, 'order_id' => 10, 'product_id' => 22, 'inventory_id' => 32,
+    'quantity' => 1, 'unit_price' => '1.00', 'subtotal' => '1.00',
+];
+$unorderedBundle['order_items'] = array_reverse($unorderedBundle['order_items']);
+$orderedDetail = $assembler->safeDetail($base, $unorderedBundle);
+$assert(array_column($orderedDetail['lines'], 'id') === [1, 110], 'safe detail lines use stable ID order');
+
+$safe = json_encode($safeDetail, JSON_THROW_ON_ERROR);
 foreach (['customer_id', 'user_id', 'email', 'phone', 'address', 'token', 'payload', 'latitude', 'longitude', 'SQL ', 'InternalClass'] as $forbidden) {
     $assert(! str_contains($safe, $forbidden), 'safe detail excludes ' . $forbidden);
 }
+$assert(! str_contains($safe, 'session-safe-10'), 'safe detail excludes payment session public ID value');
 
 echo 'PASS order-operational-facts-assembler-test assertions=' . $assertions . PHP_EOL;

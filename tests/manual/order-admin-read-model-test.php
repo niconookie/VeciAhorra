@@ -94,8 +94,10 @@ $detailRepository = new InstrumentedOrderAdminReadRepository($rows, $bundles);
 $detail = $service($detailRepository)->getOrderDetail(10)->toArray();
 $assert($detailRepository->queryCount === 3, 'detail uses exactly three queries');
 $assert($detail['identity']['id'] === 10, 'detail identity');
+$assert($detail['customer'] === ['relationship_status' => 'linked'], 'detail exposes linked customer relation without ID');
 $assert($detail['checkout_order']['order_id'] === 10, 'detail exposes CheckoutOrder relation');
 $assert($detail['lines'][0]['product_name_snapshot'] === null, 'missing historical name is explicit');
+$assert(! array_key_exists('public_id', $detail['payment']['session']), 'detail excludes payment session public ID');
 $listItem = $listed['items'][1];
 $assert($detail['operational']['primary_state'] === $listItem['primary_state'], 'list/detail primary equivalent');
 foreach (['commercial', 'financial', 'reservations', 'processing', 'fulfillment', 'delivery', 'payment_session'] as $dimension) {
@@ -112,6 +114,20 @@ $assert($detail['operational']['timeline'] !== [], 'detail reuses resolver timel
 $assert(isset($detail['inspector']['by_dimension']), 'inspector uses existing findings');
 $assert($detail['operational']['allowed_actions'] === ['view'] && $detail['operational']['mutable_actions'] === [], 'detail is read-only');
 $assert($detail['navigation']['product_ids'] === [20] && $detail['navigation']['inventory_ids'] === [30], 'historical navigation IDs');
+
+$unknownCustomerBase = OrderAdminReadFixture::base(13);
+$unknownCustomerBase['customer_id'] = null;
+$unknownCustomerRepository = new InstrumentedOrderAdminReadRepository(
+    [$unknownCustomerBase],
+    [13 => OrderAdminReadFixture::bundle(13)]
+);
+$unknownCustomerDetail = $service($unknownCustomerRepository)->getOrderDetail(13)->toArray();
+$assert($unknownCustomerDetail['customer'] === ['relationship_status' => 'unknown'], 'detail exposes unknown customer relation');
+$assert(
+    in_array($unknownCustomerDetail['customer']['relationship_status'], ['linked', 'unknown'], true),
+    'detail customer relation belongs to the closed enum'
+);
+$assert($unknownCustomerRepository->queryCount === 3, 'unknown customer detail preserves query budget');
 
 $serialized = json_encode([$listed, $detail], JSON_THROW_ON_ERROR);
 foreach (['customer_id', 'user_id', 'email', 'phone', 'address', 'token', 'payload', 'latitude', 'longitude', 'provider_reference', 'financial_fingerprint'] as $forbidden) {
@@ -145,6 +161,7 @@ $privacySerialized = json_encode([
 foreach (['leak@example.test', 'Secret Street 123', 'token-secret-xyz', 'payload-secret-xyz', 'SELECT private', 'InternalClass.php', '-33.1234567'] as $secret) {
     $assert(! str_contains($privacySerialized, $secret), 'all DTO surfaces exclude injected secret ' . $secret);
 }
+$assert(! str_contains($privacySerialized, 'session-safe-12'), 'detail excludes payment session public ID value');
 
 $compare = static function (array $scenarioBase, array $scenarioBundle) use ($service, $assert): void {
     $id = (int) $scenarioBase['order_id'];

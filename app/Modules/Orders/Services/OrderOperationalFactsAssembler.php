@@ -108,12 +108,22 @@ final class OrderOperationalFactsAssembler
     /** @return array<string, mixed> */
     public function safeDetail(array $base, array $bundle): array
     {
+        $lines = $this->rows($bundle, 'order_items');
+        usort(
+            $lines,
+            static fn (array $left, array $right): int =>
+                (int) ($left['id'] ?? 0) <=> (int) ($right['id'] ?? 0)
+        );
+
         return [
             'identity' => [
                 'id' => $this->integer($base['order_id']),
                 'persisted_status' => $this->text($base['order_status']),
                 'created_at' => $this->timestamp($base['order_created_at'] ?? null),
                 'updated_at' => $this->timestamp($base['order_updated_at'] ?? null),
+            ],
+            'customer' => [
+                'relationship_status' => $this->customerRelationshipStatus($base['customer_id'] ?? null),
             ],
             'store' => [
                 'id' => $this->integer($base['minimarket_id']),
@@ -145,14 +155,14 @@ final class OrderOperationalFactsAssembler
                 'quantity' => (int) ($row['quantity'] ?? 0),
                 'unit_price' => (string) ($row['unit_price'] ?? '0.00'),
                 'subtotal' => (string) ($row['subtotal'] ?? '0.00'),
-            ], $this->rows($bundle, 'order_items')),
+            ], $lines),
             'reservations' => $this->projectRows($this->rows($bundle, 'reservations'), [
                 'id', 'order_id', 'product_id', 'inventory_id', 'minimarket_id',
                 'quantity', 'status', 'reserved_at', 'expires_at', 'released_at', 'updated_at',
             ]),
             'payment' => [
                 'session' => $this->project($this->latest($this->rows($bundle, 'payment_sessions')), [
-                    'id', 'public_id', 'checkout_id', 'payment_id', 'status', 'create_version',
+                    'id', 'checkout_id', 'payment_id', 'status', 'create_version',
                     'create_lease_expires_at', 'create_started_at', 'amount', 'currency',
                     'confirmed_at', 'created_at', 'updated_at',
                 ]),
@@ -200,6 +210,22 @@ final class OrderOperationalFactsAssembler
                 'inventory_ids' => $this->uniqueIds($this->rows($bundle, 'order_items'), 'inventory_id'),
             ],
         ];
+    }
+
+    private function customerRelationshipStatus(mixed $customerId): string
+    {
+        if (is_int($customerId)) {
+            return $customerId > 0 ? 'linked' : 'unknown';
+        }
+        if (
+            ! is_string($customerId)
+            || preg_match('/^[1-9][0-9]*$/D', $customerId) !== 1
+            || (string) (int) $customerId !== $customerId
+        ) {
+            return 'unknown';
+        }
+
+        return 'linked';
     }
 
     private function item(array $row): array
