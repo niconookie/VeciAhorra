@@ -13,6 +13,7 @@ $root = dirname(__DIR__, 2);
 $view = file_get_contents($root . '/assets/admin/js/modules/orders/detail-view.js') ?: '';
 $css = file_get_contents($root . '/assets/admin/css/orders.css') ?: '';
 $page = file_get_contents($root . '/app/Modules/Orders/Admin/OrdersPage.php') ?: '';
+$app = file_get_contents($root . '/assets/admin/js/modules/orders/detail-app.js') ?: '';
 
 $assert(substr_count($view, 'export ') === 1, 'render API is not closed');
 $assert(str_contains($view, 'export function createOrderDetailView'), 'render factory is absent');
@@ -41,10 +42,11 @@ foreach ([
     $assert(! str_contains(strtolower($view), $private), 'render allowlist exposes ' . $private);
 }
 $assert(! preg_match('/\b(SELECT|INSERT|UPDATE|DELETE)\b/i', $view), 'render contains SQL');
-$assert(str_contains($page, "'veciahorra-orders-detail-view'"), 'render asset is not registered');
+$assert(str_contains($page, "'veciahorra-orders-detail-app'"), 'detail application is not registered');
 $assert(
-    strpos($page, "'veciahorra-orders-detail-view'") > strpos($page, "'veciahorra-orders-detail-transport'"),
-    'render asset is not ordered after transport'
+    str_contains($app, "from './detail-view.js'")
+    && strpos($app, "from './detail-view.js'") > strpos($app, "from './detail-api.js'"),
+    'render dependency is not ordered after transport'
 );
 $assert(! str_contains($css, '!important'), 'detail CSS uses important');
 foreach (explode("\n", $css) as $line) {

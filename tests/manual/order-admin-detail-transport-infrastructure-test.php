@@ -43,7 +43,7 @@ $assert($queue() === $initialQueue, 'foreign admin page enqueued a module');
 
 $page->enqueueAssets($hook);
 $detailQueue = $queue();
-$assert(count(array_keys($detailQueue, 'veciahorra-orders-detail-transport', true)) === 1, 'detail transport not enqueued exactly once');
+$assert(count(array_keys($detailQueue, 'veciahorra-orders-detail-app', true)) === 1, 'detail application not enqueued exactly once');
 $assert(! in_array('veciahorra-orders-admin', $detailQueue, true), 'detail enqueued list module');
 $page->enqueueAssets($hook);
 $assert($queue() === $detailQueue, 'detail transport was enqueued twice');

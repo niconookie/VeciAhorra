@@ -46,14 +46,8 @@ final class OrdersPage
         $request = OrderAdminPageRequest::fromGlobals();
         if ($request->isValidDetail()) {
             wp_enqueue_script_module(
-                'veciahorra-orders-detail-transport',
-                VA_PLUGIN_URL . 'assets/admin/js/modules/orders/detail-api.js',
-                [],
-                Config::PLUGIN_VERSION
-            );
-            wp_enqueue_script_module(
-                'veciahorra-orders-detail-view',
-                VA_PLUGIN_URL . 'assets/admin/js/modules/orders/detail-view.js',
+                'veciahorra-orders-detail-app',
+                VA_PLUGIN_URL . 'assets/admin/js/modules/orders/detail-app.js',
                 [],
                 Config::PLUGIN_VERSION
             );

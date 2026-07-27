@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<link rel="stylesheet" href="../../assets/admin/css/orders.css">
+<title>Order detail application test</title>
+</head>
+<body>
+<div id="fixture"></div>
+<pre id="results" data-status="running">RUNNING</pre>
+<script type="module">
+const fixture = document.getElementById('fixture');
+const results = document.getElementById('results');
+const originalSetAttribute = Element.prototype.setAttribute;
+const consoleCalls = [];
+const originalConsole = { log: console.log, error: console.error, warn: console.warn };
+console.log = (...args) => consoleCalls.push(['log', args]);
+console.error = (...args) => consoleCalls.push(['error', args]);
+console.warn = (...args) => consoleCalls.push(['warn', args]);
+let assertions = 0;
+let importSequence = 0;
+let busyTransitions = [];
+Element.prototype.setAttribute = function (name, value) {
+    if (this.id === 'veciahorra-order-detail' && name === 'aria-busy') {
+        busyTransitions.push(String(value));
+    }
+    return originalSetAttribute.call(this, name, value);
+};
+function assert(value, message) {
+    assertions += 1;
+    if (!value) throw new Error(`${message} (assertion ${assertions})`);
+}
+function shell({ missing = '', duplicate = '', outside = '' } = {}) {
+    fixture.replaceChildren();
+    const root = document.createElement('div');
+    root.id = 'veciahorra-order-detail';
+    root.className = 'wrap veciahorra-orders-admin veciahorra-order-detail';
+    root.setAttribute('aria-busy', 'true');
+    const nav = document.createElement('nav');
+    const back = document.createElement('a');
+    back.id = 'back';
+    back.href = '/wp-admin/admin.php?page=veciahorra-orders';
+    back.textContent = 'Volver a pedidos';
+    nav.append(back);
+    const header = document.createElement('header');
+    const h1 = document.createElement('h1');
+    h1.id = 'title';
+    h1.textContent = 'Detalle administrativo de pedido';
+    header.append(h1);
+    const loading = document.createElement('div');
+    loading.id = 'veciahorra-order-detail-loading';
+    loading.setAttribute('role', 'status');
+    const error = document.createElement('div');
+    error.id = 'veciahorra-order-detail-error';
+    error.setAttribute('role', 'alert');
+    error.hidden = true;
+    const content = document.createElement('main');
+    content.id = 'veciahorra-order-detail-content';
+    content.hidden = true;
+    const nodes = { root, loading, error, content };
+    root.append(nav, header);
+    for (const [name, node] of Object.entries({ loading, error, content })) {
+        if (missing !== name && outside !== name) root.append(node);
+    }
+    fixture.append(root);
+    if (outside && nodes[outside]) fixture.append(nodes[outside]);
+    if (missing === 'root') fixture.replaceChildren();
+    if (duplicate) {
+        const clone = nodes[duplicate]?.cloneNode(true);
+        if (clone) fixture.append(clone);
+        if (duplicate === 'root') fixture.append(root.cloneNode(true));
+    }
+    return nodes;
+}
+function config(overrides = {}) {
+    return {
+        enabled: true,
+        orderId: 25,
+        restUrl: `${location.origin}/wp-json/veciahorra/v1/orders`,
+        nonce: 'nonce-private-safe',
+        unrelated: 'preserved',
+        ...overrides,
+    };
+}
+function dto() {
+    return {
+        identity: { id: 25, persisted_status: 'paid', created_at: null, updated_at: null },
+        customer: { relationship_status: 'linked' },
+        store: { id: 3, exists: true, business_name: 'Store segura', current_status: 'active' },
+        checkout: null,
+        checkout_order: null,
+        lines: [],
+        reservations: [],
+        payment: { session: null, financial_evidence: null, payment: null, reconciliation: null },
+        processing: {},
+        fulfillment: { mode: 'pickup', deliveries: [], tracking: [] },
+        totals: { line_count: 0, unit_count: 0, total: '0.00', currency: 'CLP' },
+        navigation: {},
+        operational: {
+            primary_state: 'completed',
+            dimensions: {}, consistency: { classification: 'consistent' }, timeline: [],
+            allowed_actions: ['view'], mutable_actions: [], requires_attention: false,
+        },
+        inspector: { classification: 'consistent', finding_count: 0, blocker_count: 0, warning_count: 0, by_dimension: {} },
+    };
+}
+function response(status, body) {
+    return { ok: status >= 200 && status < 300, status, async text() { return body; } };
+}
+async function importApp(label) {
+    importSequence += 1;
+    return import(`../../assets/admin/js/modules/orders/detail-app.js?app-test=${label}-${importSequence}`);
+}
+async function settle() {
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+try {
+    shell();
+    busyTransitions = [];
+    const valid = config();
+    window.VeciAhorra = { ordersAdminDetail: valid };
+    const requests = [];
+    window.fetch = async (...args) => {
+        requests.push(args);
+        return response(200, JSON.stringify(dto()));
+    };
+    const module = await importApp('success');
+    await settle();
+    const root = document.getElementById('veciahorra-order-detail');
+    const content = document.getElementById('veciahorra-order-detail-content');
+    assert(Object.keys(module).join() === 'initializeOrderDetailApp', 'initializer export is closed');
+    assert(requests.length === 1, 'valid detail did not make exactly one request');
+    const [requestUrl, options] = requests[0];
+    assert(requestUrl === `${location.origin}/wp-json/veciahorra/v1/orders/25/admin`, 'request URL changed');
+    assert(!requestUrl.includes('?') && !requestUrl.includes('#'), 'request has query or fragment');
+    assert(options.method === 'GET' && options.credentials === 'same-origin', 'GET contract changed');
+    assert(!Object.hasOwn(options, 'body'), 'GET has body');
+    assert(options.headers['X-WP-Nonce'] === 'nonce-private-safe', 'nonce header absent');
+    assert(options.headers.Accept === 'application/json', 'accept header absent');
+    assert(busyTransitions.includes('false') && busyTransitions.includes('true'), 'idle or loading render was lost');
+    assert(busyTransitions.at(-1) === 'false', 'success did not finish ready');
+    assert(!content.hidden && content.textContent.includes('Resumen del pedido'), 'DTO was not rendered by certified view');
+    assert(root.querySelectorAll('form,button').length === 0, 'mutable controls created');
+    assert(document.getElementById('title').textContent === 'Detalle administrativo de pedido', 'H1 changed');
+    assert(document.getElementById('back').textContent === 'Volver a pedidos', 'back link changed');
+    const fieldsBefore = {
+        enabled: valid.enabled, orderId: valid.orderId, restUrl: valid.restUrl,
+        nonce: valid.nonce, unrelated: valid.unrelated,
+    };
+    const firstInstance = module.initializeOrderDetailApp();
+    const secondInstance = module.initializeOrderDetailApp();
+    assert(firstInstance === secondInstance, 'duplicate initialization changed instance');
+    await settle();
+    assert(requests.length === 1, 'duplicate initialization made another request');
+    assert(Object.entries(fieldsBefore).every(([key, value]) => valid[key] === value), 'private marker overwrote configuration');
+    assert(Object.keys(valid).filter((key) => key.startsWith('__')).length === 1, 'duplicate guard is not locally scoped');
+
+    const errorCases = [
+        ['unauthorized', 401, 'sesión actual'],
+        ['forbidden', 403, 'permisos suficientes'],
+        ['not_found', 404, 'pedido solicitado no está disponible'],
+        ['invalid_request', 422, 'solicitud administrativa'],
+        ['server_error', 500, 'problema interno'],
+        ['invalid_response', 200, 'respuesta incompatible'],
+    ];
+    for (const [kind, status, text] of errorCases) {
+        shell();
+        window.VeciAhorra = { ordersAdminDetail: config() };
+        let count = 0;
+        window.fetch = async () => {
+            count += 1;
+            const body = kind === 'invalid_response'
+                ? JSON.stringify({ incompatible: true })
+                : JSON.stringify({
+                    error: { code: kind === 'not_found' ? 'order_not_found' : 'internal_code' },
+                    message: 'SELECT private C:\\secret\\stack.php <b>remote</b>',
+                });
+            return response(status, body);
+        };
+        await importApp(kind);
+        await settle();
+        const error = document.getElementById('veciahorra-order-detail-error');
+        assert(count === 1, `${kind} request count changed`);
+        assert(!error.hidden && error.textContent.includes(text), `${kind} visual state missing`);
+        assert(!error.textContent.includes('SELECT') && !error.textContent.includes('internal_code'), `${kind} leaked remote details`);
+        assert(document.getElementById('veciahorra-order-detail-content').textContent === '', `${kind} retained DTO`);
+    }
+    shell();
+    window.VeciAhorra = { ordersAdminDetail: config() };
+    let networkCalls = 0;
+    window.fetch = async () => { networkCalls += 1; throw new Error('nonce-private-safe SELECT C:\\private'); };
+    await importApp('network');
+    await settle();
+    assert(networkCalls === 1, 'network failure retried');
+    assert(document.getElementById('veciahorra-order-detail-error').textContent.includes('comunicarse con el servidor'), 'network error not normalized');
+
+    const invalidConfigs = [
+        { enabled: false }, { orderId: 0 }, { orderId: 1.5 }, { orderId: '25' },
+        { orderId: Number.MAX_SAFE_INTEGER + 1 }, { nonce: '' },
+        { restUrl: 'https://other.test/wp-json/veciahorra/v1/orders' },
+        { restUrl: `${location.origin}/wp-json/veciahorra/v1/orders?x=1` },
+        { restUrl: `${location.origin}/wp-json/veciahorra/v1/orders#x` },
+        { restUrl: `${location.origin}/wp-json/veciahorra/v1/orders/admin` },
+        { restUrl: `${location.origin}/wp-json/veciahorra/v1/orders/26/admin` },
+    ];
+    for (const override of invalidConfigs) {
+        shell();
+        const invalid = config(override);
+        window.VeciAhorra = { ordersAdminDetail: invalid };
+        let count = 0;
+        window.fetch = async () => { count += 1; return response(200, JSON.stringify(dto())); };
+        await importApp('invalid-config');
+        await settle();
+        assert(count === 0, 'invalid config made a request');
+        assert(document.getElementById('veciahorra-order-detail-error').textContent.includes('No fue posible iniciar'), 'invalid config lacks safe failure');
+        assert(!Object.keys(invalid).some((key) => key.startsWith('__')), 'failed config was marked initialized');
+        assert(document.getElementById('title').textContent === 'Detalle administrativo de pedido', 'config failure changed H1');
+        assert(document.getElementById('back').textContent === 'Volver a pedidos', 'config failure changed back link');
+        assert(!document.getElementById('veciahorra-order-detail').textContent.includes('nonce-private-safe'), 'config failure exposed nonce');
+    }
+
+    for (const shellFailure of [
+        { missing: 'root' }, { missing: 'loading' }, { missing: 'error' },
+        { missing: 'content' }, { outside: 'loading' }, { duplicate: 'error' },
+    ]) {
+        shell(shellFailure);
+        window.VeciAhorra = { ordersAdminDetail: config() };
+        let count = 0;
+        window.fetch = async () => { count += 1; return response(200, JSON.stringify(dto())); };
+        await importApp('invalid-shell');
+        await settle();
+        assert(count === 0, 'invalid shell made a request');
+    }
+
+    shell();
+    window.VeciAhorra = { ordersAdminDetail: config() };
+    let pendingSignal;
+    let lateResolve;
+    let pendingCalls = 0;
+    window.fetch = (url, options) => {
+        pendingCalls += 1;
+        pendingSignal = options.signal;
+        return new Promise((resolve) => { lateResolve = resolve; });
+    };
+    const abandonModule = await importApp('abandon');
+    await settle();
+    assert(pendingCalls === 1 && !pendingSignal.aborted, 'pending request did not start once');
+    window.dispatchEvent(new PageTransitionEvent('pagehide'));
+    assert(pendingSignal.aborted, 'pagehide did not abort pending request');
+    const contentBeforeLate = document.getElementById('veciahorra-order-detail-content').textContent;
+    lateResolve(response(200, JSON.stringify(dto())));
+    await settle();
+    assert(document.getElementById('veciahorra-order-detail-content').textContent === contentBeforeLate, 'late result rendered after cleanup');
+    abandonModule.initializeOrderDetailApp().destroy();
+    abandonModule.initializeOrderDetailApp().destroy();
+    assert(pendingCalls === 1, 'cleanup or repeated init made a request');
+    assert(!document.getElementById('back').onclick, 'back navigation was intercepted');
+
+    assert(consoleCalls.length === 0, 'application logged configuration, DTO, or errors');
+    assert(!fixture.textContent.includes('nonce-private-safe'), 'nonce exposed in visible shell');
+    assert(!fixture.textContent.includes('customer_id'), 'customer ID exposed');
+    assert(!fixture.textContent.includes('public_id'), 'payment session ID exposed');
+    assert(root.scrollWidth <= root.clientWidth, 'detail has horizontal overflow');
+
+    results.dataset.status = 'pass';
+    results.textContent = `PASS order-admin-detail-app-browser-test assertions=${assertions} success_requests=1 overflow=${root.scrollWidth-root.clientWidth}`;
+} catch (error) {
+    results.dataset.status = 'fail';
+    results.textContent = `FAIL ${error.message}\n${error.stack || ''}`;
+} finally {
+    Element.prototype.setAttribute = originalSetAttribute;
+    console.log = originalConsole.log;
+    console.error = originalConsole.error;
+    console.warn = originalConsole.warn;
+}
+</script>
+</body>
+</html>
