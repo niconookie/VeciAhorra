@@ -118,7 +118,10 @@ export function createProductsApi({ restUrl, nonce }) {
 
         assertResponse(response, isProductDetailResponse);
 
-        return response.payload;
+        return {
+            ...response.payload,
+            data: normalizeProductDetail(response.payload.data),
+        };
     }
 
     async function createProduct(payload) {
@@ -305,8 +308,11 @@ function isSuccessfulDataResponse(payload) {
 }
 
 function isProductDetail(product) {
-    return isProduct(product)
+    return isObject(product)
+        && isPositiveInteger(product.id)
+        && isNonEmptyString(product.name)
         && isNonEmptyString(product.slug)
+        && (typeof product.sku === 'string' || product.sku === null)
         && isNullableString(product.description)
         && isNullablePositiveInteger(product.woo_product_id)
         && isNullablePositiveInteger(product.category_id)
@@ -314,7 +320,22 @@ function isProductDetail(product) {
         && isNullablePositiveInteger(product.unit_id)
         && isNullablePositiveInteger(product.image_id)
         && ['draft', 'active', 'inactive'].includes(product.status)
-        && isNonEmptyString(product.created_at);
+        && isNonEmptyString(product.created_at)
+        && isNonEmptyString(product.updated_at);
+}
+
+function normalizeProductDetail(product) {
+    const integer = (value) => value === null ? null : Number(value);
+
+    return {
+        ...product,
+        id: Number(product.id),
+        woo_product_id: integer(product.woo_product_id),
+        category_id: integer(product.category_id),
+        brand_id: integer(product.brand_id),
+        unit_id: integer(product.unit_id),
+        image_id: integer(product.image_id),
+    };
 }
 
 function isProduct(product) {

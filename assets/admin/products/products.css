@@ -24,6 +24,10 @@
     min-height: 40px;
 }
 
+.veciahorra-products-admin__toolbar[hidden] {
+    display: none;
+}
+
 .veciahorra-products-admin__search {
     align-items: center;
     display: flex;
