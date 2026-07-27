@@ -8,5 +8,24 @@
 .orders-list__future { color: #50575e; }
 #veciahorra-orders-pagination { display: flex; align-items: center; justify-content: center; gap: .75rem; }
 #veciahorra-orders-status { min-height: 1.5rem; }
+.veciahorra-order-detail { min-width: 0; }
+.veciahorra-order-detail[aria-busy="true"] { cursor: progress; }
+.veciahorra-order-detail [hidden] { display: none; }
+.veciahorra-order-detail > header,
+.veciahorra-order-detail__section { min-width: 0; margin: 1rem 0; padding: 1rem; border: 1px solid #c3c4c7; background: #fff; overflow-wrap: anywhere; }
+.veciahorra-order-detail__section > h2 { margin-top: 0; }
+.veciahorra-order-detail__facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin: 0; }
+.veciahorra-order-detail__fact { min-width: 0; }
+.veciahorra-order-detail__fact dt { color: #50575e; font-weight: 600; }
+.veciahorra-order-detail__fact dd { margin: .2rem 0 0; }
+.veciahorra-order-detail__cards,
+.veciahorra-order-detail__timeline { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 0; padding: 0; list-style: none; }
+.veciahorra-order-detail__card,
+.veciahorra-order-detail__timeline-item,
+.veciahorra-order-detail__finding { min-width: 0; padding: .75rem; border: 1px solid #dcdcde; background: #f6f7f7; }
+.veciahorra-order-detail__timeline-item { display: grid; gap: .25rem; }
+.veciahorra-order-detail__findings { display: grid; gap: .75rem; }
+.veciahorra-order-detail__empty { color: #50575e; }
 @media (max-width: 1024px) { .veciahorra-orders-admin__filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 600px) { .veciahorra-orders-admin__filters { grid-template-columns: minmax(0, 1fr); } #veciahorra-orders-pagination { flex-wrap: wrap; } }
+@media (max-width: 768px) { .veciahorra-order-detail__facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .veciahorra-orders-admin__filters { grid-template-columns: minmax(0, 1fr); } #veciahorra-orders-pagination { flex-wrap: wrap; } .veciahorra-order-detail__facts, .veciahorra-order-detail__cards, .veciahorra-order-detail__timeline { grid-template-columns: minmax(0, 1fr); } }

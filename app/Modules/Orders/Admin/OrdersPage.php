@@ -51,6 +51,12 @@ final class OrdersPage
                 [],
                 Config::PLUGIN_VERSION
             );
+            wp_enqueue_script_module(
+                'veciahorra-orders-detail-view',
+                VA_PLUGIN_URL . 'assets/admin/js/modules/orders/detail-view.js',
+                [],
+                Config::PLUGIN_VERSION
+            );
             return;
         }
         if (! $request->isList()) {

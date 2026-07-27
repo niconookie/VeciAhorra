@@ -168,6 +168,7 @@ $modules = wp_script_modules();
 $registered = (new ReflectionProperty($modules, 'registered'))->getValue($modules);
 $assert(! isset($registered['veciahorra-orders-admin']), 'detail route loaded list JavaScript');
 $assert(isset($registered['veciahorra-orders-detail-transport']), 'detail route did not load transport');
+$assert(isset($registered['veciahorra-orders-detail-view']), 'detail route did not load render');
 $_GET = ['page' => 'veciahorra-orders'];
 $_SERVER['QUERY_STRING'] = 'page=veciahorra-orders';
 $assetPage->enqueueAssets('orders-test-hook');
@@ -249,8 +250,9 @@ $detailSource = file_get_contents($root . '/app/Modules/Orders/Views/admin-detai
 foreach (['fetch(', 'wp_remote_', 'OrderAdminReadService', 'getOrderDetail', 'rest_url('] as $forbidden) {
     $assert(! str_contains($detailSource, $forbidden), 'detail view contains forbidden operation');
 }
-$assert(substr_count($pageSource, 'wp_enqueue_script_module(') === 2, 'unexpected frontend modules were added');
+$assert(substr_count($pageSource, 'wp_enqueue_script_module(') === 3, 'unexpected frontend modules were added');
 $assert(str_contains($pageSource, 'assets/admin/js/modules/orders/detail-api.js'), 'detail transport asset is absent');
+$assert(str_contains($pageSource, 'assets/admin/js/modules/orders/detail-view.js'), 'detail render asset is absent');
 
 wp_set_current_user(0);
 echo "PASS order-admin-detail-shell-test assertions={$assertions} shell_queries=0 rest_requests=0\n";

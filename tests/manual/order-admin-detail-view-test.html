@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<link rel="stylesheet" href="../../assets/admin/css/orders.css">
+<title>Order detail render test</title>
+</head>
+<body>
+<aside id="external">Elemento externo intacto</aside>
+<div id="veciahorra-order-detail" class="wrap veciahorra-orders-admin veciahorra-order-detail" aria-busy="true">
+    <nav><a id="back" href="/wp-admin/admin.php?page=veciahorra-orders">Volver a pedidos</a></nav>
+    <header><h1 id="shell-title">Detalle administrativo de pedido</h1></header>
+    <div id="veciahorra-order-detail-loading" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div id="veciahorra-order-detail-error" role="alert" aria-live="assertive" tabindex="-1" hidden></div>
+    <main id="veciahorra-order-detail-content" aria-label="Contenido del detalle de pedido" hidden></main>
+</div>
+<pre id="results" data-status="running">RUNNING</pre>
+<script type="module">
+const results = document.getElementById('results');
+const root = document.getElementById('veciahorra-order-detail');
+const loadingRegion = document.getElementById('veciahorra-order-detail-loading');
+const errorRegion = document.getElementById('veciahorra-order-detail-error');
+const contentRegion = document.getElementById('veciahorra-order-detail-content');
+const back = document.getElementById('back');
+const title = document.getElementById('shell-title');
+const initialBody = document.body.childElementCount;
+let assertions = 0;
+let requests = 0;
+window.fetch = () => { requests += 1; throw new Error('unexpected request'); };
+function assert(value, message) {
+    assertions += 1;
+    if (!value) throw new Error(`${message} (assertion ${assertions})`);
+}
+function snapshot(status, detail = null, error = null) {
+    return { status, orderId: 37, detail, error, isLoading: status === 'loading' };
+}
+function fixture(relationship = 'linked') {
+    return {
+        identity: {
+            id: 37, persisted_status: 'paid<script>alert(1)<\/script>',
+            created_at: '2026-07-26T10:01:00Z', updated_at: null,
+        },
+        customer: {
+            relationship_status: relationship, customer_id: 99,
+            email: 'buyer-private@example.test', phone: '+56911111111',
+            address: '<img src=x onerror=alert(1)>',
+        },
+        store: {
+            id: 3, exists: true, business_name: 'Minimarket & "Seguro" <b>',
+            current_status: 'active', private_owner: 'private-owner',
+        },
+        checkout: null,
+        checkout_order: null,
+        lines: [
+            {
+                id: 2, product_id: 20, inventory_id: 30,
+                product_name_snapshot: 'Primera <script>hostil<\/script>',
+                snapshot_name_status: 'persisted', quantity: 0,
+                unit_price: '0.00', subtotal: '0.00', token: 'line-token',
+            },
+            {
+                id: 1, product_id: 10, inventory_id: 11,
+                product_name_snapshot: 'Segunda línea', snapshot_name_status: 'persisted',
+                quantity: 2, unit_price: '500.00', subtotal: '1000.00',
+            },
+            '<b>línea incompatible</b>',
+        ],
+        reservations: [],
+        payment: {
+            session: {
+                id: 70, public_id: 'private-session-id', status: 'confirmed',
+                amount: '1000.00', currency: 'CLP', confirmed_at: '2026-07-26T10:05:00Z',
+                updated_at: '2026-07-26T10:05:00Z', token: 'secret-token',
+            },
+            financial_evidence: {
+                status: 'approved', validated: true, amount: '1000.00',
+                currency: 'CLP', obtained_at: '2026-07-26T10:04:00Z',
+                provider_payload: 'provider-private',
+            },
+            payment: { status: 'paid', amount: '1000.00', currency: 'CLP', paid_at: '2026-07-26T10:06:00Z' },
+            reconciliation: { status: 'completed', attempt_count: 0, last_attempt_at: null, completed_at: '2026-07-26T10:06:00Z' },
+        },
+        processing: {
+            business_completion: { status: 'completed', attempt_count: 1, completed_at: '2026-07-26T10:07:00Z' },
+            delivery_completion: null,
+            fulfillment_completion: { status: 'completed', attempt_count: 1, completed_at: '2026-07-26T10:08:00Z' },
+        },
+        fulfillment: {
+            mode: 'pickup',
+            deliveries: [],
+            tracking: [],
+            private_notes: 'private fulfillment',
+        },
+        totals: { line_count: 3, unit_count: 2, total: '1000.00', currency: 'CLP' },
+        navigation: { order_id: 37, customer_id: 99, private_url: 'javascript:alert(1)' },
+        operational: {
+            primary_state: 'completed',
+            dimensions: {
+                commercial: 'confirmed', financial: 'approved', reservations: 'consumed',
+                processing: 'completed', fulfillment: 'completed', delivery: 'not_required',
+                payment_session: 'confirmed',
+            },
+            consistency: { classification: 'warning', findings: [], warnings: [], blockers: [] },
+            timeline: [
+                { label: 'Primero <b>inerte</b>', occurred_at: '2026-07-27T12:00:00Z', source: 'order', metadata: { private: true } },
+                { label: 'Segundo aunque anterior', occurred_at: '2026-07-01T12:00:00Z', source: 'payment' },
+            '<script>evento incompatible<\/script>',
+            ],
+            operational_version: 'private-version',
+            allowed_actions: ['view', 'delete'],
+            mutable_actions: ['delete'],
+            requires_attention: false,
+        },
+        inspector: {
+            classification: 'warning', finding_count: 1, blocker_count: 0, warning_count: 1,
+            by_dimension: {
+                commercial: [{
+                    title: 'Hallazgo <img src=x>', affected_dimension: 'commercial',
+                    severity: 'warning', blocker: false, code: 'internal_code',
+                    summary: 'SELECT * FROM private_table', evidence: { path: 'C:\\private\\file.php' },
+                }],
+                private_dimension: [{ title: 'No debe aparecer' }],
+            },
+            sql: 'SELECT private',
+        },
+        nonce: 'private-nonce',
+        error_message: 'C:\\private\\stack.php',
+    };
+}
+
+try {
+    const module = await import('../../assets/admin/js/modules/orders/detail-view.js?view-test=1');
+    assert(typeof module.createOrderDetailView === 'function', 'factory exported');
+    assert(Object.keys(module).length === 1, 'single export');
+    assert(document.body.childElementCount === initialBody, 'import does not touch DOM');
+    assert(requests === 0, 'import makes no request');
+    for (const dependencies of [
+        {},
+        { root, loadingRegion: root, errorRegion, contentRegion },
+        { root, loadingRegion, errorRegion: document.createElement('div'), contentRegion },
+    ]) {
+        let failed = false;
+        try { module.createOrderDetailView(dependencies); } catch (error) { failed = error instanceof TypeError; }
+        assert(failed, 'invalid DOM dependency rejected');
+    }
+    const view = module.createOrderDetailView({ root, loadingRegion, errorRegion, contentRegion });
+    assert(Object.keys(view).join() === 'render', 'minimal view API');
+
+    view.render(snapshot('idle'));
+    assert(root.getAttribute('aria-busy') === 'false', 'idle is not busy');
+    assert(loadingRegion.hidden && errorRegion.hidden && contentRegion.hidden, 'idle regions hidden');
+    assert(contentRegion.textContent === '' && errorRegion.textContent === '', 'idle content empty');
+
+    view.render(snapshot('loading'));
+    assert(root.getAttribute('aria-busy') === 'true', 'loading is busy');
+    assert(!loadingRegion.hidden && loadingRegion.getAttribute('role') === 'status', 'status region visible');
+    assert(loadingRegion.textContent.includes('Cargando detalle'), 'safe loading message');
+    assert(errorRegion.hidden && contentRegion.hidden, 'loading clears other regions');
+
+    const messages = {
+        unauthorized: 'sesión actual',
+        forbidden: 'permisos suficientes',
+        not_found: 'pedido solicitado no está disponible',
+        invalid_request: 'solicitud administrativa',
+        server_error: 'problema interno',
+        network_error: 'comunicarse con el servidor',
+        invalid_response: 'respuesta incompatible',
+    };
+    for (const [status, expected] of Object.entries(messages)) {
+        view.render(snapshot(status, null, {
+            kind: status, code: '<script>backend_code<\/script>', status: 500,
+            message: 'SELECT secret FROM table', stack: 'C:\\private\\stack.php',
+        }));
+        assert(root.getAttribute('aria-busy') === 'false', `${status} not busy`);
+        assert(!errorRegion.hidden && errorRegion.getAttribute('role') === 'alert', `${status} alert visible`);
+        assert(errorRegion.textContent.includes(expected), `${status} safe message`);
+        assert(contentRegion.hidden && contentRegion.textContent === '', `${status} clears DTO`);
+        assert(!errorRegion.textContent.includes('SELECT') && !errorRegion.textContent.includes('backend_code'), `${status} hides internals`);
+    }
+    view.render({ status: 'ready', orderId: 37, detail: null, error: null, isLoading: false });
+    assert(errorRegion.textContent.includes('respuesta incompatible'), 'invalid snapshot degrades safely');
+
+    const dto = fixture();
+    const original = JSON.stringify(dto);
+    view.render(snapshot('ready', dto));
+    assert(root.getAttribute('aria-busy') === 'false', 'ready not busy');
+    assert(loadingRegion.hidden && errorRegion.hidden && !contentRegion.hidden, 'ready regions correct');
+    assert(contentRegion.querySelectorAll(':scope > section').length === 10, 'all allowlisted sections rendered once');
+    assert(contentRegion.querySelector('h1') === null, 'main title not duplicated');
+    assert(contentRegion.querySelectorAll('h2').length === 10, 'section heading hierarchy');
+    assert(contentRegion.querySelectorAll('form,button,input,select,textarea').length === 0, 'no mutable controls');
+    assert(contentRegion.querySelectorAll('script,img').length === 0, 'hostile markup remains inert');
+    assert(contentRegion.textContent.includes('paid<script>alert(1)<\/script>'), 'hostile status shown as text');
+    assert(contentRegion.textContent.includes('Minimarket & "Seguro" <b>'), 'hostile store shown as text');
+    assert(contentRegion.textContent.includes('Relación con comprador confirmada'), 'linked relationship rendered');
+    for (const privateValue of [
+        'buyer-private@example.test', '+56911111111', 'private-owner',
+        'private-session-id', 'secret-token', 'provider-private', 'private fulfillment',
+        'private-version', 'private-nonce', 'internal_code', 'SELECT', 'private_table',
+        'C:\\private\\file.php', 'No debe aparecer', 'javascript:alert(1)',
+    ]) assert(!contentRegion.textContent.includes(privateValue), `private value hidden: ${privateValue}`);
+    assert(!contentRegion.innerText.includes('customer_id'), 'customer id field hidden');
+    assert(!contentRegion.innerText.includes('public_id'), 'payment public id field hidden');
+    assert(!contentRegion.textContent.includes('[object Object]'), 'objects not stringified');
+    assert(contentRegion.textContent.includes('CLP 0.00'), 'zero money preserved');
+    assert(contentRegion.textContent.includes('Cantidad0'), 'zero quantity preserved');
+    assert(JSON.stringify(dto) === original, 'DTO and arrays not mutated');
+
+    const cards = contentRegion.querySelectorAll('.veciahorra-order-detail__lines .veciahorra-order-detail__card');
+    assert(cards.length === 3, 'all line positions represented');
+    assert(cards[0].textContent.includes('Primera'), 'first line order preserved');
+    assert(cards[1].textContent.includes('Segunda'), 'second line order preserved');
+    assert(cards[2].textContent.includes('Línea no disponible'), 'incompatible line handled');
+    const events = contentRegion.querySelectorAll('.veciahorra-order-detail__timeline-item');
+    assert(events.length === 3, 'all timeline positions represented');
+    assert(events[0].textContent.includes('Primero'), 'first timeline event preserved');
+    assert(events[1].textContent.includes('Segundo'), 'second timeline event preserved');
+    assert(events[2].textContent.includes('Evento no disponible'), 'incompatible event handled');
+
+    const sectionCount = contentRegion.querySelectorAll(':scope > section').length;
+    view.render(snapshot('ready', fixture('unknown')));
+    assert(contentRegion.querySelectorAll(':scope > section').length === sectionCount, 'second ready does not duplicate sections');
+    assert(contentRegion.textContent.includes('Relación con comprador no confirmada'), 'unknown relationship rendered');
+    assert(!contentRegion.textContent.includes('confirmadaRelación'), 'old relationship removed');
+    view.render(snapshot('loading'));
+    assert(contentRegion.textContent === '' && contentRegion.hidden, 'ready to loading clears detail');
+    view.render(snapshot('server_error', null, { kind: 'server_error', code: null, status: 500 }));
+    assert(contentRegion.textContent === '' && !errorRegion.hidden, 'loading to error stays clean');
+    view.render(snapshot('ready', dto));
+    assert(errorRegion.hidden && errorRegion.textContent === '', 'error to ready clears error');
+    assert(contentRegion.querySelectorAll(':scope > section').length === sectionCount, 'error to ready has one final view');
+
+    const emptyDto = fixture();
+    emptyDto.lines = [];
+    emptyDto.operational.timeline = [];
+    view.render(snapshot('ready', emptyDto));
+    assert(contentRegion.textContent.includes('No hay líneas registradas'), 'empty lines accessible');
+    assert(contentRegion.textContent.includes('No hay hitos operacionales'), 'empty timeline accessible');
+    assert(back.textContent === 'Volver a pedidos' && back.getAttribute('href').includes('veciahorra-orders'), 'back link intact');
+    assert(title.textContent === 'Detalle administrativo de pedido', 'shell H1 intact');
+    assert(document.getElementById('external').textContent === 'Elemento externo intacto', 'external DOM intact');
+    assert(document.querySelectorAll('#veciahorra-order-detail').length === 1, 'shell ID not duplicated');
+    assert(document.querySelectorAll('[id]').length === new Set([...document.querySelectorAll('[id]')].map((node) => node.id)).size, 'no duplicate IDs');
+    assert(requests === 0, 'render makes no requests');
+    assert(root.scrollWidth <= root.clientWidth, 'no horizontal overflow');
+
+    results.dataset.status = 'pass';
+    results.textContent = `PASS order-admin-detail-view-browser-test assertions=${assertions} requests=${requests} overflow=${root.scrollWidth-root.clientWidth}`;
+} catch (error) {
+    results.dataset.status = 'fail';
+    results.textContent = `FAIL ${error.message}\n${error.stack || ''}`;
+}
+</script>
+</body>
+</html>
