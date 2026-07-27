@@ -27,9 +27,22 @@ final class OrdersAdminRoutes
 
     public function register(): void
     {
+        add_filter(
+            'rest_post_dispatch',
+            [$this, 'protectDetailResponse'],
+            10,
+            3
+        );
+
         register_rest_route('veciahorra/v1', '/orders/admin', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'index'],
+            'permission_callback' => [$this, 'authorize'],
+        ]);
+
+        register_rest_route('veciahorra/v1', '/orders/(?P<id>[^/]+)/admin', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'show'],
             'permission_callback' => [$this, 'authorize'],
         ]);
     }
@@ -84,6 +97,65 @@ final class OrdersAdminRoutes
         } catch (Throwable) {
             return $this->response(['error' => ['code' => 'orders_admin_read_failed']], 500);
         }
+    }
+
+    public function show(WP_REST_Request $request): WP_REST_Response
+    {
+        try {
+            $body = $request->get_body();
+            if (
+                $request->get_query_params() !== []
+                || ($body !== null && $body !== '')
+            ) {
+                throw new InvalidArgumentException();
+            }
+            $orderId = $this->detailOrderId($request);
+
+            return $this->response($this->service->getOrderDetail($orderId)->toArray());
+        } catch (InvalidArgumentException) {
+            return $this->response(['error' => ['code' => 'invalid_parameters']], 422);
+        } catch (OrderAdminReadException $exception) {
+            if ($exception->errorCode === 'not_found') {
+                return $this->response(['error' => ['code' => 'order_not_found']], 404);
+            }
+
+            return $this->response(['error' => ['code' => 'orders_admin_detail_read_failed']], 500);
+        } catch (Throwable) {
+            return $this->response(['error' => ['code' => 'orders_admin_detail_read_failed']], 500);
+        }
+    }
+
+    public function protectDetailResponse(
+        mixed $response,
+        mixed $server,
+        WP_REST_Request $request
+    ): mixed {
+        if (
+            $response instanceof \WP_HTTP_Response
+            && preg_match(
+                '#^/veciahorra/v1/orders/[^/]+/admin$#D',
+                $request->get_route()
+            ) === 1
+        ) {
+            $response->header('Cache-Control', 'private, no-store');
+        }
+
+        return $response;
+    }
+
+    private function detailOrderId(WP_REST_Request $request): int
+    {
+        $params = $request->get_url_params();
+        $raw = $params['id'] ?? null;
+        if (
+            ! is_string($raw)
+            || preg_match('/^[1-9][0-9]*$/D', $raw) !== 1
+            || (string) (int) $raw !== $raw
+        ) {
+            throw new InvalidArgumentException();
+        }
+
+        return (int) $raw;
     }
 
     private function query(array $params): OrderAdminListQuery
