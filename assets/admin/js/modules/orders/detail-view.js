@@ -42,6 +42,7 @@ export function createOrderDetailView({
         if (snapshot.status !== 'ready') {
             errorRegion.hidden = false;
             errorRegion.append(element('p', '', ERROR_MESSAGES[snapshot.status]));
+            errorRegion.focus({ preventScroll: true });
             return;
         }
 
@@ -330,6 +331,7 @@ function validateElements(root, loadingRegion, errorRegion, contentRegion) {
         || !root.contains(contentRegion)
         || loadingRegion.getAttribute('role') !== 'status'
         || errorRegion.getAttribute('role') !== 'alert'
+        || errorRegion.tabIndex !== -1
     ) {
         throw new TypeError('Detail DOM elements are incompatible with the shell.');
     }

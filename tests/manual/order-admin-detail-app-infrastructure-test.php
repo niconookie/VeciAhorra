@@ -45,6 +45,7 @@ $assert(str_contains($app, 'unsubscribe()'), 'cleanup does not unsubscribe');
 $assert(str_contains($app, 'state.destroy()'), 'cleanup does not destroy state');
 $assert(str_contains($app, 'initializeOrderDetailApp();'), 'entrypoint does not bootstrap');
 $assert(str_contains($app, 'url.origin !== window.location.origin'), 'REST origin is not validated');
+$assert(str_contains($app, 'found.errorRegion.tabIndex !== -1'), 'alert focusability is not validated');
 $assert(
     str_contains($app, 'veciahorra\\/v1\\/orders') && str_contains($app, 'url.pathname'),
     'REST path is not validated'

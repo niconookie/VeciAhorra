@@ -21,6 +21,7 @@ $assert(str_contains($view, 'return Object.freeze({ render })'), 'render public 
 $assert(str_contains($view, 'root.ownerDocument'), 'render does not use injected DOM ownership');
 $assert(str_contains($view, "getAttribute('role') !== 'status'"), 'status region is not validated');
 $assert(str_contains($view, "getAttribute('role') !== 'alert'"), 'alert region is not validated');
+$assert(str_contains($view, 'errorRegion.tabIndex !== -1'), 'alert focusability is not validated');
 $assert(str_contains($view, "root.setAttribute('aria-busy'"), 'aria-busy is not managed');
 $assert(str_contains($view, 'replaceChildren()'), 'stale content is not cleared');
 $assert(str_contains($view, 'node.textContent = text'), 'remote values are not rendered as text');

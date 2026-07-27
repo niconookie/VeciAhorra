@@ -54,6 +54,7 @@ function shell({ missing = '', duplicate = '', outside = '' } = {}) {
     const error = document.createElement('div');
     error.id = 'veciahorra-order-detail-error';
     error.setAttribute('role', 'alert');
+    error.tabIndex = -1;
     error.hidden = true;
     const content = document.createElement('main');
     content.id = 'veciahorra-order-detail-content';
@@ -186,6 +187,7 @@ try {
         const error = document.getElementById('veciahorra-order-detail-error');
         assert(count === 1, `${kind} request count changed`);
         assert(!error.hidden && error.textContent.includes(text), `${kind} visual state missing`);
+        assert(document.activeElement === error, `${kind} does not focus alert`);
         assert(!error.textContent.includes('SELECT') && !error.textContent.includes('internal_code'), `${kind} leaked remote details`);
         assert(document.getElementById('veciahorra-order-detail-content').textContent === '', `${kind} retained DTO`);
     }
@@ -217,6 +219,7 @@ try {
         await settle();
         assert(count === 0, 'invalid config made a request');
         assert(document.getElementById('veciahorra-order-detail-error').textContent.includes('No fue posible iniciar'), 'invalid config lacks safe failure');
+        assert(document.activeElement === document.getElementById('veciahorra-order-detail-error'), 'config failure does not focus alert');
         assert(!Object.keys(invalid).some((key) => key.startsWith('__')), 'failed config was marked initialized');
         assert(document.getElementById('title').textContent === 'Detalle administrativo de pedido', 'config failure changed H1');
         assert(document.getElementById('back').textContent === 'Volver a pedidos', 'config failure changed back link');

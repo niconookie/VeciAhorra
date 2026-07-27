@@ -100,6 +100,7 @@ function resolveShell() {
         || !found.root.contains(found.contentRegion)
         || found.loadingRegion.getAttribute('role') !== 'status'
         || found.errorRegion.getAttribute('role') !== 'alert'
+        || found.errorRegion.tabIndex !== -1
         || found.contentRegion.tagName !== 'MAIN'
     ) return null;
     return found;
@@ -117,6 +118,7 @@ function showInitializationFailure(shell) {
     message.textContent = 'No fue posible iniciar el detalle administrativo.';
     shell.errorRegion.append(message);
     shell.errorRegion.hidden = false;
+    shell.errorRegion.focus({ preventScroll: true });
 }
 
 function object(value) {
