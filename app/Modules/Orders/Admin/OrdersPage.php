@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Orders\Admin;
 
 use VeciAhorra\Core\Config;
+use VeciAhorra\Modules\Orders\Requests\OrderAdminPageRequest;
 
 final class OrdersPage
 {
@@ -42,6 +43,9 @@ final class OrdersPage
             [],
             Config::PLUGIN_VERSION
         );
+        if (! OrderAdminPageRequest::fromGlobals()->isList()) {
+            return;
+        }
         wp_enqueue_script_module(
             'veciahorra-orders-admin',
             VA_PLUGIN_URL . 'assets/admin/js/modules/orders/app.js',
@@ -52,6 +56,21 @@ final class OrdersPage
 
     public function render(): void
     {
+        $request = OrderAdminPageRequest::fromGlobals();
+        if ($request->isValidDetail()) {
+            $returnUrl = $request->returnUrl();
+            require dirname(__DIR__) . '/Views/admin-detail.php';
+            return;
+        }
+        if (! $request->isList()) {
+            $returnUrl = $request->returnUrl();
+            $errorMessage = $request->screen() === OrderAdminPageRequest::SCREEN_INVALID_DETAIL
+                ? 'La Order solicitada no es válida.'
+                : 'La acción administrativa solicitada no es válida.';
+            require dirname(__DIR__) . '/Views/admin-route-error.php';
+            return;
+        }
+
         $config = [
             'restUrl' => esc_url_raw(rest_url('veciahorra/v1/orders/admin')),
             'nonce' => wp_create_nonce('wp_rest'),
