@@ -82,7 +82,12 @@ async function run() {
         product(1, '<Cacao & leche>', 'active'), product(2, 'Leche larga '.repeat(8), 'inactive'), product(3, 'Borrador', 'draft'),
     ]); };
     type('cacao'); await wait(350);
-    selector.element.querySelectorAll('[role="option"]')[0].click();
+    const productOption = selector.element.querySelectorAll('[role="option"]')[0];
+    const productPointer = new PointerEvent('pointerdown', { bubbles: true, cancelable: true });
+    productOption.dispatchEvent(productPointer);
+    selector.element.querySelector('input').blur();
+    productOption.click();
+    assert(productPointer.defaultPrevented, 'Pointerdown no preservo la seleccion frente a blur.');
     assert(currentForm.values.productId === '1' && selector.element.textContent.includes('<Cacao & leche>'), 'Selección no guardó ID/resumen.'); scenarios.select = true;
     selector.element.querySelector('.button-link-delete').click();
     assert(currentForm.values.productId === '' && currentForm.selectedProduct === null, 'Limpiar no eliminó selección.'); scenarios.clear = true;

@@ -8,6 +8,7 @@ use Closure;
 use VeciAhorra\Modules\Inventory\Exceptions\InventoryValidationException;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Services\ProductService;
+use VeciAhorra\Modules\Stores\Domain\StoreLifecycleContract;
 use VeciAhorra\Modules\Stores\Services\StoreService;
 
 /**
@@ -15,13 +16,6 @@ use VeciAhorra\Modules\Stores\Services\StoreService;
  */
 final class InventoryReferenceValidator
 {
-    private const STORE_STATUSES = [
-        'pending',
-        'active',
-        'inactive',
-        'rejected',
-    ];
-
     private Closure $productFinder;
 
     private Closure $storeFinder;
@@ -76,7 +70,14 @@ final class InventoryReferenceValidator
             );
         }
 
-        if (! in_array($store->status, self::STORE_STATUSES, true)) {
+        $lifecycle = new StoreLifecycleContract();
+        if (
+            $lifecycle->classify(
+                (string) $store->status,
+                (string) ($store->onboarding_status ?? ''),
+                $store->approved_at ?? null
+            ) !== StoreLifecycleContract::STATE_ACTIVE
+        ) {
             throw new InventoryValidationException(
                 'El minimarket tiene un estado no compatible con esta operacion.',
                 'store_id',

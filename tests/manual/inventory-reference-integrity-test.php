@@ -94,9 +94,9 @@ final class InventoryReferenceFakeRepository implements InventoryRepositoryInter
 $repository = new InventoryReferenceFakeRepository();
 $product = (object) ['status' => 'inactive'];
 $store = (object) [
-    'status' => 'inactive',
-    'onboarding_status' => 'draft',
-    'approved_at' => null,
+    'status' => 'active',
+    'onboarding_status' => 'complete',
+    'approved_at' => '2026-07-27 12:00:00',
 ];
 $validator = new InventoryReferenceValidator(
     static fn (int $id): ?object => $id === 10 ? $product : null,
@@ -162,6 +162,30 @@ assertReferenceError(
     'inventory_invalid_store_id'
 );
 
+foreach ([
+    ['active', 'draft', null],
+    ['inactive', 'complete', '2026-07-27 12:00:00'],
+    ['active', 'complete', null],
+] as [$status, $onboardingStatus, $approvedAt]) {
+    $store->status = $status;
+    $store->onboarding_status = $onboardingStatus;
+    $store->approved_at = $approvedAt;
+    assertReferenceError(
+        $controller->create([
+            'product_id' => 10,
+            'minimarket_id' => 20,
+            'price' => 1.0,
+            'stock' => 1,
+            'status' => 'active',
+        ]),
+        'store_id',
+        'inventory_store_incompatible'
+    );
+}
+$store->status = 'active';
+$store->onboarding_status = 'complete';
+$store->approved_at = '2026-07-27 12:00:00';
+
 $repository->pair = ['id' => 99];
 $ordinaryDuplicate = $controller->create([
     'product_id' => 10,
@@ -208,7 +232,11 @@ $productFailure = new InventoryController(new InventoryService(
         static function (int $id): never {
             throw new RuntimeException('private product failure');
         },
-        static fn (int $id): object => (object) ['status' => 'active']
+        static fn (int $id): object => (object) [
+            'status' => 'active',
+            'onboarding_status' => 'complete',
+            'approved_at' => '2026-07-27 12:00:00',
+        ]
     )
 ));
 $productTechnical = $productFailure->create([
@@ -246,7 +274,11 @@ $persistenceController = new InventoryController(new InventoryService(
     $persistenceRepository,
     new InventoryReferenceValidator(
         static fn (int $id): object => (object) ['status' => 'active'],
-        static fn (int $id): object => (object) ['status' => 'active']
+        static fn (int $id): object => (object) [
+            'status' => 'active',
+            'onboarding_status' => 'complete',
+            'approved_at' => '2026-07-27 12:00:00',
+        ]
     )
 ));
 $technical = $persistenceController->create([
@@ -268,7 +300,7 @@ assertReferenceSame(
     0,
     preg_match('/\b(SELECT|INSERT INTO|UPDATE .* SET|DELETE FROM)\b/i', $validatorFile)
 );
-assertReferenceSame(false, str_contains($validatorFile, 'onboarding_status'));
-assertReferenceSame(false, str_contains($validatorFile, 'approved_at'));
+assertReferenceSame(true, str_contains($validatorFile, 'StoreLifecycleContract'));
+assertReferenceSame(true, str_contains($validatorFile, 'STATE_ACTIVE'));
 
 echo "PASS inventory-reference-integrity-test\n";

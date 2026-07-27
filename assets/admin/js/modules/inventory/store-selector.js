@@ -148,6 +148,9 @@ export function createStoreSelector({
             const details = document.createElement('span');
             details.textContent = `ID ${store.id} - ${statusLabel(store.status)}`;
             option.append(name, details);
+            option.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+            });
             option.addEventListener('click', () => choose(store));
             option.addEventListener('pointermove', () => activate(index));
             return option;

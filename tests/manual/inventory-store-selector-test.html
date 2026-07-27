@@ -141,6 +141,16 @@ async function run() {
     type(dom.input, 'recuperado');
     await wait(310);
     assert(dom.status.getAttribute('role') === 'status' && dom.results.children.length === 1, 'No recupero tras error.');
+    const storeOption = dom.results.children[0];
+    const storePointer = new PointerEvent('pointerdown', { bubbles: true, cancelable: true });
+    storeOption.dispatchEvent(storePointer);
+    dom.input.blur();
+    storeOption.click();
+    assert(storePointer.defaultPrevented
+        && selected.length === 2
+        && selected[1].id === 8
+        && dom.results.hidden,
+    'Pointerdown -> blur -> click no consolido Store.');
     scenarios.error_recovery = true;
 
     const old = deferred();
@@ -221,7 +231,7 @@ async function run() {
     const api = createInventoryApi({ restUrl: 'https://example.test/wp-json/veciahorra/v1', nonce: 'nonce' });
     const apiResponse = await api.searchStores('  tienda  ');
     assert(apiResponse.data[0].id === 60
-        && requestedUrl.includes('/stores?search=tienda&page=1&per_page=10&order_by=business_name&direction=ASC'),
+        && requestedUrl.includes('/stores?search=tienda&page=1&per_page=10&context=inventory_selector&order_by=business_name&direction=ASC'),
     'Contrato real de Store incorrecto.');
     window.fetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify(response([{ ...store(61, 'Mal'), status: 'draft' }])) });
     let invalidResponse = false;

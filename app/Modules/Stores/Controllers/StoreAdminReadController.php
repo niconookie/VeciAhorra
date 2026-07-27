@@ -79,7 +79,12 @@ final class StoreAdminReadController
     public function index(array $query): array
     {
         try {
-            $admin = ($query['context'] ?? null) === 'admin_list';
+            $context = $query['context'] ?? null;
+            $admin = in_array($context, ['admin_list', 'inventory_selector'], true);
+            if ($context === 'inventory_selector') {
+                $query['status'] = StoreLifecycleContract::STATUS_ACTIVE;
+                $query['lifecycle_state'] = StoreLifecycleContract::STATE_ACTIVE;
+            }
             $items = $admin ? $this->service->paginateAdmin(
                 $query['page'],
                 $query['per_page'],
@@ -118,7 +123,7 @@ final class StoreAdminReadController
                     );
                 }
 
-                $data[] = $admin
+                $data[] = $context === 'admin_list'
                     ? $this->serializeAdminList($store->toArray())
                     : $this->serialize($store->toArray());
             }

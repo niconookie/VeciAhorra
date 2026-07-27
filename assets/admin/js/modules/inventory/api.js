@@ -192,6 +192,7 @@ export function createInventoryApi({ restUrl, nonce }) {
             search: normalizedTerm,
             page: String(page),
             per_page: String(perPage),
+            context: 'inventory_selector',
             order_by: 'business_name',
             direction: 'ASC',
         });

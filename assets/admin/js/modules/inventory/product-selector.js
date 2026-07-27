@@ -179,6 +179,9 @@ export function createProductSelector(actions) {
             const details = document.createElement('span');
             details.textContent = `ID ${product.id} · ${statusLabel(product.status)}`;
             option.append(name, details);
+            option.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+            });
             option.addEventListener('click', () => choose(product));
             option.addEventListener('pointermove', () => activate(index));
             return option;

@@ -72,7 +72,7 @@ final class StoreListRequest
     public function validated(): array
     {
         $context = $this->context();
-        $admin = $context === 'admin_list';
+        $admin = in_array($context, ['admin_list', 'inventory_selector'], true);
         if (! $admin && array_key_exists('lifecycle_state', $this->input)) {
             throw new StoreListValidationException(
                 'lifecycle_state',
@@ -117,7 +117,10 @@ final class StoreListRequest
             return null;
         }
         $value = $this->input['context'];
-        if (! is_string($value) || $value !== 'admin_list') {
+        if (
+            ! is_string($value)
+            || ! in_array($value, ['admin_list', 'inventory_selector'], true)
+        ) {
             throw new StoreListValidationException(
                 'context',
                 'El parametro context no es valido.'

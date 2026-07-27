@@ -166,8 +166,8 @@ try {
         'email' => $suffix . '@example.test',
         'phone' => '000000000',
         'status' => 'active',
-        'onboarding_status' => 'draft',
-        'approved_at' => null,
+        'onboarding_status' => 'complete',
+        'approved_at' => $now,
         'created_at' => $now,
         'updated_at' => $now,
     ]);
