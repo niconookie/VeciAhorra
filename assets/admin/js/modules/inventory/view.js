@@ -134,7 +134,12 @@ export function createInventoryView(nodes, actions) {
                     ? 'true'
                     : 'false'
             );
-            nodes.table.replaceChildren(inventoryForm.element);
+            if (
+                nodes.table.childElementCount !== 1
+                || nodes.table.firstElementChild !== inventoryForm.element
+            ) {
+                nodes.table.replaceChildren(inventoryForm.element);
+            }
             renderFormMessage(nodes.messages, state.form);
             inventoryForm.render(state.form);
             setButtonDisabled(newButton, true);

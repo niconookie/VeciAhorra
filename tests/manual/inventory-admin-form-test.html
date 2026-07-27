@@ -13,12 +13,13 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const item = { id: 41, product_id: 7, minimarket_id: 12, price: 100, stock: 3, status: 'active', updated_at: 'now' };
 const created = [];
+const updated = [];
 let storeSearches = 0;
 const api = {
     getInventory: async () => ({ data: [], meta: { page: 1, per_page: 20, total: 0, total_pages: 0 } }),
     getInventoryItem: async () => ({ data: item }),
     createInventory: async (payload) => { created.push(payload); return { data: { id: 41 } }; },
-    updateInventory: async () => ({ data: item }),
+    updateInventory: async (id, payload) => { updated.push({ id, ...payload }); return { data: item }; },
 };
 const store = createInventoryStore(api);
 const nodes = {
@@ -38,7 +39,9 @@ const actions = {
     allInventoryUrl: '#', contextualListUrl: () => '#', contextualCreateUrl: () => '#',
 };
 const view = createInventoryView(nodes, actions);
-store.subscribe(view.render); view.render(store.getState()); store.openCreateForm();
+let renders = 0;
+store.subscribe((state) => { renders++; view.render(state); });
+view.render(store.getState()); store.openCreateForm();
 
 async function run() {
     assert(document.querySelector('#veciahorra-inventory-minimarketId') === null, 'Existe input manual minimarketId.');
@@ -47,12 +50,55 @@ async function run() {
     input.value = 'almacen'; input.dispatchEvent(new Event('input', { bubbles: true })); await wait(350);
     document.querySelector('.veciahorra-inventory-admin__store-results [role="option"]').click();
     assert(store.getState().form.values.minimarketId === '12' && store.getState().form.selectedStore.name === 'Almacen Central', 'Seleccion no actualizo estado durable.');
-    store.selectProduct({ id: 7, name: 'Producto', status: 'active' }); store.setFormField('price', '100'); store.setFormField('stock', '3');
+    store.selectProduct({ id: 7, name: 'Producto', status: 'active' });
+    const price = document.querySelector('[name="price"]');
+    const stock = document.querySelector('[name="stock"]');
+    const type = (control, text) => {
+        for (const character of text) {
+            control.setRangeText(character, control.selectionStart, control.selectionEnd, 'end');
+            control.dispatchEvent(new InputEvent('input', { bubbles: true, data: character, inputType: 'insertText' }));
+            assert(control.isConnected && document.activeElement === control, `${control.name} perdio foco.`);
+        }
+    };
+    price.value = ''; price.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+    document.querySelector('.veciahorra-inventory-admin__form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    assert(price.getAttribute('aria-invalid') === 'true', 'Submit invalido no marco Price.');
+    const rendersBeforePrice = renders;
+    price.focus(); price.setSelectionRange(0, 0); type(price, '2300');
+    assert(price.value === '2300' && price.selectionStart === 4 && price.selectionEnd === 4, 'Price no permitio escritura continua.');
+    assert(renders - rendersBeforePrice === 4 && price.getAttribute('aria-invalid') === 'false', 'Price no emitio un snapshot por caracter o no limpio validacion.');
+    price.setSelectionRange(2, 2); type(price, '5');
+    assert(price.value === '23500' && price.selectionStart === 3, 'Price no permitio insertar en medio.');
+    price.setSelectionRange(2, 3); price.setRangeText('', 2, 3, 'end');
+    price.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+    assert(price.value === '2300' && document.activeElement === price, 'Backspace no conservo Price.');
+    price.select(); price.setRangeText('2300', 0, price.value.length, 'end');
+    price.dispatchEvent(new InputEvent('input', { bubbles: true, data: '2300', inputType: 'insertFromPaste' }));
+    assert(price.value === '2300' && store.getState().form.values.price === '2300', 'Paste/Ctrl+A no actualizo Price.');
+    const rendersBeforeStock = renders;
+    stock.focus(); stock.value = ''; stock.setSelectionRange(0, 0); type(stock, '100');
+    assert(stock.value === '100' && stock.selectionStart === 3 && stock.selectionEnd === 3, 'Stock no permitio escritura continua.');
+    assert(renders - rendersBeforeStock === 3, 'Stock no emitio un snapshot por caracter.');
+    stock.setSelectionRange(1, 2); stock.setRangeText('', 1, 2, 'end');
+    stock.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentForward' }));
+    assert(stock.value === '10' && document.activeElement === stock, 'Delete no conservo Stock.');
+    stock.setRangeText('0', 1, 1, 'end');
+    stock.dispatchEvent(new InputEvent('input', { bubbles: true, data: '0', inputType: 'insertText' }));
+    assert(stock.value === '100' && store.getState().form.values.stock === '100', 'Stock no recupero valor completo.');
+    price.focus(); price.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    stock.focus();
     assert(await store.save() && created[0].minimarket_id === 12 && !Object.hasOwn(created[0], 'store'), 'Payload create incorrecto.');
+    assert(created[0].price === 2300 && created[0].stock === 100, 'Submit no uso Price/Stock completos.');
     assert(document.querySelector('#veciahorra-inventory-store-search') === null, 'Edicion conserva combobox Store.');
     assert(document.querySelector('.veciahorra-inventory-admin__store-readonly')?.textContent.includes('#12'), 'Store readonly ausente.');
     const searchesBefore = storeSearches; await store.openEditForm(41);
     assert(storeSearches === searchesBefore && document.querySelector('#veciahorra-inventory-store-search') === null, 'Edicion busco o activo Store.');
+    const editPrice = document.querySelector('[name="price"]');
+    editPrice.focus(); editPrice.value = ''; editPrice.setSelectionRange(0, 0); type(editPrice, '4500');
+    assert(editPrice.isConnected && document.activeElement === editPrice && editPrice.value === '4500', 'Edicion reemplazo Price durante escritura.');
+    const editStock = document.querySelector('[name="stock"]');
+    editStock.focus(); editStock.value = ''; editStock.setSelectionRange(0, 0); type(editStock, '25');
+    assert(await store.save() && updated[0].price === 4500 && updated[0].stock === 25, 'Update no uso valores completos.');
     store.returnToList(); store.openCreateForm();
     assert(store.getState().form.values.minimarketId === '' && document.querySelector('#veciahorra-inventory-store-search'), 'Reset heredo Store o no recreo selector.');
     output.dataset.status = 'pass'; output.textContent = 'PASS integrated inventory Store form'; document.title = 'PASS';

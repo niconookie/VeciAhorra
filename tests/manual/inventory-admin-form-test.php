@@ -137,6 +137,11 @@ assertInventoryForm(
     'Falta destruir el selector Store o abortar solicitudes pendientes.'
 );
 assertInventoryForm(
+    str_contains($view, 'nodes.table.firstElementChild !== inventoryForm.element')
+        && str_contains($view, 'nodes.table.childElementCount !== 1'),
+    'El render reemplaza el formulario estable durante la escritura.'
+);
+assertInventoryForm(
     substr_count($api, 'fetch(') === 1
         && ! str_contains($store, 'fetch(')
         && ! str_contains($view, 'fetch(')
