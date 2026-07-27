@@ -1,0 +1,305 @@
+<!doctype html>
+<meta charset="utf-8">
+<pre id="results" data-status="running">RUNNING</pre>
+<script type="module">
+const results = document.getElementById('results');
+let assertions = 0;
+function assert(value, message) {
+    assertions += 1;
+    if (!value) throw new Error(`${message} (assertion ${assertions})`);
+}
+function deferred() {
+    let resolve;
+    let reject;
+    const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+    return { promise, resolve, reject };
+}
+function detail(id, marker = 'original') {
+    return { identity: { id }, marker };
+}
+function fakeTransport(handler) {
+    const calls = [];
+    return {
+        calls,
+        getOrderDetail(id, options) {
+            calls.push({ id, signal: options.signal });
+            return handler(id, options, calls.length);
+        },
+    };
+}
+async function tick() {
+    await Promise.resolve();
+    await Promise.resolve();
+}
+
+try {
+    const { createOrderDetailState } = await import(
+        '../../assets/admin/js/modules/orders/detail-state.js?state-test=1'
+    );
+    assert(typeof createOrderDetailState === 'function', 'factory exported');
+    for (const id of [null, 0, -1, 1.5, '01', '1e2', '', Number.MAX_SAFE_INTEGER + 1]) {
+        let failed = false;
+        try { createOrderDetailState({ orderId: id, transport: { getOrderDetail() {} } }); }
+        catch (error) { failed = error instanceof TypeError; }
+        assert(failed, `invalid order id rejected: ${String(id)}`);
+    }
+    for (const transport of [null, {}, { getOrderDetail: true }]) {
+        let failed = false;
+        try { createOrderDetailState({ orderId: 7, transport }); }
+        catch (error) { failed = error instanceof TypeError; }
+        assert(failed, 'invalid transport rejected');
+    }
+
+    const pending = deferred();
+    const transport = fakeTransport(() => pending.promise);
+    const state = createOrderDetailState({ orderId: '42', transport });
+    assert(Object.keys(state).join(',') === 'getSnapshot,subscribe,load,cancel,destroy', 'minimal API');
+    let snapshot = state.getSnapshot();
+    assert(snapshot.status === 'idle', 'initial idle');
+    assert(snapshot.orderId === 42, 'stable canonical id');
+    assert(snapshot.detail === null && snapshot.error === null, 'initial payload empty');
+    assert(snapshot.isLoading === false, 'initial loading flag');
+    assert(transport.calls.length === 0, 'no automatic request');
+    const noActive = state.cancel();
+    assert(noActive.status === 'idle' && transport.calls.length === 0, 'cancel without operation safe');
+
+    const transitions = [];
+    state.subscribe((next) => transitions.push(next.status));
+    assert(transitions.length === 0, 'subscriptions are changes-only');
+    const dto = detail(42);
+    const loadingPromise = state.load();
+    snapshot = state.getSnapshot();
+    assert(snapshot.status === 'loading' && snapshot.isLoading, 'loading published');
+    assert(snapshot.detail === null && snapshot.error === null, 'loading payload empty');
+    assert(transport.calls.length === 1, 'one transport call');
+    assert(transport.calls[0].id === 42, 'configured id delivered');
+    assert(transport.calls[0].signal instanceof AbortSignal, 'abort signal delivered');
+    assert(!transport.calls[0].signal.aborted, 'new signal active');
+    pending.resolve(dto);
+    await loadingPromise;
+    snapshot = state.getSnapshot();
+    assert(snapshot.status === 'ready' && !snapshot.isLoading, 'ready published');
+    assert(snapshot.detail === dto && snapshot.error === null, 'DTO retained by reference');
+    assert(dto.marker === 'original' && Object.keys(dto).length === 2, 'DTO not mutated');
+    assert(transport.calls.length === 1, 'no secondary request');
+    assert(transitions.join(',') === 'loading,ready', 'accepted transitions notified');
+
+    const errorCases = [
+        ['unauthorized', 401, 'rest_not_authenticated'],
+        ['forbidden', 403, 'rest_forbidden'],
+        ['not_found', 404, 'order_not_found'],
+        ['invalid_request', 422, 'invalid_parameters'],
+        ['server_error', 500, 'orders_admin_detail_read_failed'],
+        ['network_error', 0, null],
+        ['invalid_response', 200, null],
+    ];
+    for (const [kind, status, code] of errorCases) {
+        const failing = createOrderDetailState({
+            orderId: 9,
+            transport: fakeTransport(() => Promise.reject({
+                kind, status, code, message: '<b>SELECT secret FROM users C:\\private</b>',
+                stack: 'private stack',
+            })),
+        });
+        await failing.load();
+        const failed = failing.getSnapshot();
+        assert(failed.status === kind, `${kind} preserved`);
+        assert(failed.detail === null && !failed.isLoading, `${kind} invariant`);
+        assert(failed.error.kind === kind && failed.error.status === status, `${kind} safe metadata`);
+        assert(failed.error.code === code, `${kind} safe code`);
+        assert(!('message' in failed.error) && !('stack' in failed.error), `${kind} unsafe text absent`);
+    }
+    const alien = createOrderDetailState({
+        orderId: 10,
+        transport: fakeTransport(() => Promise.reject({
+            kind: 'order_not_found', status: 404, code: 'evil_code', message: 'SQL secret',
+        })),
+    });
+    await alien.load();
+    assert(alien.getSnapshot().status === 'invalid_response', 'unknown state degrades safely');
+    assert(alien.getSnapshot().error.code === null, 'unknown backend code removed');
+    const impossible = createOrderDetailState({
+        orderId: 11,
+        transport: fakeTransport(() => Promise.resolve(null)),
+    });
+    await impossible.load();
+    assert(impossible.getSnapshot().status === 'invalid_response', 'impossible success degrades safely');
+    results.textContent = 'RUNNING concurrency';
+
+    const first = deferred();
+    const second = deferred();
+    const concurrentTransport = fakeTransport((id, options, count) =>
+        count === 1 ? first.promise : second.promise
+    );
+    const concurrent = createOrderDetailState({ orderId: 12, transport: concurrentTransport });
+    const concurrentTransitions = [];
+    concurrent.subscribe((next) => concurrentTransitions.push(next.status));
+    const oldLoad = concurrent.load();
+    const firstSignal = concurrentTransport.calls[0].signal;
+    const newLoad = concurrent.load();
+    const secondSignal = concurrentTransport.calls[1].signal;
+    assert(firstSignal.aborted, 'second load aborts first');
+    assert(secondSignal !== firstSignal && !secondSignal.aborted, 'second load has fresh signal');
+    assert(concurrentTransport.calls.length === 2, 'one call per explicit load');
+    first.resolve(detail(12, 'stale'));
+    await oldLoad;
+    assert(concurrent.getSnapshot().status === 'loading', 'stale success cannot finish loading');
+    assert(!secondSignal.aborted, 'old completion cannot clear or abort current controller');
+    assert(concurrentTransitions.join(',') === 'loading,loading', 'stale success not notified');
+    second.resolve(detail(12, 'current'));
+    await newLoad;
+    assert(concurrent.getSnapshot().detail.marker === 'current', 'current success accepted');
+    assert(concurrentTransitions.join(',') === 'loading,loading,ready', 'one final transition accepted');
+    results.textContent = 'RUNNING late error';
+
+    const lateError = deferred();
+    const currentError = deferred();
+    const errorRaceTransport = fakeTransport((id, options, count) =>
+        count === 1 ? lateError.promise : currentError.promise
+    );
+    const errorRace = createOrderDetailState({ orderId: 13, transport: errorRaceTransport });
+    const lateNotifications = [];
+    errorRace.subscribe((next) => lateNotifications.push(next.status));
+    const oldErrorLoad = errorRace.load();
+    const currentErrorLoad = errorRace.load();
+    currentError.reject({ kind: 'forbidden', status: 403, code: 'rest_forbidden' });
+    await currentErrorLoad;
+    assert(errorRace.getSnapshot().status === 'forbidden', 'current error accepted');
+    lateError.reject({ kind: 'server_error', status: 500 });
+    await oldErrorLoad;
+    assert(errorRace.getSnapshot().status === 'forbidden', 'late error discarded');
+    assert(lateNotifications.join(',') === 'loading,loading,forbidden', 'late error not notified');
+    results.textContent = 'RUNNING cancel';
+
+    const cancelledPending = deferred();
+    let cancelCalls = 0;
+    const cancelTransport = fakeTransport(() => {
+        cancelCalls += 1;
+        return cancelCalls === 1 ? cancelledPending.promise : Promise.resolve(detail(14, 'reloaded'));
+    });
+    const cancellable = createOrderDetailState({ orderId: 14, transport: cancelTransport });
+    const cancelledTransitions = [];
+    cancellable.subscribe((next) => cancelledTransitions.push(next.status));
+    const cancelledLoad = cancellable.load();
+    const cancelledSignal = cancelTransport.calls[0].signal;
+    const cancelledSnapshot = cancellable.cancel();
+    assert(cancelledSignal.aborted, 'cancel aborts active request');
+    assert(cancelledSnapshot.status === 'idle', 'cancel returns to idle');
+    assert(cancelledSnapshot.detail === null && cancelledSnapshot.error === null, 'cancel clears visible payload');
+    cancelledPending.reject({ kind: 'network_error', message: 'should be invisible' });
+    await cancelledLoad;
+    assert(cancellable.getSnapshot().status === 'idle', 'late cancel rejection discarded');
+    assert(!cancelledTransitions.includes('network_error'), 'cancel has no visible network error');
+    await cancellable.load();
+    assert(cancellable.getSnapshot().status === 'ready', 'load after cancel succeeds');
+    assert(cancelTransport.calls.length === 2, 'cancel starts no request');
+    results.textContent = 'RUNNING destroy';
+
+    const destroyPending = deferred();
+    const destroyTransport = fakeTransport(() => destroyPending.promise);
+    const doomed = createOrderDetailState({ orderId: 15, transport: destroyTransport });
+    let destroyNotifications = 0;
+    doomed.subscribe(() => { destroyNotifications += 1; });
+    const doomedLoad = doomed.load();
+    const destroySignal = destroyTransport.calls[0].signal;
+    assert(destroyNotifications === 1, 'destroy fixture loading notified');
+    doomed.destroy();
+    doomed.destroy();
+    assert(destroySignal.aborted, 'destroy aborts active request');
+    destroyPending.resolve(detail(15));
+    await doomedLoad;
+    assert(doomed.getSnapshot().status === 'loading', 'late result cannot change destroyed snapshot');
+    assert(destroyNotifications === 1, 'destroy prevents later notifications');
+    await doomed.load();
+    assert(destroyTransport.calls.length === 1, 'destroy prevents future transport calls');
+    doomed.cancel();
+    assert(destroyNotifications === 1, 'cancel after destroy is invisible');
+    let postDestroy = 0;
+    const postUnsubscribe = doomed.subscribe(() => { postDestroy += 1; });
+    postUnsubscribe();
+    assert(postDestroy === 0, 'subscribe after destroy cannot reactivate');
+    results.textContent = 'RUNNING subscriptions';
+
+    const subscriptionPending = deferred();
+    const subscriptionState = createOrderDetailState({
+        orderId: 16,
+        transport: fakeTransport(() => subscriptionPending.promise),
+    });
+    const notices = [];
+    const good = (next) => notices.push(`good:${next.status}`);
+    const unsubscribeGood = subscriptionState.subscribe(good);
+    subscriptionState.subscribe(() => { throw new Error('listener failure'); });
+    let selfUnsubscribe;
+    selfUnsubscribe = subscriptionState.subscribe((next) => {
+        notices.push(`self:${next.status}`);
+        selfUnsubscribe();
+        selfUnsubscribe();
+        subscriptionState.subscribe((later) => notices.push(`late:${later.status}`));
+    });
+    const subscriptionLoad = subscriptionState.load();
+    subscriptionPending.resolve(detail(16));
+    await subscriptionLoad;
+    assert(notices.includes('good:loading') && notices.includes('good:ready'), 'good listener survives peer failure');
+    assert(notices.filter((item) => item === 'self:loading').length === 1, 'self unsubscribe safe');
+    assert(!notices.includes('self:ready'), 'unsubscribe effective');
+    assert(!notices.includes('late:loading') && notices.includes('late:ready'), 'mutation does not corrupt iteration');
+    unsubscribeGood();
+    unsubscribeGood();
+    assert(true, 'repeated unsubscribe safe');
+    let invalidListener = false;
+    try { subscriptionState.subscribe('not a function'); }
+    catch (error) { invalidListener = error instanceof TypeError; }
+    assert(invalidListener, 'non-function listener rejected');
+    results.textContent = 'RUNNING duplicate';
+
+    const duplicatePending = deferred();
+    const duplicateState = createOrderDetailState({
+        orderId: 17,
+        transport: fakeTransport(() => duplicatePending.promise),
+    });
+    let duplicateNotices = 0;
+    const duplicateListener = () => { duplicateNotices += 1; };
+    duplicateState.subscribe(duplicateListener);
+    duplicateState.subscribe(duplicateListener);
+    const duplicateLoad = duplicateState.load();
+    duplicatePending.resolve(detail(17));
+    await duplicateLoad;
+    assert(duplicateNotices === 2, 'same listener is not accidentally duplicated');
+    results.textContent = 'RUNNING snapshot';
+
+    const protectedState = createOrderDetailState({
+        orderId: 18,
+        transport: fakeTransport(() => Promise.reject({
+            kind: 'forbidden', status: 403, code: 'rest_forbidden',
+        })),
+    });
+    const initialCopy = protectedState.getSnapshot();
+    initialCopy.status = 'ready';
+    initialCopy.orderId = 999;
+    initialCopy.error = { kind: 'network_error' };
+    assert(protectedState.getSnapshot().status === 'idle', 'snapshot container isolated');
+    assert(protectedState.getSnapshot().orderId === 18, 'snapshot id protected');
+    await protectedState.load();
+    const errorCopy = protectedState.getSnapshot();
+    errorCopy.error.kind = 'network_error';
+    errorCopy.isLoading = true;
+    const protectedAgain = protectedState.getSnapshot();
+    assert(protectedAgain.error.kind === 'forbidden', 'nested error protected');
+    assert(protectedAgain.isLoading === false, 'control flag protected');
+    assert(protectedAgain !== errorCopy, 'fresh snapshot container returned');
+
+    const abortedState = createOrderDetailState({
+        orderId: 19,
+        transport: fakeTransport(() => Promise.reject({ kind: 'aborted' })),
+    });
+    await abortedState.load();
+    assert(abortedState.getSnapshot().status === 'idle', 'transport abort is silent');
+    assert(abortedState.getSnapshot().error === null, 'abort has no visible error');
+
+    results.dataset.status = 'pass';
+    results.textContent = `PASS order-admin-detail-state-browser-test assertions=${assertions}`;
+} catch (error) {
+    results.dataset.status = 'fail';
+    results.textContent = `FAIL ${error.message}\n${error.stack || ''}`;
+}
+</script>
