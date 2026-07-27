@@ -169,6 +169,26 @@ assertFrontendFoundation(
     ! str_contains($secondHtml, 'id="va-frontend-1"'),
     'Segunda instancia reutilizo IDs ARIA.'
 );
+$previousProductId = $_GET['product_id'] ?? null;
+$_GET['product_id'] = '1000000852';
+$largeProductHtml = $controller->renderPlaceholder();
+assertFrontendFoundation(
+    str_contains($largeProductHtml, 'data-va-product-detail')
+        && str_contains($largeProductHtml, 'data-product-id="1000000852"'),
+    'La ruta pública canónica truncó o rechazó un Product ID grande.'
+);
+$_GET['product_id'] = '01000000852';
+$invalidProductHtml = $controller->renderPlaceholder();
+assertFrontendFoundation(
+    str_contains($invalidProductHtml, 'data-va-catalog')
+        && ! str_contains($invalidProductHtml, 'data-va-product-detail'),
+    'La ruta pública aceptó un Product ID no canónico.'
+);
+if ($previousProductId === null) {
+    unset($_GET['product_id']);
+} else {
+    $_GET['product_id'] = $previousProductId;
+}
 assertFrontendFoundation(
     wp_style_is(FrontendAssets::STYLE_HANDLE, 'enqueued'),
     'Placeholder no encolo CSS.'

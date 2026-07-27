@@ -1,10 +1,11 @@
 <?php
 /** @var string $instanceId */
 /** @var array<int, string> $productUrls */
+/** @var string $catalogUrl */
 $titleId = $instanceId . '-catalog-title';
 $encodedUrls = wp_json_encode($productUrls, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 ?>
-<section class="va-catalog" data-va-catalog data-product-urls="<?php echo esc_attr(is_string($encodedUrls) ? $encodedUrls : '{}'); ?>" aria-labelledby="<?php echo esc_attr($titleId); ?>">
+<section class="va-catalog" data-va-catalog data-product-urls="<?php echo esc_attr(is_string($encodedUrls) ? $encodedUrls : '{}'); ?>" data-catalog-url="<?php echo esc_url($catalogUrl); ?>" aria-labelledby="<?php echo esc_attr($titleId); ?>">
     <header class="va-catalog__hero">
         <p class="va-catalog__eyebrow"><?php esc_html_e('Compra local, ahorra cerca', 'veciahorra'); ?></p>
         <h1 id="<?php echo esc_attr($titleId); ?>"><?php esc_html_e('Catálogo VeciAhorra', 'veciahorra'); ?></h1>

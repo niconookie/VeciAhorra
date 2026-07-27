@@ -23,6 +23,9 @@ foreach ([
     "'Disponible en ' + minimarkets",
     "minimarkets === 1 ? ' minimarket' : ' minimarkets'",
     "'Ver producto'",
+    'function productUrl(product, urls, catalogUrl)',
+    "url.searchParams.set('product_id', id)",
+    "root.getAttribute('data-catalog-url')",
 ] as $contract) {
     assertMarketplaceVisibility(
         str_contains($javascript, $contract),

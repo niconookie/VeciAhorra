@@ -42,11 +42,28 @@
         return '/catalog/products?' + params.toString();
     }
 
-    function card(product, urls) {
+    function productUrl(product, urls, catalogUrl) {
+        var id = positiveId(product && product.id);
+        var explicit = id ? String(urls[id] || '') : '';
+        var url;
+
+        if (explicit) { return explicit; }
+        if (!id || !catalogUrl) { return ''; }
+
+        try {
+            url = new URL(catalogUrl, window.location.origin);
+            url.searchParams.set('product_id', id);
+            return url.toString();
+        } catch (ignore) {
+            return '';
+        }
+    }
+
+    function card(product, urls, catalogUrl) {
         var article = el('article', 'va-catalog-card');
         var media = el('div', 'va-catalog-card__media');
         var body = el('div', 'va-catalog-card__body');
-        var url = String(urls[product.id] || urls[String(product.id)] || '');
+        var url = productUrl(product, urls, catalogUrl);
         var name = String(product.name || 'Producto');
         var price = product.min_price;
         var minimarkets = Number(product.available_minimarkets);
@@ -110,6 +127,7 @@
         var initialFilters = config.catalogFilters || {};
         var filters = { search: '', category: '', brand: positiveId(initialFilters.brand), order: 'name', page: 1 };
         var urls = {};
+        var catalogUrl = root.getAttribute('data-catalog-url') || '';
         var requestSequence = 0;
 
         try { urls = JSON.parse(root.getAttribute('data-product-urls') || '{}'); } catch (ignore) {}
@@ -162,7 +180,7 @@
                     status.textContent = '0 productos encontrados';
                     return;
                 }
-                products.forEach(function (product) { grid.appendChild(card(product, urls)); });
+                products.forEach(function (product) { grid.appendChild(card(product, urls, catalogUrl)); });
                 grid.hidden = false;
                 status.textContent = products.length + (products.length === 1 ? ' producto encontrado' : ' productos encontrados');
             }).catch(function (reason) {

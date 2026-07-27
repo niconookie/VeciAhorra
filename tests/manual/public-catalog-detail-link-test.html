@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Public Catalog Detail Link Test</title></head>
+<body>
+<section data-va-catalog data-product-urls="{}" data-catalog-url="http://127.0.0.1/catalogo-veciahorra/">
+<form data-va-catalog-filters><input data-va-catalog-search><select data-va-catalog-category></select><select data-va-catalog-order><option value="name">Nombre</option></select><button type="submit">Aplicar</button><button type="button" data-va-catalog-reset>Reset</button></form>
+<p data-va-catalog-category-status></p><div data-va-catalog-loading></div><div data-va-catalog-error hidden><p data-va-catalog-error-message></p><button data-va-catalog-retry></button></div><div data-va-catalog-empty hidden></div><p data-va-catalog-status></p><div data-va-catalog-grid hidden></div>
+</section>
+<pre id="result">RUNNING</pre>
+<script>
+const product={id:1000000852,name:'Pan Hallulla',slug:'pan-hallulla',min_price:'1250.00',available_minimarkets:2};
+const offers=[{inventory_id:3106,minimarket_id:899847142,price:'1250.00',stock:48},{inventory_id:3090,minimarket_id:58986388,price:'1500.00',stock:40}];
+const calls=[];
+window.VeciAhorra={locale:'es-CL',currency:'CLP',api:{get(path){calls.push(path);if(path==='/catalog/categories')return Promise.resolve({data:[]});if(path.startsWith('/catalog/products?'))return Promise.resolve({data:[product]});if(path==='/catalog/products/1000000852')return Promise.resolve({data:{...product,offers}});return Promise.reject(new Error(path));}}};
+</script>
+<script src="../../assets/frontend/js/veciahorra-catalog.js"></script>
+<script>
+const assert=(value,message)=>{if(!value)throw new Error(message);};
+setTimeout(async()=>{
+ try{
+  const link=document.querySelector('.va-catalog-card__action');
+  assert(link&&link.textContent==='Ver producto','La tarjeta no generó Ver producto.');
+  const url=new URL(link.href);
+  assert(url.pathname==='/catalogo-veciahorra/'&&url.searchParams.get('product_id')==='1000000852','URL canónica incorrecta o ID truncado.');
+  let traversed=false;link.addEventListener('click',event=>{event.preventDefault();traversed=true;});link.click();
+  const detail=await VeciAhorra.api.get(`/catalog/products/${url.searchParams.get('product_id')}`);
+  assert(
+   traversed
+    &&detail.data.offers.length===2
+    &&detail.data.offers[0].inventory_id===3106
+    &&detail.data.offers[0].price==='1250.00'
+    &&detail.data.offers[1].inventory_id===3090
+    &&detail.data.offers[1].price==='1500.00',
+   'Catálogo → ficha → ofertas inconsistente.'
+  );
+  assert(!document.querySelector('.va-catalog-card__unavailable'),'Persistió el fallback pese a ruta canónica.');
+  result.textContent='PASS public-catalog-detail-link-test';document.title='PASS';
+ }catch(error){result.textContent=`FAIL ${error.message}`;document.title='FAIL';}
+},0);
+</script></body></html>

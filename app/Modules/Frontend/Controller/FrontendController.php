@@ -47,6 +47,9 @@ final class FrontendController
             self::SHORTCODE
         );
         $productId = absint($attributes['product_id']);
+        if ($productId === 0) {
+            $productId = $this->requestedProductId();
+        }
 
         if ($productId > 0) {
             $this->assets->enqueueProductOffers();
@@ -60,6 +63,7 @@ final class FrontendController
             $page = $this->views->render('catalog', [
                 'instanceId' => $instanceId,
                 'productUrls' => $this->productUrls(),
+                'catalogUrl' => $this->routeResolver()->catalog(),
             ]);
         }
 
@@ -184,5 +188,22 @@ final class FrontendController
     private function routeResolver(): PublicRouteResolver
     {
         return $this->routes ??= new PublicRouteResolver();
+    }
+
+    private function requestedProductId(): int
+    {
+        if (! isset($_GET['product_id']) || is_array($_GET['product_id'])) {
+            return 0;
+        }
+
+        $raw = wp_unslash((string) $_GET['product_id']);
+        if (
+            preg_match('/^[1-9]\d*$/D', $raw) !== 1
+            || (string) (int) $raw !== $raw
+        ) {
+            return 0;
+        }
+
+        return (int) $raw;
     }
 }
