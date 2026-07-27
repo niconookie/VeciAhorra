@@ -43,7 +43,17 @@ final class OrdersPage
             [],
             Config::PLUGIN_VERSION
         );
-        if (! OrderAdminPageRequest::fromGlobals()->isList()) {
+        $request = OrderAdminPageRequest::fromGlobals();
+        if ($request->isValidDetail()) {
+            wp_enqueue_script_module(
+                'veciahorra-orders-detail-transport',
+                VA_PLUGIN_URL . 'assets/admin/js/modules/orders/detail-api.js',
+                [],
+                Config::PLUGIN_VERSION
+            );
+            return;
+        }
+        if (! $request->isList()) {
             return;
         }
         wp_enqueue_script_module(
@@ -59,6 +69,12 @@ final class OrdersPage
         $request = OrderAdminPageRequest::fromGlobals();
         if ($request->isValidDetail()) {
             $returnUrl = $request->returnUrl();
+            $detailConfig = [
+                'enabled' => true,
+                'orderId' => $request->orderId(),
+                'restUrl' => esc_url_raw(rest_url('veciahorra/v1/orders')),
+                'nonce' => wp_create_nonce('wp_rest'),
+            ];
             require dirname(__DIR__) . '/Views/admin-detail.php';
             return;
         }

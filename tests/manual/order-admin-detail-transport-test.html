@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<title>Orders admin detail transport test</title>
+<pre id="results">running</pre>
+<script type="module">
+const results = document.querySelector('#results');
+let assertions = 0;
+const assert = (condition, message) => {
+    assertions += 1;
+    if (!condition) throw new Error(message);
+};
+const validDto = (id = 25) => ({
+    identity: { id, persisted_status: 'paid', created_at: null, updated_at: null },
+    customer: { relationship_status: 'linked' },
+    store: {},
+    checkout: null,
+    checkout_order: null,
+    lines: [],
+    reservations: [],
+    payment: {},
+    processing: {},
+    fulfillment: {},
+    totals: {},
+    navigation: {},
+    operational: {
+        dimensions: {},
+        consistency: {},
+        timeline: [],
+        allowed_actions: ['view'],
+        mutable_actions: [],
+    },
+    inspector: {},
+});
+const response = (status, body) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    async text() { return body; },
+});
+const errorKind = async (operation) => {
+    try {
+        await operation();
+        throw new Error('expected transport error');
+    } catch (error) {
+        if (error.message === 'expected transport error') throw error;
+        return error;
+    }
+};
+
+try {
+    const calls = [];
+    globalThis.fetch = async (...args) => {
+        calls.push(args);
+        return response(200, JSON.stringify(validDto()));
+    };
+    const module = await import('../../assets/admin/js/modules/orders/detail-api.js?transport-test=1');
+    assert(calls.length === 0, 'module import executed a request');
+    assert(Object.keys(module).join(',') === 'createOrderDetailTransport', 'transport exports an open API');
+
+    const config = { orderId: 25, restUrl: 'https://example.test/wp-json/veciahorra/v1/orders', nonce: 'nonce-safe' };
+    const transport = module.createOrderDetailTransport(config);
+    assert(Object.keys(transport).join(',') === 'getOrderDetail', 'transport instance API is open');
+    const controller = new AbortController();
+    const dto = validDto();
+    globalThis.fetch = async (...args) => { calls.push(args); return response(200, JSON.stringify(dto)); };
+    const before = calls.length;
+    const returned = await transport.getOrderDetail(25, { signal: controller.signal });
+    assert(calls.length === before + 1, 'one invocation did not execute exactly one fetch');
+    assert(returned === dto || JSON.stringify(returned) === JSON.stringify(dto), 'valid DTO was transformed');
+    const [url, options] = calls.at(-1);
+    assert(url === 'https://example.test/wp-json/veciahorra/v1/orders/25/admin', 'endpoint path changed');
+    assert(!url.includes('?') && !url.includes('#'), 'request contains query or fragment');
+    assert(options.method === 'GET' && options.credentials === 'same-origin', 'request method or credentials changed');
+    assert(!Object.hasOwn(options, 'body'), 'GET contains a body');
+    assert(options.headers['X-WP-Nonce'] === 'nonce-safe' && options.headers.Accept === 'application/json', 'headers changed');
+    assert(options.signal === controller.signal, 'AbortSignal was not propagated');
+
+    for (const [status, kind] of [[401,'unauthorized'],[403,'forbidden'],[404,'not_found'],[422,'invalid_request'],[500,'server_error'],[503,'server_error']]) {
+        let count = 0;
+        globalThis.fetch = async () => {
+            count += 1;
+            return response(status, JSON.stringify({
+                error: { code: status === 404 ? 'order_not_found' : 'internal_code' },
+                message: 'SELECT secret FROM wp_private C:\\private\\Stack.php <b>unsafe</b>',
+            }));
+        };
+        const error = await errorKind(() => transport.getOrderDetail(25));
+        assert(count === 1, `HTTP ${status} retried or fanned out`);
+        assert(error.kind === kind, `HTTP ${status} mapped to ${error.kind}`);
+        assert(error.message === kind, `HTTP ${status} propagated remote message`);
+        if (status === 404) {
+            assert(error.kind !== 'order_not_found', 'backend 404 code became frontend state');
+        }
+    }
+
+    globalThis.fetch = async () => { throw new Error('SQL C:\\private\\stack.php'); };
+    let error = await errorKind(() => transport.getOrderDetail(25));
+    assert(error.kind === 'network_error' && error.message === 'network_error', 'network failure leaked or mapped incorrectly');
+    globalThis.fetch = async () => { const failure = new Error('cancelled'); failure.name = 'AbortError'; throw failure; };
+    error = await errorKind(() => transport.getOrderDetail(25, { signal: controller.signal }));
+    assert(error.kind === 'aborted' && error.message === 'aborted', 'abort mapped as network failure');
+
+    for (const body of ['{broken', '<html>unsafe</html>', JSON.stringify({ identity: { id: 25 } }), JSON.stringify(validDto(26))]) {
+        globalThis.fetch = async () => response(200, body);
+        error = await errorKind(() => transport.getOrderDetail(25));
+        assert(error.kind === 'invalid_response', 'incompatible success was accepted');
+    }
+
+    let invalidCalls = 0;
+    globalThis.fetch = async () => { invalidCalls += 1; return response(200, JSON.stringify(validDto())); };
+    for (const id of [0, -1, 1.5, '01', '1e2', ' 25', '25x', Number.MAX_SAFE_INTEGER + 1, ['25']]) {
+        error = await errorKind(() => transport.getOrderDetail(id));
+        assert(error.kind === 'invalid_request', 'invalid ID reached transport');
+    }
+    assert(invalidCalls === 0, 'invalid IDs executed fetch');
+    error = await errorKind(() => transport.getOrderDetail(26));
+    assert(error.kind === 'invalid_request' && invalidCalls === 0, 'transport accepted an ID outside configured detail');
+
+    const invalidConfig = module.createOrderDetailTransport({ orderId: 25, restUrl: 'https://example.test/orders?bad=1', nonce: '' });
+    error = await errorKind(() => invalidConfig.getOrderDetail(25));
+    assert(error.kind === 'invalid_request', 'invalid config executed transport');
+
+    results.dataset.status = 'pass';
+    results.textContent = `PASS assertions=${assertions} automatic_requests=0`;
+} catch (error) {
+    results.dataset.status = 'fail';
+    results.textContent = `FAIL ${error.stack || error}`;
+}
+</script>
+</html>

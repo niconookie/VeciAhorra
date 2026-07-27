@@ -20,4 +20,11 @@ if (! defined('ABSPATH')) exit;
     <noscript>
         <p class="notice notice-warning inline"><?= esc_html__('El detalle requiere JavaScript en un microhito posterior. Puedes volver al listado con el enlace superior.', 'veciahorra'); ?></p>
     </noscript>
+    <script id="veciahorra-order-detail-config">
+        window.VeciAhorra = window.VeciAhorra || {};
+        window.VeciAhorra.ordersAdminDetail = Object.assign(
+            window.VeciAhorra.ordersAdminDetail || {},
+            <?= wp_json_encode($detailConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
+        );
+    </script>
 </div>
