@@ -334,15 +334,20 @@ export function createStoreDetailCoordinator({ rootNode, config, api, view, navi
         && operationId === deleteSequence && dto === baseDto && rootNode.isConnected;
 
     const click = (event) => {
-        if (event.target?.closest?.('[data-va-store-edit]')) enterEdit();
-        else if (event.target?.closest?.('[data-va-store-cancel-edit]')) cancel();
-        else if (event.target?.closest?.('[data-va-store-confirm-lifecycle]')) confirmLifecycle();
-        else if (event.target?.closest?.('[data-va-store-cancel-lifecycle]')) cancelLifecycle();
-        else if (event.target?.closest?.('[data-va-store-open-delete]')) openDelete();
-        else if (event.target?.closest?.('[data-va-store-cancel-delete]')) cancelDelete();
-        else if (event.target?.closest?.('[data-va-store-confirm-delete]')) confirmDelete();
+        const control = event.target?.closest?.('button');
+        if (!control || !rootNode.contains?.(control)) return;
+        event.preventDefault();
+        if (control.matches('[data-va-store-edit]')) enterEdit();
+        else if (control.matches('[data-va-store-cancel-edit]')) cancel();
+        else if (control.matches('[data-va-store-confirm-lifecycle]')) confirmLifecycle();
+        else if (control.matches('[data-va-store-cancel-lifecycle]')) cancelLifecycle();
+        else if (control.matches('[data-va-store-open-delete]')) openDelete();
+        else if (control.matches('[data-va-store-cancel-delete]')) cancelDelete();
+        else if (control.matches('[data-va-store-confirm-delete]')) confirmDelete();
         else {
-            const action = event.target?.closest?.('[data-va-store-lifecycle-action]')?.dataset.vaStoreLifecycleAction;
+            const action = control.matches('[data-va-store-lifecycle-action]')
+                ? control.dataset.vaStoreLifecycleAction
+                : null;
             if (action) openLifecycle(action);
         }
     };

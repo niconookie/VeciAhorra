@@ -30,6 +30,7 @@ foreach (['confirmLifecycle(action)', "role', 'region", 'Confirmar:', 'vaStoreCo
 foreach (['transitionSequence', 'transitionController', "mode = 'confirming'", "mode = 'transitioning'", 'isCurrentTransition', 'transitionController?.abort()', 'validateDetailPayload(result', 'authoritativeTransitionGet'] as $fragment) {
     detailLifecycleAssert(str_contains($app, $fragment), "Coordinación lifecycle sin {$fragment}.");
 }
+detailLifecycleAssert(str_contains($app, 'event.preventDefault()') && str_contains($app, "control.matches('[data-va-store-confirm-lifecycle]')"), 'Confirmar no usa delegación DOM segura.');
 detailLifecycleAssert(str_contains($app, "mode !== 'reading'") && str_contains($app, '!dto.allowed_actions.includes(action)'), 'No se revalida modo o autoridad antes de confirmar.');
 detailLifecycleAssert(str_contains($app, 'error?.status === 409') && str_contains($app, 'Se recargó la información vigente'), 'Conflicto CAS no recarga el DTO vigente.');
 detailLifecycleAssert(str_contains($app, 'La acción fue procesada, pero no fue posible recargar'), 'POST exitoso + GET fallido no es honesto.');
