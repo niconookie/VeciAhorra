@@ -148,20 +148,24 @@ Un modelo híbrido es aceptable solo si las autoridades quedan explícitas:
 Esta es la forma elegida para implementar la alternativa B. Action Scheduler
 no puede cambiar unilateralmente `scheduled_for` ni la generación local.
 
-## 5. Modelo de datos propuesto
+## 5. Resumen del modelo de datos
 
-Nombre propuesto:
+Nombre definitivo:
 
 ```text
-{prefix}veciahorra_durable_retry_schedules
+Lógico: durable_retry_schedules
+Físico: {$wpdb->prefix}va_durable_retry_schedules
 ```
+
+El nombre físico aplica `Config::TABLE_PREFIX = 'va_'` una sola vez sobre el
+prefijo WordPress. No se admite otro alias.
 
 Columnas:
 
-| Columna | Tipo conceptual | Regla |
+| Columna | Tipo resumido | Regla |
 | --- | --- | --- |
 | `id` | BIGINT UNSIGNED | identidad interna |
-| `public_id` | CHAR/VARCHAR(64) | opaco, único; no expuesto inicialmente |
+| `public_id` | CHAR(64) | hex lowercase opaco, único; no expuesto inicialmente |
 | `stage` | VARCHAR(40) | allowlist cerrada |
 | `subject_id` | BIGINT UNSIGNED | ID canónico que recibe el worker |
 | `completion_id` | BIGINT UNSIGNED NULL | fila de etapa si ya existe |
@@ -456,7 +460,7 @@ outcome seguro `stale_generation`, no adquiere lease y no ejecuta worker.
 ### 11.5 Completion terminal antes de ejecutar
 
 El callback bloquea y relee la etapa. Marca la programación `consumed` con
-`reason_code=stage_already_terminal`, libera el slot y no reabre la etapa.
+`reason_code=stage_became_terminal`, libera el slot y no reabre la etapa.
 
 ### 11.6 Action Scheduler completa pero el cierre local falla
 
@@ -540,7 +544,7 @@ No se cambia `lease_expires_at` desde scheduling.
 lock schedule
   → lock etapa
   → terminal
-  → schedule consumed / stage_already_terminal
+  → schedule consumed / stage_became_terminal
   → liberar active_slot
 ```
 
@@ -683,8 +687,8 @@ adquieren autoridad.
   autoridad local;
 - no se reutilizan IDs, generaciones ni tokens tras cleanup.
 
-La duración exacta de retención es una decisión operativa abierta; no debe
-codificarse sin política de privacidad y soporte.
+La retención exacta queda cerrada normativamente en 24.11; cualquier cambio
+requiere una nueva enmienda documental.
 
 ## 17. Observabilidad y auditoría
 
@@ -857,19 +861,14 @@ generaciones y tokens no se aceptan desde JavaScript.
 - Rollback: deshabilitar fachada manteniendo workers automáticos.
 - Commit selectivo: sí por microhito.
 
-## 22. Riesgos y decisiones abiertas
+## 22. Riesgos operativos abiertos
 
-- política exacta de retención;
 - mecanismo estable para buscar una acción por payload tras timeout;
 - límites y outcomes al encontrar múltiples acciones externas;
 - transacción/aislamiento requeridos para active slot bajo MySQL;
 - estrategia de feature flag para rollout;
-- catálogo final de `reason_code`;
-- si `claimed` debe liberar el slot antes o después de adquirir lease de etapa;
 - outcome correcto ante lease ocupado;
 - plan `EXPLAIN` del `UNION` de lectura;
-- compatibilidad de tipos de `scheduled_action_id` entre versiones de Action
-  Scheduler;
 - proceso operativo para resolver `orphaned`.
 
 Estas decisiones deben cerrarse antes del código correspondiente; ninguna
@@ -888,3 +887,391 @@ certificación de plan y cardinalidad.
 
 Este diseño no cambia `mutable_actions`, no habilita endpoint y no concede a
 Orders autoridad para ejecutar o modificar completions.
+
+## 24. Enmienda normativa 37.4.3.1.1
+
+Esta sección es normativa y prevalece sobre cualquier descripción conceptual
+anterior. Si una tabla, ejemplo, riesgo o pseudocódigo previo difiere de esta
+sección, se considera sustituido por esta enmienda. No quedan decisiones de
+tipo, nulabilidad, default, catálogo, slot activo o índice para 37.4.3.2.
+
+### 24.1 DDL lógico definitivo
+
+Nombre lógico:
+
+```text
+durable_retry_schedules
+```
+
+Nombre físico:
+
+```text
+{$wpdb->prefix} . Config::TABLE_PREFIX . durable_retry_schedules
+```
+
+Con `Config::TABLE_PREFIX = 'va_'`, una instalación con prefijo WordPress
+`wp_` crea `wp_va_durable_retry_schedules`.
+
+DDL lógico compatible con MySQL/MariaDB y `dbDelta`:
+
+```sql
+CREATE TABLE {wp_prefix}va_durable_retry_schedules (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    public_id CHAR(64) NOT NULL,
+    stage VARCHAR(40) NOT NULL,
+    subject_id BIGINT UNSIGNED NOT NULL,
+    completion_id BIGINT UNSIGNED NULL DEFAULT NULL,
+    generation INT UNSIGNED NOT NULL,
+    attempt_number INT UNSIGNED NOT NULL,
+    scheduled_for DATETIME NOT NULL,
+    scheduled_action_id BIGINT UNSIGNED NULL DEFAULT NULL,
+    dispatch_token_hash CHAR(64) NOT NULL,
+    status VARCHAR(24) NOT NULL,
+    active_slot TINYINT UNSIGNED NULL DEFAULT NULL,
+    version INT UNSIGNED NOT NULL,
+    reason_code VARCHAR(50) NOT NULL,
+    dispatched_at DATETIME NULL DEFAULT NULL,
+    claimed_at DATETIME NULL DEFAULT NULL,
+    consumed_at DATETIME NULL DEFAULT NULL,
+    terminal_at DATETIME NULL DEFAULT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY durable_retry_public_unique (public_id),
+    UNIQUE KEY durable_retry_identity_unique
+        (stage, subject_id, generation),
+    UNIQUE KEY durable_retry_active_unique
+        (stage, subject_id, active_slot),
+    UNIQUE KEY durable_retry_action_unique (scheduled_action_id),
+    KEY durable_retry_recovery_index (status, updated_at),
+    KEY durable_retry_retention_index (status, terminal_at),
+    KEY durable_retry_completion_read_index
+        (stage, completion_id, status)
+) {charset_collate};
+```
+
+No se añaden `CHECK` ni foreign keys en 37.4.3.2. El soporte uniforme de
+`CHECK`, su enforcement y la interacción de foreign keys con `dbDelta` no están
+certificados para todos los motores compatibles. Las reglas no expresables por
+tipo o unique pertenecen al contrato de dominio y, posteriormente, al
+repository/CAS.
+
+### 24.2 Columnas, defaults y autoridad escritora
+
+| Columna | Nulabilidad/default | Semántica y autoridad futura |
+| --- | --- | --- |
+| `id` | NOT NULL, AUTO_INCREMENT | identidad interna; motor |
+| `public_id` | NOT NULL, sin default | 64 hex lowercase; coordinador |
+| `stage` | NOT NULL, sin default | allowlist cerrada; coordinador |
+| `subject_id` | NOT NULL, sin default | ID canónico positivo; coordinador |
+| `completion_id` | NULL DEFAULT NULL | fila completion, si existe; repository bajo validación |
+| `generation` | NOT NULL, sin default | inicial 1; coordinador/CAS |
+| `attempt_number` | NOT NULL, sin default | inicial permitido 0; snapshot de autoridad |
+| `scheduled_for` | NOT NULL, sin default | UTC calculado una vez por scheduler autoritativo |
+| `scheduled_action_id` | NULL DEFAULT NULL | ID positivo devuelto por Action Scheduler |
+| `dispatch_token_hash` | NOT NULL, sin default | SHA-256 lowercase; coordinador |
+| `status` | NOT NULL, sin default | al insertar debe ser `dispatching` |
+| `active_slot` | NULL DEFAULT NULL | se inserta explícitamente como 1 |
+| `version` | NOT NULL, sin default | inicial 1; repository/CAS |
+| `reason_code` | NOT NULL, sin default | catálogo cerrado de 24.6 |
+| `dispatched_at` | NULL DEFAULT NULL | UTC; attach externo |
+| `claimed_at` | NULL DEFAULT NULL | UTC; callback aceptado |
+| `consumed_at` | NULL DEFAULT NULL | UTC; consumo de programación |
+| `terminal_at` | NULL DEFAULT NULL | UTC; entrada a cualquier estado inactivo |
+| `created_at` | NOT NULL, sin default | UTC explícito del servicio |
+| `updated_at` | NOT NULL, sin default | UTC explícito del servicio |
+
+No existe `DEFAULT CURRENT_TIMESTAMP`. Ninguna fila puede nacer completa por
+defaults de base de datos. Todos los timestamps se escriben explícitamente.
+
+Todos los `DATETIME` tienen precisión de segundos y contienen UTC en formato
+MySQL `Y-m-d H:i:s`. El dominio recibe strings y no consulta el reloj.
+
+### 24.3 Tipos e identidad definitivos
+
+- `public_id`: `CHAR(64)`, exactamente `/^[a-f0-9]{64}$/D`, único. Es
+  `sha256("durable-retry-schedule-v1|" + 32 bytes aleatorios)`; el material
+  aleatorio no se persiste.
+- `dispatch_token_hash`: `CHAR(64)`, exactamente `/^[a-f0-9]{64}$/D`. El token
+  original contiene 32 bytes criptográficos, se entrega solo al callback y
+  nunca se almacena en claro.
+- `scheduled_action_id`: `BIGINT UNSIGNED NULL`; si existe debe ser entero PHP
+  canónico positivo y no truncable. Cero, negativos, floats, notación
+  exponencial y strings no canónicos se rechazan.
+- `subject_id`, `completion_id`: `BIGINT UNSIGNED`; todo valor presente debe ser
+  entero PHP canónico positivo y no truncable.
+- `generation`: `INT UNSIGNED`, mínimo 1. La primera generación es 1.
+- `attempt_number`: `INT UNSIGNED`, mínimo 0. Cero representa scheduling previo
+  al primer claim de etapa; no se incrementa localmente.
+- `version`: `INT UNSIGNED`, mínimo 1. La fila nace con versión 1.
+- `active_slot`: únicamente entero `1` o `NULL`.
+
+No se aceptan enteros reparados mediante casts.
+
+Identidad lógica:
+
+```text
+(stage, subject_id, generation)
+```
+
+Relación por etapa:
+
+| `stage` | `subject_id` | Regla de `completion_id` |
+| --- | --- | --- |
+| `reconciliation` | `payment_reconciliations.id` | requerido e igual a `subject_id` |
+| `business_completion` | `payment_reconciliations.id` | NULL hasta materializar; luego BusinessCompletion cuyo `reconciliation_id` coincide |
+| `delivery_completion` | `business_completions.id` | NULL hasta materializar; luego DeliveryCompletion cuyo `business_completion_id` coincide |
+| `fulfillment_completion` | `business_completions.id` | NULL hasta materializar; luego FulfillmentCompletion cuyo `business_completion_id` coincide |
+
+El contrato puro valida positividad y, para Reconciliation, igualdad. La
+existencia y relaciones cross-table se validarán en repository/CAS, nunca
+mediante una inferencia del value object.
+
+### 24.4 Etapas y estados
+
+Allowlist exacta de etapas:
+
+```text
+reconciliation
+business_completion
+delivery_completion
+fulfillment_completion
+```
+
+Allowlist exacta de estados:
+
+```text
+dispatching
+scheduled
+claimed
+consumed
+superseded
+cancelled
+failed
+orphaned
+```
+
+Estados activos:
+
+```text
+dispatching
+scheduled
+claimed
+```
+
+Todos requieren `active_slot = 1`. Estados inactivos requieren
+`active_slot = NULL`.
+
+MySQL/MariaDB permiten múltiples `NULL` en un índice UNIQUE. Por ello
+`UNIQUE(stage, subject_id, active_slot)` impide dos slots con valor 1 y permite
+historial ilimitado con `NULL`.
+
+### 24.5 Matriz normativa por estado
+
+Leyenda: `R` requerido, `P` permitido condicionalmente, `N` debe ser `NULL`.
+`scheduled_for` y `dispatch_token_hash` son R en todos los estados porque son
+hechos inmutables de identidad histórica.
+
+| Estado | slot | action ID | reason | dispatched | claimed | consumed | terminal | proyecta `next_retry_at` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `dispatching` | 1 | N | R | N | N | N | N | no |
+| `scheduled` | 1 | R | R | R | N | N | N | sí |
+| `claimed` | 1 | R | R | R | R | N | N | no |
+| `consumed` | N | R | R | R | R | R | R | no |
+| `superseded` | N | P | R | P | N | N | R | no |
+| `cancelled` | N | P | R | P | N | N | R | no |
+| `failed` | N | P | R | P | P | N | R | no |
+| `orphaned` | N | P | R | P | P | N | R | no |
+
+Reglas de los campos permitidos:
+
+- Si `scheduled_action_id` es NULL, `dispatched_at` debe ser NULL.
+- Si `scheduled_action_id` existe en un estado inactivo, `dispatched_at` es
+  requerido.
+- `claimed_at` solo puede existir si `dispatched_at` existe.
+- `consumed_at` solo existe en `consumed`.
+- `terminal_at` existe exactamente en estados inactivos.
+- `scheduled` exige correlación externa completa.
+- `dispatching` prohíbe correlación externa y timestamps posteriores.
+
+Transiciones permitidas:
+
+| Desde | Hacia |
+| --- | --- |
+| inserción | `dispatching` únicamente |
+| `dispatching` | `scheduled`, `superseded`, `cancelled`, `failed`, `orphaned` |
+| `scheduled` | `claimed`, `superseded`, `cancelled`, `failed`, `orphaned` |
+| `claimed` | `consumed`, `superseded`, `failed`, `orphaned` |
+| estados inactivos | ninguna |
+
+No se permite insertar directamente `scheduled`, `claimed` ni un estado
+inactivo. Las transiciones no se implementan en 37.4.3.2; el contrato expone
+catálogos y validación de snapshots, no métodos mutables.
+
+### 24.6 Catálogo definitivo de `reason_code`
+
+Catálogo exacto v1:
+
+| Código | Estados permitidos | Regla | Escritor futuro | Significado |
+| --- | --- | --- | --- | --- |
+| `retryable_failure` | dispatching, scheduled, claimed | obligatorio mientras activo | scheduler/coordinador | fallo de etapa justificó retry |
+| `stage_became_terminal` | consumed | obligatorio en ese outcome | callback/coordinador | etapa terminó antes o durante entrega |
+| `retry_consumed` | consumed | obligatorio si se delegó normalmente | callback/coordinador | generación entregada y consumida |
+| `superseded_generation` | superseded | obligatorio | coordinador CAS | generación reemplazada |
+| `cancelled_by_authority` | cancelled | obligatorio | futura autoridad de cancelación | cancelación local autorizada |
+| `scheduling_failed` | failed | permitido | dispatcher | rechazo externo concluyente |
+| `dispatch_recovery_exhausted` | failed | permitido | recovery | agotó recuperación controlada |
+| `callback_rejected` | failed | permitido | callback/coordinador | callback inválido con causa concluyente |
+| `external_action_missing` | orphaned | permitido | reconciliador | referencia externa perdida |
+| `external_action_mismatch` | orphaned | permitido | reconciliador | acción externa contradice identidad |
+| `inconsistency_requires_remediation` | orphaned | permitido | reconciliador | divergencia requiere revisión |
+
+Reglas:
+
+- `reason_code` siempre es NOT NULL.
+- Estados activos aceptan exclusivamente `retryable_failure`.
+- `consumed` exige exactamente uno de `stage_became_terminal` o
+  `retry_consumed`.
+- `superseded` y `cancelled` tienen una única razón posible.
+- `failed` exige uno de sus tres códigos permitidos.
+- `orphaned` exige uno de sus tres códigos permitidos.
+- No se aceptan mensajes libres ni códigos desconocidos.
+
+### 24.7 Decisión final sobre `claimed`
+
+`claimed` mantiene `active_slot = 1`. Protege contra una nueva programación
+mientras un callback ya aceptado está decidiendo o intentando delegar a la
+autoridad de etapa.
+
+Si la etapa no puede adquirir lease:
+
+1. no se roba ni libera el lease de etapa;
+2. el coordinador decide con un instante explícito si ese callback se agota;
+3. para reprogramar, en una misma transacción local cambia `claimed` a
+   `superseded`, libera el slot e inserta la generación siguiente como
+   `dispatching`;
+4. hasta ese CAS no puede existir otro retry activo.
+
+`claimed` deja de ocupar el slot únicamente al pasar a `consumed`,
+`superseded`, `failed` u `orphaned`.
+
+### 24.8 `failed` frente a `orphaned`
+
+`failed` significa un resultado concluyente de una operación controlada:
+
+- la identidad local sigue siendo coherente;
+- se conoce que dispatch/recovery/callback no continuará;
+- puede crearse una generación posterior mediante un nuevo comando explícito;
+- no requiere por definición investigación histórica.
+
+`orphaned` significa pérdida o contradicción de correlación:
+
+- no puede demostrarse qué acción externa representa la generación;
+- no se recupera automáticamente;
+- requiere remediación o revisión;
+- bloquea cualquier inferencia administrativa;
+- una generación posterior solo puede crearse tras resolver o aceptar
+  explícitamente la divergencia en un microhito futuro.
+
+Ambos son inactivos y no proyectan `next_retry_at`.
+
+### 24.9 Invariantes temporales
+
+Reglas estructurales puras:
+
+```text
+created_at <= updated_at
+scheduled_for es un UTC válido en todos los estados
+dispatched_at <= claimed_at, si ambos existen
+claimed_at <= consumed_at, si ambos existen
+updated_at <= terminal_at, si terminal_at existe, salvo que sean iguales
+created_at <= cada timestamp presente
+```
+
+Al escribir una transición, `updated_at` y el timestamp de transición son el
+mismo instante UTC; por ello normalmente `updated_at = dispatched_at`,
+`claimed_at`, `consumed_at` o `terminal_at`.
+
+El value object valida formato y orden relativo. No decide si un timestamp está
+en pasado o futuro respecto del mundo. Reglas como `scheduled_for >= now`
+requieren un `DateTimeImmutable $now` explícito en un servicio futuro.
+
+Formato estricto de todo timestamp:
+
+```text
+YYYY-MM-DD HH:MM:SS
+zona contractual: UTC
+parseo exacto con DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', ..., UTC)
+round-trip idéntico
+```
+
+El contrato puro prohíbe `time()`, `current_time()`, `microtime()` y
+`new DateTimeImmutable('now')`.
+
+### 24.10 Índices definitivos
+
+Lista exacta para 37.4.3.2:
+
+| Índice | Tipo | Propósito no redundante |
+| --- | --- | --- |
+| PRIMARY `(id)` | único | identidad interna |
+| `durable_retry_public_unique(public_id)` | único | identidad pública |
+| `durable_retry_identity_unique(stage,subject_id,generation)` | único | identidad lógica y callback |
+| `durable_retry_active_unique(stage,subject_id,active_slot)` | único | máximo un activo |
+| `durable_retry_action_unique(scheduled_action_id)` | único | correlación externa |
+| `durable_retry_recovery_index(status,updated_at)` | normal | dispatching/claimed vencidos |
+| `durable_retry_retention_index(status,terminal_at)` | normal | purga por estado/cutoff |
+| `durable_retry_completion_read_index(stage,completion_id,status)` | normal | futura lectura operacional |
+
+No se crea índice por token: el callback localiza por ID/generación y compara el
+hash en tiempo constante. No se crea índice aislado por `scheduled_for`: no hay
+consulta aprobada que lo requiera.
+
+### 24.11 Retención
+
+Cutoffs mínimos desde `terminal_at`:
+
+| Estado | Retención mínima |
+| --- | --- |
+| `consumed` | 90 días |
+| `superseded` | 90 días |
+| `cancelled` | 180 días |
+| `failed` | 180 días |
+| `orphaned` | indefinida hasta resolución; luego 365 días |
+
+Ningún registro se elimina mientras esté asociado a investigación, disputa,
+auditoría o inconsistencia abierta. La purga será un microhito futuro, por
+lotes, usando `(status, terminal_at)`. 37.4.3.2 solo crea el índice; no
+implementa cleanup.
+
+### 24.12 Invariantes por capa
+
+| Invariante | Capa normativa |
+| --- | --- |
+| tipos, unsigned, nulabilidad | DDL |
+| public ID, identidad, action ID únicos | índice UNIQUE |
+| máximo un activo | índice UNIQUE con `active_slot` |
+| allowlists de stage/status/reason | contrato de dominio |
+| enteros canónicos y rangos | contrato de dominio |
+| formato/orden de timestamps | contrato de dominio |
+| matriz de campos por estado | contrato de dominio |
+| estado inicial `dispatching` | contrato + repository futuro |
+| transiciones y versión CAS | repository/CAS futuro |
+| generación monotónica | repository/CAS futuro |
+| relaciones reales de completion | repository/CAS futuro |
+| action ID devuelto y token externo | coordinador Action Scheduler futuro |
+| instante respecto de now | coordinador con reloj explícito futuro |
+| backoff | scheduler autoritativo futuro |
+
+No se usan `CHECK` como autoridad.
+
+### 24.13 Compatibilidad
+
+- La tabla se crea vacía e idempotentemente mediante el mecanismo de schemas y
+  migraciones existente.
+- No hay backfill.
+- No se consultan tablas ni API de Action Scheduler.
+- No se modifican `payment_reconciliations`, `business_completions`,
+  `delivery_completions` ni `fulfillment_completions`.
+- Históricos permanecen como `insufficient_facts`.
+- 37.4.3.2 no registra hooks, no crea filas y no programa acciones.
