@@ -129,7 +129,10 @@ $assert(! $decide($pickup)['available'], 'pickup does not invent delivery branch
 
 $absentDeliveryCompletion = $base();
 $absentDeliveryCompletion['delivery_completion'] = null;
-$assert($decide($absentDeliveryCompletion)['available'], 'absent delivery materialization is scheduler-eligible');
+$assert(
+    $decide($absentDeliveryCompletion)['reason_code'] === 'insufficient_facts',
+    'absent delivery materialization is not inferred'
+);
 $doneDelivery = $base();
 $doneDelivery['delivery_completion']['status'] = 'completed';
 $doneDelivery['deliveries'] = [['id' => 20, 'order_id' => 10, 'customer_id' => 7, 'minimarket_id' => 3, 'status' => 'pending']];

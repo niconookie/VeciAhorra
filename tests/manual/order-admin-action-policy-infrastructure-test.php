@@ -7,11 +7,14 @@ require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
 $files = [
     dirname(__DIR__, 2) . '/app/Modules/Orders/Domain/Policies/OrderAdminActionPolicy.php',
     dirname(__DIR__, 2) . '/app/Modules/Orders/Domain/Policies/OrderAdminActionDecision.php',
+    dirname(__DIR__, 2) . '/app/Modules/Orders/Services/OrderAdminActionPolicyIntegration.php',
 ];
 $source = implode("\n", array_map(static fn (string $file): string => (string) file_get_contents($file), $files));
 $forbidden = [
     '$wpdb', 'Repository', 'wp_remote_', 'rest_', 'wpdb', 'INSERT ', 'UPDATE ',
-    'DELETE ', 'current_time(', 'time()', 'DateTimeImmutable(\'now',
+    'DELETE ', 'current_time(', 'time()', 'microtime(', 'DateTimeImmutable(\'now',
+    'register_rest_route', 'add_action(', 'wp_', 'Scheduler', 'Worker',
+    '->schedule(', '->retry(',
 ];
 foreach ($forbidden as $needle) {
     if (stripos($source, $needle) !== false) {

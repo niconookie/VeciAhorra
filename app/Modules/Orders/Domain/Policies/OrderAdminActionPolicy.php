@@ -81,7 +81,10 @@ final class OrderAdminActionPolicy
 
         $findingCodes = [];
         foreach ($resolution->findings as $finding) {
-            if (! is_object($finding) || ! isset($finding->code, $finding->blocker)) {
+            if (! is_object($finding)
+                || ! property_exists($finding, 'code')
+                || ! property_exists($finding, 'blocker')
+            ) {
                 return $this->blocked('insufficient_facts');
             }
             $findingCodes[] = $finding->code;
@@ -106,9 +109,6 @@ final class OrderAdminActionPolicy
         }
 
         $row = $snapshot[$stage] ?? null;
-        if ($row === null && $stage !== 'reconciliation') {
-            $row = ['status' => 'pending', 'attempt_count' => 0, 'next_retry_at' => null];
-        }
         if (! is_array($row)) {
             return $this->blocked('insufficient_facts', $stage);
         }
