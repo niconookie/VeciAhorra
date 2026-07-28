@@ -10,6 +10,29 @@ use InvalidArgumentException;
 
 final class DurableRetryScheduleSnapshot
 {
+    private const COLUMNS = [
+        'id',
+        'public_id',
+        'stage',
+        'subject_id',
+        'completion_id',
+        'generation',
+        'attempt_number',
+        'scheduled_for',
+        'scheduled_action_id',
+        'dispatch_token_hash',
+        'status',
+        'active_slot',
+        'version',
+        'reason_code',
+        'dispatched_at',
+        'claimed_at',
+        'consumed_at',
+        'terminal_at',
+        'created_at',
+        'updated_at',
+    ];
+
     private const TIMESTAMPS = [
         'scheduled_for',
         'dispatched_at',
@@ -20,8 +43,59 @@ final class DurableRetryScheduleSnapshot
         'updated_at',
     ];
 
-    private function __construct()
+    private function __construct(private readonly array $fields)
     {
+    }
+
+    public static function fromArray(array $fields): self
+    {
+        if (array_keys($fields) !== self::COLUMNS) {
+            throw new InvalidArgumentException('Invalid durable retry snapshot shape.');
+        }
+        self::assertPositiveInteger($fields['id'], 'id');
+        self::validate($fields);
+
+        return new self($fields);
+    }
+
+    public function toArray(): array
+    {
+        return $this->fields;
+    }
+
+    public function id(): int
+    {
+        return $this->fields['id'];
+    }
+
+    public function publicId(): string
+    {
+        return $this->fields['public_id'];
+    }
+
+    public function stage(): string
+    {
+        return $this->fields['stage'];
+    }
+
+    public function subjectId(): int
+    {
+        return $this->fields['subject_id'];
+    }
+
+    public function generation(): int
+    {
+        return $this->fields['generation'];
+    }
+
+    public function status(): string
+    {
+        return $this->fields['status'];
+    }
+
+    public function version(): int
+    {
+        return $this->fields['version'];
     }
 
     public static function validate(array $fields): void

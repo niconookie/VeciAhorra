@@ -14,7 +14,19 @@ $assert = static function (bool $condition, string $message) use (&$assertions):
     }
 };
 
-$assert(count($files) === 4, 'four focused pure domain contracts');
+$expectedDomainFiles = [
+    'DurableRetryPersistenceResult.php',
+    'DurableRetryReason.php',
+    'DurableRetryScheduleSnapshot.php',
+    'DurableRetryStage.php',
+    'DurableRetryStatus.php',
+];
+$actualDomainFiles = array_map('basename', $files);
+sort($actualDomainFiles);
+$assert(
+    $actualDomainFiles === $expectedDomainFiles,
+    'five focused pure domain contracts'
+);
 foreach ([
     '$wpdb',
     'wpdb',

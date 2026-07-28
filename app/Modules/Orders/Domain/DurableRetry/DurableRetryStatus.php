@@ -34,6 +34,34 @@ final class DurableRetryStatus
         self::CLAIMED,
     ];
 
+    private const TRANSITIONS = [
+        self::DISPATCHING => [
+            self::SCHEDULED,
+            self::SUPERSEDED,
+            self::CANCELLED,
+            self::FAILED,
+            self::ORPHANED,
+        ],
+        self::SCHEDULED => [
+            self::CLAIMED,
+            self::SUPERSEDED,
+            self::CANCELLED,
+            self::FAILED,
+            self::ORPHANED,
+        ],
+        self::CLAIMED => [
+            self::CONSUMED,
+            self::SUPERSEDED,
+            self::FAILED,
+            self::ORPHANED,
+        ],
+        self::CONSUMED => [],
+        self::SUPERSEDED => [],
+        self::CANCELLED => [],
+        self::FAILED => [],
+        self::ORPHANED => [],
+    ];
+
     public static function all(): array
     {
         return self::ALL;
@@ -65,5 +93,13 @@ final class DurableRetryStatus
         if ($slot !== $expected) {
             throw new InvalidArgumentException('Invalid active slot for status.');
         }
+    }
+
+    public static function canTransition(string $from, string $to): bool
+    {
+        self::assert($from);
+        self::assert($to);
+
+        return in_array($to, self::TRANSITIONS[$from], true);
     }
 }
