@@ -18,7 +18,11 @@ $expectedDomainFiles = [
     'DurableRetryCoordinationResult.php',
     'DurableRetryExternalScheduleCatalog.php',
     'DurableRetryExternalScheduleResult.php',
+    'DurableRetryNextAttemptDecision.php',
     'DurableRetryPersistenceResult.php',
+    'DurableRetryProcessingFailure.php',
+    'DurableRetryProcessingPolicy.php',
+    'DurableRetryProcessingResult.php',
     'DurableRetryReason.php',
     'DurableRetryScheduleSnapshot.php',
     'DurableRetryStage.php',
@@ -28,7 +32,7 @@ $actualDomainFiles = array_map('basename', $files);
 sort($actualDomainFiles);
 $assert(
     $actualDomainFiles === $expectedDomainFiles,
-    'eight focused pure domain contracts'
+    'twelve focused pure domain contracts'
 );
 foreach ([
     '$wpdb',
@@ -45,7 +49,6 @@ foreach ([
     'time(',
     'microtime(',
     "DateTimeImmutable('now",
-    'backoff',
     'INSERT ',
     'UPDATE ',
     'DELETE ',
@@ -53,6 +56,20 @@ foreach ([
 ] as $forbidden) {
     $assert(! str_contains($source, $forbidden), "domain excludes {$forbidden}");
 }
+$nonPolicySource = implode("\n", array_map(
+    'file_get_contents',
+    array_values(array_filter(
+        $files,
+        static fn (string $file): bool => ! in_array(basename($file), [
+            'DurableRetryProcessingPolicy.php',
+            'DurableRetryNextAttemptDecision.php',
+        ], true)
+    ))
+));
+$assert(
+    ! str_contains(strtolower($nonPolicySource), 'backoff'),
+    'backoff exists only in the certified processing policy'
+);
 
 $migration = file_get_contents(
     $root . '/app/Database/Migrations/CreateDurableRetrySchedulesTable.php'

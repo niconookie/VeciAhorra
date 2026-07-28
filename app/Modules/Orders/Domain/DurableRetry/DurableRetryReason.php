@@ -16,6 +16,9 @@ final class DurableRetryReason
     public const SCHEDULING_FAILED = 'scheduling_failed';
     public const DISPATCH_RECOVERY_EXHAUSTED = 'dispatch_recovery_exhausted';
     public const CALLBACK_REJECTED = 'callback_rejected';
+    public const PROCESSING_ATTEMPTS_EXHAUSTED = 'processing_attempts_exhausted';
+    public const PROCESSING_TERMINAL_FAILURE = 'processing_terminal_failure';
+    public const PROCESSING_OUTCOME_UNCERTAIN = 'processing_outcome_uncertain';
     public const EXTERNAL_ACTION_MISSING = 'external_action_missing';
     public const EXTERNAL_ACTION_MISMATCH = 'external_action_mismatch';
     public const INCONSISTENCY_REQUIRES_REMEDIATION = 'inconsistency_requires_remediation';
@@ -34,11 +37,14 @@ final class DurableRetryReason
             self::SCHEDULING_FAILED,
             self::DISPATCH_RECOVERY_EXHAUSTED,
             self::CALLBACK_REJECTED,
+            self::PROCESSING_ATTEMPTS_EXHAUSTED,
+            self::PROCESSING_TERMINAL_FAILURE,
         ],
         DurableRetryStatus::ORPHANED => [
             self::EXTERNAL_ACTION_MISSING,
             self::EXTERNAL_ACTION_MISMATCH,
             self::INCONSISTENCY_REQUIRES_REMEDIATION,
+            self::PROCESSING_OUTCOME_UNCERTAIN,
         ],
     ];
 

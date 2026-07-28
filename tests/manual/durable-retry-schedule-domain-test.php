@@ -50,9 +50,12 @@ $assert(DurableRetryReason::all() === [
     'scheduling_failed',
     'dispatch_recovery_exhausted',
     'callback_rejected',
+    'processing_attempts_exhausted',
+    'processing_terminal_failure',
     'external_action_missing',
     'external_action_mismatch',
     'inconsistency_requires_remediation',
+    'processing_outcome_uncertain',
 ], 'exact reason allowlist');
 $assert(DurableRetryStatus::active() === [
     'dispatching',

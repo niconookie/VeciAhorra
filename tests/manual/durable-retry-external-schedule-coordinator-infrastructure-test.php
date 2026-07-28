@@ -92,22 +92,15 @@ $assert(
 );
 
 $changed = [];
-exec('git diff --name-only', $changed, $exit);
-$assert($exit === 0, 'git diff inspection succeeds');
+exec('git diff --name-only -- ' . implode(' ', $paths), $changed, $exit);
+$assert($exit === 0, 'coordinator diff inspection succeeds');
 $untracked = [];
 exec(
-    'git ls-files --others --exclude-standard -- app/Modules/Orders tests/manual',
+    'git ls-files --others --exclude-standard -- ' . implode(' ', $paths),
     $untracked,
     $untrackedExit
 );
-$assert($untrackedExit === 0, 'git untracked inspection succeeds');
-$changed = array_values(array_unique(array_merge($changed, $untracked)));
-$allowed = $paths;
-$allowed[] = 'tests/manual/durable-retry-external-schedule-coordinator-test.php';
-$allowed[] = 'tests/manual/durable-retry-external-schedule-coordinator-infrastructure-test.php';
-$allowed[] = 'tests/manual/durable-retry-schedule-infrastructure-test.php';
-sort($changed);
-sort($allowed);
-$assert($changed === $allowed, 'exact functional allowlist');
+$assert($untrackedExit === 0, 'coordinator untracked inspection succeeds');
+$assert($changed === [] && $untracked === [], 'coordinator implementation unchanged');
 
 echo "durable retry external schedule coordinator infrastructure: {$assertions} assertions\n";
