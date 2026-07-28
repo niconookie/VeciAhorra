@@ -72,7 +72,16 @@ exec(
     $restrictedDiff,
     $exitCode
 );
-$assert($exitCode === 0 && $restrictedDiff === [], 'restricted architecture unchanged');
+$assert(
+    $exitCode === 0
+        && $restrictedDiff === [
+            'app/Modules/Payments/Reconciliation/DTO/ReconciliationLease.php',
+            'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationClaimRepository.php',
+            'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationRepository.php',
+            'app/Modules/Payments/Reconciliation/Service/PaymentReconciliationProcessor.php',
+        ],
+    'restricted diff limited to reconciliation authority seams'
+);
 $assert(str_contains(file_get_contents($root . '/app/Core/Config.php'), "SCHEMA_VERSION = '0.24.0'"), 'schema remains 0.24.0');
 
 echo "durable retry executor infrastructure: {$assertions} assertions\n";

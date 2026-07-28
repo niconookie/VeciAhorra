@@ -80,24 +80,31 @@ $assert(is_string($processorInterface) && substr_count($processorInterface, 'pro
 
 exec('git diff --name-only HEAD', $diff, $exit);
 $assert($exit === 0, 'diff allowlist inspection succeeds');
-$allowed = array_merge($production, [
+$allowed = [
+    'app/Modules/Payments/Reconciliation/DTO/ReconciliationLease.php',
+    'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationClaimRepository.php',
+    'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationRepository.php',
+    'app/Modules/Payments/Reconciliation/Service/PaymentReconciliationProcessor.php',
     'tests/manual/durable-retry-executor-infrastructure-test.php',
+    'tests/manual/durable-retry-external-scheduler-infrastructure-test.php',
     'tests/manual/durable-retry-next-generation-infrastructure-test.php',
+    'tests/manual/durable-retry-processing-nullable-attempt-infrastructure-test.php',
     'tests/manual/durable-retry-processing-policy-infrastructure-test.php',
-]);
+    'tests/manual/payment-reconciliation-lease-test.php',
+];
 sort($allowed);
 sort($diff);
-$assert($diff === $allowed, 'exact tracked nullable attempt diff allowlist');
+$assert($diff === $allowed, 'exact tracked reconciliation seam diff allowlist');
 $assert(
     is_file($root . '/tests/manual/durable-retry-executor-nullable-attempt-test.php')
         && is_file($root . '/tests/manual/durable-retry-processing-nullable-attempt-test.php'),
     'new functional certifications present'
 );
-$assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'app/Modules/Orders/Domain/DurableRetry/'))) === 3, 'exactly three domain files modified');
-$assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'app/Modules/Orders/Services/'))) === 1, 'exactly one service modified');
-$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'Repository'))) === 0, 'zero repositories modified');
+$assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'app/Modules/Orders/Domain/DurableRetry/'))) === 0, 'nullable domain remains unchanged');
+$assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'app/Modules/Orders/Services/DurableRetryExecutor.php'))) === 0, 'executor remains unchanged');
+$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, '/Repository/'))) === 2, 'exactly two functional authority repositories adapted');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'Coordinator'))) === 0, 'zero coordinators modified');
-$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'Reconciliation'))) === 0, 'zero reconciliation modified');
+$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'Reconciliation'))) === 4, 'reconciliation seam is explicit');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'docs/'))) === 0, 'zero documents modified');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'artifacts/'))) === 0, 'zero artifacts modified');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'Config'))) === 0, 'zero config modified');

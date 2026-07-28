@@ -13,13 +13,17 @@ final class ReconciliationLease
         private readonly int $reconciliationId,
         private readonly string $owner,
         private readonly int $version,
-        private readonly string $expiresAt
+        private readonly string $expiresAt,
+        private readonly ?int $confirmedAttemptNumber = null
     ) {
         if (
             $reconciliationId <= 0
             || preg_match('/^worker_[a-f0-9]{32}$/D', $owner) !== 1
             || $version <= 0
             || $expiresAt === ''
+            || ($confirmedAttemptNumber !== null
+                && ($confirmedAttemptNumber < 1
+                    || $confirmedAttemptNumber > 5))
         ) {
             throw new InvalidArgumentException('La autoridad del lease no es valida.');
         }
@@ -31,4 +35,8 @@ final class ReconciliationLease
     public function owner(): string { return $this->owner; }
     public function version(): int { return $this->version; }
     public function expiresAt(): string { return $this->expiresAt; }
+    public function confirmedAttemptNumber(): ?int
+    {
+        return $this->confirmedAttemptNumber;
+    }
 }

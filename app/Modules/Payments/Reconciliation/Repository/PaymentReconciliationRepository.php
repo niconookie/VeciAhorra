@@ -12,8 +12,9 @@ use VeciAhorra\Modules\Payments\Reconciliation\Exception\DuplicateReconciliation
 use VeciAhorra\Modules\Payments\Reconciliation\Model\PaymentReconciliation;
 use VeciAhorra\Modules\Payments\Reconciliation\Support\FinancialFingerprint;
 use VeciAhorra\Modules\Payments\Reconciliation\Support\DatabaseErrorClassifier;
+use VeciAhorra\Modules\Payments\Reconciliation\Contracts\PaymentReconciliationReadAuthorityInterface;
 
-final class PaymentReconciliationRepository extends Repository
+final class PaymentReconciliationRepository extends Repository implements PaymentReconciliationReadAuthorityInterface
 {
     private const TABLE = 'payment_reconciliations';
 

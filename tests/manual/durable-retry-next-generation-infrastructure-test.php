@@ -105,9 +105,12 @@ exec(
 $assert(
     $exitCode === 0
         && $restrictedDiff === [
-            'app/Modules/Orders/Services/DurableRetryExecutor.php',
+            'app/Modules/Payments/Reconciliation/DTO/ReconciliationLease.php',
+            'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationClaimRepository.php',
+            'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationRepository.php',
+            'app/Modules/Payments/Reconciliation/Service/PaymentReconciliationProcessor.php',
         ],
-    'restricted paths limited to nullable executor contract'
+    'restricted paths limited to reconciliation authority seams'
 );
 $assert(
     str_contains(

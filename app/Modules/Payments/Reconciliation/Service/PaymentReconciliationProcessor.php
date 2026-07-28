@@ -7,6 +7,7 @@ namespace VeciAhorra\Modules\Payments\Reconciliation\Service;
 use InvalidArgumentException;
 use Throwable;
 use VeciAhorra\Modules\Payments\Reconciliation\Contracts\PaymentCompletionHandlerInterface;
+use VeciAhorra\Modules\Payments\Reconciliation\Contracts\PaymentReconciliationAttemptProcessorInterface;
 use VeciAhorra\Modules\Payments\Reconciliation\Contracts\PaymentReconciliationTechnicalEvaluatorInterface;
 use VeciAhorra\Modules\Payments\Reconciliation\Contracts\ReconciliationClockInterface;
 use VeciAhorra\Modules\Payments\Reconciliation\DTO\PaymentReconciliationProcessingResult;
@@ -21,7 +22,7 @@ use VeciAhorra\Modules\Payments\Reconciliation\Repository\ValidatedFinancialResu
 use VeciAhorra\Modules\Payments\Reconciliation\Support\SystemReconciliationClock;
 
 /** Coordinates durable validation, an injected completion effect and final CAS. */
-final class PaymentReconciliationProcessor
+final class PaymentReconciliationProcessor implements PaymentReconciliationAttemptProcessorInterface
 {
     public function __construct(
         private readonly PaymentReconciliationClaimRepository $claims = new PaymentReconciliationClaimRepository(),

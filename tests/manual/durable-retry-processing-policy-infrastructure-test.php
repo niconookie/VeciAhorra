@@ -101,10 +101,6 @@ exec(
     $diffExit
 );
 $assert($diffExit === 0, 'tracked policy diff inspection succeeds');
-$assert($policyDiff === [
-    'app/Modules/Orders/Domain/DurableRetry/DurableRetryProcessingFailure.php',
-    'app/Modules/Orders/Domain/DurableRetry/DurableRetryProcessingPolicy.php',
-    'app/Modules/Orders/Domain/DurableRetry/DurableRetryProcessingResult.php',
-], 'certified policy diff is limited to nullable attempt contract');
+$assert($policyDiff === [], 'certified processing policy remains unchanged');
 
 echo "durable retry processing policy infrastructure: {$assertions} assertions\n";
