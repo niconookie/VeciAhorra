@@ -12,7 +12,7 @@ final class DurableRetryProcessingResult
 
     private function __construct(
         private readonly string $classification,
-        private readonly int $confirmedAttemptNumber,
+        private readonly ?int $confirmedAttemptNumber,
         private readonly ?DurableRetryProcessingFailure $failure
     ) {
         if ($classification === self::SUCCEEDED) {
@@ -25,8 +25,15 @@ final class DurableRetryProcessingResult
         ) {
             throw new InvalidArgumentException('Invalid failed processing result.');
         }
-        if ($confirmedAttemptNumber < 1 || $confirmedAttemptNumber > 5) {
+        if ($confirmedAttemptNumber !== null
+            && ($confirmedAttemptNumber < 1 || $confirmedAttemptNumber > 5)
+        ) {
             throw new InvalidArgumentException('Invalid confirmed attempt number.');
+        }
+        if ($confirmedAttemptNumber === null
+            && $classification !== DurableRetryProcessingFailure::OUTCOME_UNCERTAIN
+        ) {
+            throw new InvalidArgumentException('Missing confirmed attempt number.');
         }
     }
 
@@ -44,14 +51,29 @@ final class DurableRetryProcessingResult
         );
     }
 
+    public static function outcomeUncertain(
+        ?int $confirmedAttemptNumber = null
+    ): self {
+        return self::failed(new DurableRetryProcessingFailure(
+            DurableRetryProcessingFailure::OUTCOME_UNCERTAIN,
+            DurableRetryProcessingFailure::TECHNICAL_OUTCOME_UNCERTAIN,
+            $confirmedAttemptNumber
+        ));
+    }
+
     public function classification(): string
     {
         return $this->classification;
     }
 
-    public function confirmedAttemptNumber(): int
+    public function confirmedAttemptNumber(): ?int
     {
         return $this->confirmedAttemptNumber;
+    }
+
+    public function hasConfirmedAttemptNumber(): bool
+    {
+        return $this->confirmedAttemptNumber !== null;
     }
 
     public function failure(): ?DurableRetryProcessingFailure

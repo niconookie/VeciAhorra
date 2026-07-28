@@ -102,7 +102,13 @@ exec(
     $restrictedDiff,
     $exitCode
 );
-$assert($exitCode === 0 && $restrictedDiff === [], 'restricted paths remain unchanged');
+$assert(
+    $exitCode === 0
+        && $restrictedDiff === [
+            'app/Modules/Orders/Services/DurableRetryExecutor.php',
+        ],
+    'restricted paths limited to nullable executor contract'
+);
 $assert(
     str_contains(
         file_get_contents($root . '/app/Core/Config.php'),

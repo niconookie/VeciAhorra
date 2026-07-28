@@ -32,7 +32,11 @@ final class DurableRetryProcessingPolicy implements DurableRetryProcessingPolicy
         $confirmedAttempt = $failure->confirmedAttemptNumber();
         if ($persistedAttempt < 0
             || $persistedAttempt > 4
-            || $confirmedAttempt !== $persistedAttempt + 1
+            || ($confirmedAttempt === null
+                && $failure->classification()
+                    !== DurableRetryProcessingFailure::OUTCOME_UNCERTAIN)
+            || ($confirmedAttempt !== null
+                && $confirmedAttempt !== $persistedAttempt + 1)
         ) {
             throw new InvalidArgumentException('Incompatible confirmed attempt.');
         }
@@ -45,7 +49,14 @@ final class DurableRetryProcessingPolicy implements DurableRetryProcessingPolicy
             DurableRetryProcessingFailure::OUTCOME_UNCERTAIN =>
                 DurableRetryNextAttemptDecision::uncertain(),
             DurableRetryProcessingFailure::RETRYABLE_FAILURE =>
-                $this->retryable($claimed, $confirmedAttempt, $decidedAt),
+                $this->retryable(
+                    $claimed,
+                    $confirmedAttempt
+                        ?? throw new InvalidArgumentException(
+                            'Missing confirmed retryable attempt.'
+                        ),
+                    $decidedAt
+                ),
             default => throw new InvalidArgumentException(
                 'Invalid durable retry processing classification.'
             ),

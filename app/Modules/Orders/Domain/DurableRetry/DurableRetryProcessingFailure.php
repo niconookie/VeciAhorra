@@ -25,7 +25,7 @@ final class DurableRetryProcessingFailure
     public function __construct(
         private readonly string $classification,
         private readonly string $failureCode,
-        private readonly int $confirmedAttemptNumber
+        private readonly ?int $confirmedAttemptNumber
     ) {
         if (! isset(self::CODE_BY_CLASSIFICATION[$classification])
             || ! in_array(
@@ -33,8 +33,10 @@ final class DurableRetryProcessingFailure
                 self::CODE_BY_CLASSIFICATION[$classification],
                 true
             )
-            || $confirmedAttemptNumber < 1
-            || $confirmedAttemptNumber > 5
+            || ($confirmedAttemptNumber !== null
+                && ($confirmedAttemptNumber < 1 || $confirmedAttemptNumber > 5))
+            || ($confirmedAttemptNumber === null
+                && $classification !== self::OUTCOME_UNCERTAIN)
         ) {
             throw new InvalidArgumentException('Invalid durable retry processing failure.');
         }
@@ -60,8 +62,13 @@ final class DurableRetryProcessingFailure
         return $this->failureCode;
     }
 
-    public function confirmedAttemptNumber(): int
+    public function confirmedAttemptNumber(): ?int
     {
         return $this->confirmedAttemptNumber;
+    }
+
+    public function hasConfirmedAttemptNumber(): bool
+    {
+        return $this->confirmedAttemptNumber !== null;
     }
 }

@@ -123,15 +123,15 @@ final class DurableRetryExecutor implements DurableRetryExecutorInterface
         try {
             $processing = $this->processor->process($context);
         } catch (Throwable) {
-            $processing = DurableRetryProcessingResult::failed(
-                new DurableRetryProcessingFailure(
-                    DurableRetryProcessingFailure::OUTCOME_UNCERTAIN,
-                    DurableRetryProcessingFailure::TECHNICAL_OUTCOME_UNCERTAIN,
-                    $expectedAttempt
-                )
-            );
+            $processing = DurableRetryProcessingResult::outcomeUncertain();
         }
-        if ($processing->confirmedAttemptNumber() !== $expectedAttempt) {
+        $confirmedAttempt = $processing->confirmedAttemptNumber();
+        if (($processing->classification()
+                !== DurableRetryProcessingFailure::OUTCOME_UNCERTAIN
+                && $confirmedAttempt === null)
+            || ($confirmedAttempt !== null
+                && $confirmedAttempt !== $expectedAttempt)
+        ) {
             return $this->result(DurableRetryExecutionResult::PROCESSING_CONTRACT_ERROR, $scheduleId, $generation, processed: true, intervention: true);
         }
 

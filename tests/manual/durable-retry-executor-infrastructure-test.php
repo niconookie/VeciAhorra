@@ -55,7 +55,11 @@ $assert(
 $assert(str_contains($service, 'supersedeAndCreateNextGeneration($claimed, $decision, $decidedAt)'), 'certified succession only');
 $assert(str_contains($service, 'DurableRetryExternalScheduleCatalog::hooks()'), 'closed hook allowlist');
 $assert(str_contains($service, 'hookForStage($snapshot->stage())'), 'hook derives durable stage');
-$assert(str_contains($service, '$processing->confirmedAttemptNumber() !== $expectedAttempt'), 'confirmed attempt validated');
+$assert(
+    str_contains($service, '$confirmedAttempt !== $expectedAttempt')
+        && str_contains($service, '$processing->confirmedAttemptNumber()'),
+    'confirmed attempt validated'
+);
 
 $restricted = [
     'app/Core/Config.php', 'app/Database', 'app/Modules/Orders/Repositories',
