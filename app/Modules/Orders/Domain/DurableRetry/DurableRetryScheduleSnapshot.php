@@ -222,11 +222,9 @@ final class DurableRetryScheduleSnapshot
             ) {
                 throw new InvalidArgumentException('Dispatching cannot be externally correlated.');
             }
-        } elseif (in_array(
-            $status,
-            [DurableRetryStatus::SUPERSEDED, DurableRetryStatus::CANCELLED],
-            true
-        ) && $times['claimed_at'] !== null) {
+        } elseif ($status === DurableRetryStatus::CANCELLED
+            && $times['claimed_at'] !== null
+        ) {
             throw new InvalidArgumentException('Claim timestamp prohibited for status.');
         }
     }

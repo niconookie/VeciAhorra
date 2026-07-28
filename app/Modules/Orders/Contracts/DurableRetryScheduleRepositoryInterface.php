@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Orders\Contracts;
 
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryPersistenceResult;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryNextAttemptDecision;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryNextGenerationPersistenceResult;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryScheduleSnapshot;
 
 interface DurableRetryScheduleRepositoryInterface
@@ -31,4 +33,10 @@ interface DurableRetryScheduleRepositoryInterface
         DurableRetryScheduleSnapshot $expected,
         DurableRetryScheduleSnapshot $target
     ): DurableRetryPersistenceResult;
+
+    public function supersedeAndCreateNextGeneration(
+        DurableRetryScheduleSnapshot $claimed,
+        DurableRetryNextAttemptDecision $decision,
+        string $supersededAtUtc
+    ): DurableRetryNextGenerationPersistenceResult;
 }

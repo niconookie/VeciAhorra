@@ -39,7 +39,7 @@ foreach ([
     $assert(! str_contains($source, $forbidden), "repository excludes {$forbidden}");
 }
 $assert(
-    substr_count($source, '->prepare(') === 3,
+    substr_count($source, '->prepare(') === 5,
     'all repository statement families use prepare'
 );
 $assert(

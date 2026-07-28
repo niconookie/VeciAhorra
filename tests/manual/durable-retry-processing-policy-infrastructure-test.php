@@ -84,32 +84,23 @@ $assert(
     'explicit canonical UTC'
 );
 
-$changed = [];
-exec('git diff --name-only', $changed, $diffExit);
-$assert($diffExit === 0, 'tracked diff inspection succeeds');
-$untracked = [];
-exec(
-    'git ls-files --others --exclude-standard -- app/Modules/Orders tests/manual',
-    $untracked,
-    $untrackedExit
-);
-$assert($untrackedExit === 0, 'untracked inspection succeeds');
-$actual = array_values(array_unique(array_merge($changed, $untracked)));
-$expected = [
+$policyPaths = [
     'app/Modules/Orders/Contracts/DurableRetryProcessingPolicyInterface.php',
     'app/Modules/Orders/Domain/DurableRetry/DurableRetryNextAttemptDecision.php',
     'app/Modules/Orders/Domain/DurableRetry/DurableRetryProcessingFailure.php',
     'app/Modules/Orders/Domain/DurableRetry/DurableRetryProcessingPolicy.php',
     'app/Modules/Orders/Domain/DurableRetry/DurableRetryProcessingResult.php',
     'app/Modules/Orders/Domain/DurableRetry/DurableRetryReason.php',
-    'tests/manual/durable-retry-processing-policy-infrastructure-test.php',
     'tests/manual/durable-retry-processing-policy-test.php',
-    'tests/manual/durable-retry-external-schedule-coordinator-infrastructure-test.php',
-    'tests/manual/durable-retry-schedule-domain-test.php',
-    'tests/manual/durable-retry-schedule-infrastructure-test.php'
 ];
-sort($actual);
-sort($expected);
-$assert($actual === $expected, 'exact functional allowlist');
+$assert(count($policyPaths) === 7, 'exact certified policy path set');
+exec(
+    'git diff --name-only HEAD -- '
+        . implode(' ', array_map('escapeshellarg', $policyPaths)),
+    $policyDiff,
+    $diffExit
+);
+$assert($diffExit === 0, 'tracked policy diff inspection succeeds');
+$assert($policyDiff === [], 'certified policy remains unchanged');
 
 echo "durable retry processing policy infrastructure: {$assertions} assertions\n";

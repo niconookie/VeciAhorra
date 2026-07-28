@@ -19,6 +19,7 @@ $expectedDomainFiles = [
     'DurableRetryExternalScheduleCatalog.php',
     'DurableRetryExternalScheduleResult.php',
     'DurableRetryNextAttemptDecision.php',
+    'DurableRetryNextGenerationPersistenceResult.php',
     'DurableRetryPersistenceResult.php',
     'DurableRetryProcessingFailure.php',
     'DurableRetryProcessingPolicy.php',
@@ -32,7 +33,7 @@ $actualDomainFiles = array_map('basename', $files);
 sort($actualDomainFiles);
 $assert(
     $actualDomainFiles === $expectedDomainFiles,
-    'twelve focused pure domain contracts'
+    'thirteen focused pure domain contracts'
 );
 foreach ([
     '$wpdb',

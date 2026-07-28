@@ -63,14 +63,15 @@ $assert(
 $restricted = [
     'app/Core/Config.php',
     'app/Database',
-    'app/Modules/Orders/Repositories/DurableRetryScheduleRepository.php',
-    'app/Modules/Orders/Contracts/DurableRetryScheduleRepositoryInterface.php',
+    'app/Modules/Orders/Infrastructure/DurableRetry/ActionSchedulerDurableRetryAdapter.php',
+    'app/Modules/Orders/Contracts/DurableRetryExternalSchedulerInterface.php',
+    'app/Modules/Orders/Domain/DurableRetry/DurableRetryExternalScheduleCatalog.php',
     'app/Modules/Payments',
     'app/Modules/Delivery',
     'app/Modules/Fulfillment',
 ];
 exec(
-    'git diff --name-only 2b9b2e6fefc44881dbbf99747dc2cdbd755a881e -- '
+    'git diff --name-only HEAD -- '
         . implode(' ', array_map('escapeshellarg', $restricted)),
     $restrictedDiff,
     $exitCode

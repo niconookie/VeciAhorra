@@ -10,6 +10,8 @@ require_once __DIR__ . '/../../app/Modules/Orders/Domain/DurableRetry/DurableRet
 require_once __DIR__ . '/../../app/Modules/Orders/Domain/DurableRetry/DurableRetryReason.php';
 require_once __DIR__ . '/../../app/Modules/Orders/Domain/DurableRetry/DurableRetryScheduleSnapshot.php';
 require_once __DIR__ . '/../../app/Modules/Orders/Domain/DurableRetry/DurableRetryPersistenceResult.php';
+require_once __DIR__ . '/../../app/Modules/Orders/Domain/DurableRetry/DurableRetryNextAttemptDecision.php';
+require_once __DIR__ . '/../../app/Modules/Orders/Domain/DurableRetry/DurableRetryNextGenerationPersistenceResult.php';
 require_once __DIR__ . '/../../app/Modules/Orders/Domain/DurableRetry/DurableRetryExternalScheduleResult.php';
 require_once __DIR__ . '/../../app/Modules/Orders/Domain/DurableRetry/DurableRetryExternalScheduleCatalog.php';
 require_once __DIR__ . '/../../app/Modules/Orders/Domain/DurableRetry/DurableRetryCoordinationResult.php';
@@ -21,6 +23,8 @@ use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryCoordinationResult
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryExternalScheduleCatalog as Catalog;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryExternalScheduleResult as External;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryPersistenceResult as Persistence;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryNextAttemptDecision;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryNextGenerationPersistenceResult;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryReason;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryScheduleSnapshot;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryStage;
@@ -82,6 +86,14 @@ final class CoordinatorRepositoryDouble implements DurableRetryScheduleRepositor
         DurableRetryScheduleSnapshot $target
     ): Persistence {
         throw new LogicException('Unexpected transition.');
+    }
+
+    public function supersedeAndCreateNextGeneration(
+        DurableRetryScheduleSnapshot $claimed,
+        DurableRetryNextAttemptDecision $decision,
+        string $supersededAtUtc
+    ): DurableRetryNextGenerationPersistenceResult {
+        throw new LogicException('Unexpected next generation persistence.');
     }
 }
 
