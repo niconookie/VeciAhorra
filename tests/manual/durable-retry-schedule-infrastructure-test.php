@@ -15,6 +15,7 @@ $assert = static function (bool $condition, string $message) use (&$assertions):
 };
 
 $expectedDomainFiles = [
+    'DurableRetryCoordinationResult.php',
     'DurableRetryExternalScheduleCatalog.php',
     'DurableRetryExternalScheduleResult.php',
     'DurableRetryPersistenceResult.php',
@@ -27,7 +28,7 @@ $actualDomainFiles = array_map('basename', $files);
 sort($actualDomainFiles);
 $assert(
     $actualDomainFiles === $expectedDomainFiles,
-    'seven focused pure domain contracts'
+    'eight focused pure domain contracts'
 );
 foreach ([
     '$wpdb',

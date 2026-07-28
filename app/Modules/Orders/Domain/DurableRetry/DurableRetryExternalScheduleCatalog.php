@@ -23,9 +23,25 @@ final class DurableRetryExternalScheduleCatalog
         self::FULFILLMENT_COMPLETION,
     ];
 
+    private const HOOK_BY_STAGE = [
+        DurableRetryStage::RECONCILIATION => self::RECONCILIATION,
+        DurableRetryStage::BUSINESS_COMPLETION => self::BUSINESS_COMPLETION,
+        DurableRetryStage::DELIVERY_COMPLETION => self::DELIVERY_COMPLETION,
+        DurableRetryStage::FULFILLMENT_COMPLETION => self::FULFILLMENT_COMPLETION,
+    ];
+
     public static function hooks(): array
     {
         return self::HOOKS;
+    }
+
+    public static function hookForStage(string $stage): string
+    {
+        if (! isset(self::HOOK_BY_STAGE[$stage])) {
+            throw new InvalidArgumentException('Invalid durable retry stage.');
+        }
+
+        return self::HOOK_BY_STAGE[$stage];
     }
 
     public static function normalizeIdentity(
