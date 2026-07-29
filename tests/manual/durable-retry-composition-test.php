@@ -38,6 +38,7 @@ use VeciAhorra\Modules\Orders\Services\DurableRetryDeliveryCompletionProcessor;
 use VeciAhorra\Modules\Orders\Services\DurableRetryExecutor;
 use VeciAhorra\Modules\Orders\Services\DurableRetryFulfillmentProcessor;
 use VeciAhorra\Modules\Orders\Services\DurableRetryReconciliationProcessor;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionCallback;
 
 $assertions = 0;
 $assert = static function (bool $condition, string $message) use (&$assertions): void {
@@ -60,6 +61,10 @@ $executor = $application->durableRetryExecutor();
 $assert($executor instanceof DurableRetryExecutor, 'composition exposes executor');
 $assert($database->queries === 0, 'graph construction performs zero SQL');
 $assert($application->durableRetryExecutor() === $executor, 'executor is shared in one graph');
+$callback = $application->durableRetryCallback();
+$assert($callback instanceof DurableRetryActionCallback, 'composition exposes callback');
+$assert($application->durableRetryCallback() === $callback, 'callback is shared in one graph');
+$assert($property($callback, 'executor') === $executor, 'callback receives same executor');
 
 $resolver = $application->container()->make(
     DurableRetryStageProcessorResolverInterface::class
@@ -146,10 +151,13 @@ $otherDatabase = new wpdb();
 $GLOBALS['wpdb'] = $otherDatabase;
 $otherApplication = new Application();
 $otherExecutor = $otherApplication->durableRetryExecutor();
+$otherCallback = $otherApplication->durableRetryCallback();
 $otherResolver = $otherApplication->container()->make(
     DurableRetryStageProcessorResolverInterface::class
 );
 $assert($otherExecutor !== $executor, 'independent applications have independent executors');
+$assert($otherCallback !== $callback, 'independent applications have independent callbacks');
+$assert($property($otherCallback, 'executor') === $otherExecutor, 'other callback receives other executor');
 $assert($otherResolver !== $resolver, 'independent applications have independent registries');
 $assert(
     $otherResolver->resolve(DurableRetryStage::RECONCILIATION)

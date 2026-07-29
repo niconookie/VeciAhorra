@@ -69,6 +69,7 @@ use VeciAhorra\Modules\Orders\Contracts\DurableRetryScheduleRepositoryInterface;
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryStageProcessorResolverInterface;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryProcessingPolicy;
 use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\ActionSchedulerDurableRetryAdapter;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionCallback;
 use VeciAhorra\Modules\Orders\Repositories\DurableRetryScheduleRepository;
 use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
 use VeciAhorra\Modules\Orders\Services\DurableRetryBusinessCompletionProcessor;
@@ -286,6 +287,13 @@ final class Application
                 ),
                 $utcNow
             )
+        );
+        $this->container->singleton(
+            DurableRetryActionCallback::class,
+            fn (): DurableRetryActionCallback =>
+                new DurableRetryActionCallback(
+                    $this->container->make(DurableRetryExecutor::class)
+                )
         );
     }
 
@@ -516,5 +524,10 @@ final class Application
     public function durableRetryExecutor(): DurableRetryExecutor
     {
         return $this->container->make(DurableRetryExecutor::class);
+    }
+
+    public function durableRetryCallback(): DurableRetryActionCallback
+    {
+        return $this->container->make(DurableRetryActionCallback::class);
     }
 }

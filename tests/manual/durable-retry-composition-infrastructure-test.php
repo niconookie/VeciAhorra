@@ -27,6 +27,8 @@ $assert(str_contains($application, 'public function durableRetryExecutor(): Dura
 $assert(substr_count($application, 'new DurableRetryProcessorRegistry([') === 1, 'one registry construction');
 $assert(substr_count($application, 'DurableRetryStageProcessorResolverInterface::class') === 2, 'resolver binding and injection');
 $assert(substr_count($application, 'new DurableRetryExecutor(') === 1, 'one executor construction');
+$assert(substr_count($application, 'new DurableRetryActionCallback(') === 1, 'one callback construction');
+$assert(str_contains($application, 'public function durableRetryCallback(): DurableRetryActionCallback'), 'minimal callback API');
 
 foreach ([
     'new DurableRetryReconciliationProcessor(',
