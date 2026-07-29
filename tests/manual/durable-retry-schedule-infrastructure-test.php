@@ -15,11 +15,21 @@ $assert = static function (bool $condition, string $message) use (&$assertions):
 };
 
 $expectedDomainFiles = [
+    'DurableRetryAuthorityIdentity.php',
+    'DurableRetryAuthorityIdentityCollection.php',
     'DurableRetryCoordinationResult.php',
     'DurableRetryExecutionContext.php',
     'DurableRetryExecutionResult.php',
     'DurableRetryExternalScheduleCatalog.php',
     'DurableRetryExternalScheduleResult.php',
+    'DurableRetryGenerationIdentity.php',
+    'DurableRetryIndeterminateReason.php',
+    'DurableRetryInitialTransferReason.php',
+    'DurableRetryInitialTransferRequest.php',
+    'DurableRetryInitialTransferResult.php',
+    'DurableRetryLegacyAuthorityBatchResult.php',
+    'DurableRetryLegacyAuthorityEntry.php',
+    'DurableRetryLegacyAuthorityResult.php',
     'DurableRetryNextAttemptDecision.php',
     'DurableRetryNextGenerationPersistenceResult.php',
     'DurableRetryPersistenceResult.php',
@@ -35,7 +45,7 @@ $actualDomainFiles = array_map('basename', $files);
 sort($actualDomainFiles);
 $assert(
     $actualDomainFiles === $expectedDomainFiles,
-    'fifteen focused pure domain contracts'
+    'twenty-five focused pure domain contracts'
 );
 foreach ([
     '$wpdb',
