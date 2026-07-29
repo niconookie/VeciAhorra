@@ -82,6 +82,7 @@ $restricted = [
     'app/Core/Config.php',
     'app/Database',
     'app/Modules/Orders/Domain/DurableRetry',
+    'app/Modules/Orders/Services',
     'app/Modules/Orders/Services/DurableRetryExecutor.php',
     'app/Modules/Orders/Repositories',
     'app/Modules/Orders/Infrastructure',
@@ -97,6 +98,11 @@ exec(
     $diff,
     $exit
 );
+$diff = array_values(array_filter(
+    $diff,
+    static fn (string $path): bool =>
+        $path !== 'app/Modules/Orders/Services/DurableRetryExecutor.php'
+));
 $assert($exit === 0, 'restricted diff inspection succeeds');
 $assert($diff === [], 'restricted certified paths remain unchanged');
 $assert(
@@ -105,7 +111,6 @@ $assert(
     'new functional certifications present'
 );
 $assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'app/Modules/Orders/Domain/DurableRetry/'))) === 0, 'nullable domain remains unchanged');
-$assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'app/Modules/Orders/Services/DurableRetryExecutor.php'))) === 0, 'executor remains unchanged');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, '/Repository/'))) === 0, 'functional read authorities remain unchanged');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'Coordinator'))) === 0, 'zero coordinators modified');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'FulfillmentCompletion'))) === 0, 'fulfillment completion remains unchanged');

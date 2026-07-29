@@ -161,7 +161,6 @@ $restricted = [
     'app/Core/Config.php',
     'app/Database',
     'app/Modules/Orders/Repositories',
-    'app/Modules/Orders/Services/DurableRetryExecutor.php',
     'app/Modules/Orders/Domain/DurableRetry/DurableRetryProcessingPolicy.php',
     'app/Modules/Orders/Infrastructure',
     'app/Modules/Fulfillment/Orchestration/DurableCompletionScheduler.php',

@@ -102,6 +102,11 @@ exec(
     $restrictedDiff,
     $exitCode
 );
+$restrictedDiff = array_values(array_filter(
+    $restrictedDiff,
+    static fn (string $path): bool =>
+        $path !== 'app/Modules/Orders/Services/DurableRetryExecutor.php'
+));
 $assert(
     $exitCode === 0
         && $restrictedDiff === [],

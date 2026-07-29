@@ -9,6 +9,8 @@ use VeciAhorra\Modules\Fulfillment\Completion\Contracts\FulfillmentCompletionRea
 use VeciAhorra\Modules\Fulfillment\Completion\DTO\FulfillmentCompletionResult;
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryExternalScheduleCoordinatorInterface;
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryScheduleRepositoryInterface;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryStageProcessorInterface;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryStageProcessorResolverInterface;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\{DurableRetryCoordinationResult,DurableRetryExecutionResult,DurableRetryNextAttemptDecision,DurableRetryNextGenerationPersistenceResult,DurableRetryPersistenceResult,DurableRetryProcessingPolicy,DurableRetryScheduleSnapshot};
 use VeciAhorra\Modules\Orders\Services\{DurableRetryExecutor,DurableRetryFulfillmentProcessor};
 
@@ -44,7 +46,12 @@ $run=static function(int$previous,FulfillmentCompletionResult$outcome,?array$row
  $a=new FIAttempt();$a->result=$outcome;$r=new FIRead();$r->row=$row;$repo=new FIRepo();$repo->readQueue[]=$persist(DurableRetryPersistenceResult::EXISTING_COMPATIBLE,$scheduled);$repo->transitionQueue[]=$persist(DurableRetryPersistenceResult::APPLIED,$claimed);
  if($next){$repo->successionQueue[]=$next;}else{$repo->transitionQueue[]=$persist(DurableRetryPersistenceResult::APPLIED,$closed);}
  $c=new FICoordinator();$times=['2030-01-01 00:01:00','2030-01-01 00:02:00'];$clock=static function()use(&$times){return array_shift($times);};
- $executor=new DurableRetryExecutor($repo,new DurableRetryProcessingPolicy(),$c,new DurableRetryFulfillmentProcessor($a,$r),$clock(...));
+ $processor=new DurableRetryFulfillmentProcessor($a,$r);
+ $resolver=new class($processor) implements DurableRetryStageProcessorResolverInterface{
+  public function __construct(private readonly DurableRetryStageProcessorInterface $processor){}
+  public function resolve(string $stage):DurableRetryStageProcessorInterface{if($stage!=='fulfillment_completion'){throw new LogicException('Unexpected stage.');}return $this->processor;}
+ };
+ $executor=new DurableRetryExecutor($repo,new DurableRetryProcessingPolicy(),$c,$resolver,$clock(...));
  return[$executor->execute('veciahorra_durable_retry_fulfillment_completion',70,1),$repo,$a,$r,$c,$executor];
 };
 $row=static fn(string$s,int$a,?string$r)=>['id'=>90,'business_completion_id'=>80,'completion_status'=>$s,'attempt_count'=>$a,'last_result_code'=>$r,'completed_at'=>$s==='completed'?'2030-01-01 00:02:00':null];

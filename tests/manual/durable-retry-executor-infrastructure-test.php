@@ -6,6 +6,7 @@ $root = dirname(__DIR__, 2);
 $paths = [
     'app/Modules/Orders/Contracts/DurableRetryExecutorInterface.php',
     'app/Modules/Orders/Contracts/DurableRetryStageProcessorInterface.php',
+    'app/Modules/Orders/Contracts/DurableRetryStageProcessorResolverInterface.php',
     'app/Modules/Orders/Domain/DurableRetry/DurableRetryExecutionContext.php',
     'app/Modules/Orders/Domain/DurableRetry/DurableRetryExecutionResult.php',
     'app/Modules/Orders/Services/DurableRetryExecutor.php',
@@ -29,7 +30,7 @@ foreach ([
     'DurableRetryScheduleRepositoryInterface',
     'DurableRetryProcessingPolicyInterface',
     'DurableRetryExternalScheduleCoordinatorInterface',
-    'DurableRetryStageProcessorInterface',
+    'DurableRetryStageProcessorResolverInterface',
     'Closure $utcNow',
 ] as $dependency) { $assert(str_contains($service, $dependency), "explicit dependency {$dependency}"); }
 foreach ([
@@ -41,10 +42,16 @@ foreach ([
     'SELECT ', 'INSERT ', 'UPDATE ', 'DELETE ', 'error_log(', 'trigger_error(',
     'Modules\\Payments', 'Modules\\Delivery', 'Modules\\Fulfillment',
 ] as $forbidden) { $assert(! str_contains($source, $forbidden), "excludes {$forbidden}"); }
-$assert(substr_count($service, '$this->processor->process($context)') === 1, 'one processor call site');
+$assert(substr_count($service, '$this->processorResolver->resolve($snapshot->stage())') === 1, 'one resolver call site');
+$assert(substr_count($service, '$processor->process($context)') === 1, 'one processor call site');
+$resolvePosition = strpos($service, '$this->processorResolver->resolve($snapshot->stage())');
 $claimPosition = strpos($service, '$this->repository->transition($snapshot, $claimed)');
-$processPosition = strpos($service, '$this->processor->process($context)');
-$assert($claimPosition !== false && $claimPosition < $processPosition, 'claim precedes processing');
+$processPosition = strpos($service, '$processor->process($context)');
+$assert($resolvePosition !== false && $resolvePosition < $claimPosition && $claimPosition < $processPosition, 'resolve precedes claim and processing');
+$assert(! str_contains($service, 'DurableRetryProcessorRegistry'), 'executor excludes concrete registry');
+foreach (['DurableRetryReconciliationProcessor', 'DurableRetryBusinessCompletionProcessor', 'DurableRetryDeliveryCompletionProcessor', 'DurableRetryFulfillmentProcessor', 'ReflectionClass', 'switch (', 'sleep(', 'usleep('] as $forbiddenDispatch) {
+    $assert(! str_contains($service, $forbiddenDispatch), "executor excludes {$forbiddenDispatch}");
+}
 $assert(substr_count($service, '$this->policy->decideNextAttempt(') === 1, 'one policy call site');
 $assert(substr_count($service, '$this->coordinator->coordinate(') === 1, 'one coordinator call site');
 $assert(str_contains($service, '$successor->id()') && str_contains($service, '$successor->generation()'), 'coordinates successor identity');

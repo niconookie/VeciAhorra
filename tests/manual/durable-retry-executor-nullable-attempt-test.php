@@ -7,6 +7,7 @@ require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryExternalScheduleCoordinatorInterface;
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryScheduleRepositoryInterface;
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryStageProcessorInterface;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryStageProcessorResolverInterface;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryCoordinationResult;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryExecutionContext;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryExecutionResult;
@@ -134,7 +135,14 @@ $execute = static function (
         $repository,
         new DurableRetryProcessingPolicy(),
         $coordinator,
-        $processor,
+        new class($processor) implements DurableRetryStageProcessorResolverInterface {
+            public function __construct(private readonly DurableRetryStageProcessorInterface $processor) {}
+            public function resolve(string $stage): DurableRetryStageProcessorInterface
+            {
+                if ($stage !== 'business_completion') { throw new LogicException('Unexpected stage.'); }
+                return $this->processor;
+            }
+        },
         $clock(...)
     );
 

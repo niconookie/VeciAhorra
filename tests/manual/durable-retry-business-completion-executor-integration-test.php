@@ -6,6 +6,8 @@ require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
 
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryExternalScheduleCoordinatorInterface;
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryScheduleRepositoryInterface;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryStageProcessorInterface;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryStageProcessorResolverInterface;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryCoordinationResult;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryExecutionResult;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryNextAttemptDecision;
@@ -172,7 +174,18 @@ $run = static function (
     $times = ['2030-01-01 00:01:00', '2030-01-01 00:02:00'];
     $clock = static function () use (&$times): string { return array_shift($times); };
     $executor = new DurableRetryExecutor(
-        $repository, new DurableRetryProcessingPolicy(), $coordinator, $processor, $clock(...)
+        $repository,
+        new DurableRetryProcessingPolicy(),
+        $coordinator,
+        new class($processor) implements DurableRetryStageProcessorResolverInterface {
+            public function __construct(private readonly DurableRetryStageProcessorInterface $processor) {}
+            public function resolve(string $stage): DurableRetryStageProcessorInterface
+            {
+                if ($stage !== 'business_completion') { throw new LogicException('Unexpected stage.'); }
+                return $this->processor;
+            }
+        },
+        $clock(...)
     );
     $execution = $executor->execute('veciahorra_durable_retry_business_completion', 70, 1);
     return [$execution, $repository, $attempts, $reads, $coordinator, $executor];

@@ -10,7 +10,7 @@ use VeciAhorra\Modules\Orders\Contracts\DurableRetryExecutorInterface;
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryExternalScheduleCoordinatorInterface;
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryProcessingPolicyInterface;
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryScheduleRepositoryInterface;
-use VeciAhorra\Modules\Orders\Contracts\DurableRetryStageProcessorInterface;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryStageProcessorResolverInterface;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryExecutionContext;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryExecutionResult;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryExternalScheduleCatalog;
@@ -29,7 +29,7 @@ final class DurableRetryExecutor implements DurableRetryExecutorInterface
         private readonly DurableRetryScheduleRepositoryInterface $repository,
         private readonly DurableRetryProcessingPolicyInterface $policy,
         private readonly DurableRetryExternalScheduleCoordinatorInterface $coordinator,
-        private readonly DurableRetryStageProcessorInterface $processor,
+        private readonly DurableRetryStageProcessorResolverInterface $processorResolver,
         private readonly Closure $utcNow
     ) {
     }
@@ -73,14 +73,16 @@ final class DurableRetryExecutor implements DurableRetryExecutorInterface
         if (DurableRetryExternalScheduleCatalog::hookForStage($snapshot->stage()) !== $hook) {
             return $this->result(DurableRetryExecutionResult::HOOK_MISMATCH, $scheduleId, $generation);
         }
-        if ($this->processor->stage() !== $snapshot->stage()) {
-            return $this->result(DurableRetryExecutionResult::PROCESSOR_MISMATCH, $scheduleId, $generation);
-        }
         if ($snapshot->status() !== DurableRetryStatus::SCHEDULED) {
             return $this->stateResult($snapshot, $scheduleId, $generation);
         }
         if ($snapshot->toArray()['scheduled_action_id'] === null) {
             return $this->result(DurableRetryExecutionResult::DURABLE_INCONSISTENCY, $scheduleId, $generation, intervention: true);
+        }
+
+        $processor = $this->processorResolver->resolve($snapshot->stage());
+        if ($processor->stage() !== $snapshot->stage()) {
+            return $this->result(DurableRetryExecutionResult::PROCESSOR_MISMATCH, $scheduleId, $generation);
         }
 
         $claimedAt = $this->now();
@@ -121,7 +123,7 @@ final class DurableRetryExecutor implements DurableRetryExecutorInterface
         );
 
         try {
-            $processing = $this->processor->process($context);
+            $processing = $processor->process($context);
         } catch (Throwable) {
             $processing = DurableRetryProcessingResult::outcomeUncertain();
         }
