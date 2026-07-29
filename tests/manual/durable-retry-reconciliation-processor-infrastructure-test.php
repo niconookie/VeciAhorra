@@ -123,10 +123,9 @@ $assert(
     'single reconciliation stage implementation'
 );
 $assert(
-    ! is_file($root . '/app/Modules/Orders/Services/DurableRetryBusinessCompletionProcessor.php')
-        && ! is_file($root . '/app/Modules/Orders/Services/DurableRetryDeliveryCompletionProcessor.php')
+    ! is_file($root . '/app/Modules/Orders/Services/DurableRetryDeliveryCompletionProcessor.php')
         && ! is_file($root . '/app/Modules/Orders/Services/DurableRetryFulfillmentCompletionProcessor.php'),
-    'no other stage processors'
+    'no delivery or fulfillment stage processors'
 );
 
 exec(
@@ -168,7 +167,6 @@ $restricted = [
     'app/Modules/Fulfillment/Orchestration/DurableCompletionScheduler.php',
     'app/Modules/Delivery',
     'app/Modules/Fulfillment/Completion',
-    'app/Modules/Payments/BusinessCompletion',
     'docs',
     'artifacts',
 ];

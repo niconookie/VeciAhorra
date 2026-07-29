@@ -75,12 +75,10 @@ exec(
 $assert(
     $exitCode === 0
         && $restrictedDiff === [
-            'app/Modules/Payments/Reconciliation/DTO/ReconciliationLease.php',
-            'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationClaimRepository.php',
-            'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationRepository.php',
-            'app/Modules/Payments/Reconciliation/Service/PaymentReconciliationProcessor.php',
+            'app/Modules/Payments/BusinessCompletion/Repository/BusinessCompletionRepository.php',
+            'app/Modules/Payments/BusinessCompletion/Service/BusinessCompletionProcessor.php',
         ],
-    'restricted diff limited to reconciliation authority seams'
+    'restricted diff limited to business completion authority seams'
 );
 $assert(str_contains(file_get_contents($root . '/app/Core/Config.php'), "SCHEMA_VERSION = '0.24.0'"), 'schema remains 0.24.0');
 

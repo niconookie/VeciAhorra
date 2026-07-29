@@ -7,8 +7,9 @@ namespace VeciAhorra\Modules\Payments\BusinessCompletion\Repository;
 use Throwable;
 use VeciAhorra\Database\Repository;
 use VeciAhorra\Exceptions\PersistenceException;
+use VeciAhorra\Modules\Payments\BusinessCompletion\Contracts\BusinessCompletionReadAuthorityInterface;
 
-final class BusinessCompletionRepository extends Repository
+final class BusinessCompletionRepository extends Repository implements BusinessCompletionReadAuthorityInterface
 {
     private const TABLE = 'business_completions';
 

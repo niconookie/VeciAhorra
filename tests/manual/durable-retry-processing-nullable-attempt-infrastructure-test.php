@@ -81,16 +81,13 @@ $assert(is_string($processorInterface) && substr_count($processorInterface, 'pro
 exec('git diff --name-only HEAD', $diff, $exit);
 $assert($exit === 0, 'diff allowlist inspection succeeds');
 $allowed = [
-    'app/Modules/Payments/Reconciliation/DTO/ReconciliationLease.php',
-    'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationClaimRepository.php',
-    'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationRepository.php',
-    'app/Modules/Payments/Reconciliation/Service/PaymentReconciliationProcessor.php',
     'tests/manual/durable-retry-executor-infrastructure-test.php',
     'tests/manual/durable-retry-external-scheduler-infrastructure-test.php',
     'tests/manual/durable-retry-next-generation-infrastructure-test.php',
     'tests/manual/durable-retry-processing-nullable-attempt-infrastructure-test.php',
-    'tests/manual/durable-retry-processing-policy-infrastructure-test.php',
-    'tests/manual/payment-reconciliation-lease-test.php',
+    'tests/manual/durable-retry-reconciliation-processor-infrastructure-test.php',
+    'app/Modules/Payments/BusinessCompletion/Repository/BusinessCompletionRepository.php',
+    'app/Modules/Payments/BusinessCompletion/Service/BusinessCompletionProcessor.php',
 ];
 sort($allowed);
 sort($diff);
@@ -102,9 +99,9 @@ $assert(
 );
 $assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'app/Modules/Orders/Domain/DurableRetry/'))) === 0, 'nullable domain remains unchanged');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'app/Modules/Orders/Services/DurableRetryExecutor.php'))) === 0, 'executor remains unchanged');
-$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, '/Repository/'))) === 2, 'exactly two functional authority repositories adapted');
+$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, '/Repository/'))) === 1, 'exactly one functional read authority adapted');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'Coordinator'))) === 0, 'zero coordinators modified');
-$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'Reconciliation'))) === 4, 'reconciliation seam is explicit');
+$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'BusinessCompletion'))) === 2, 'business completion seam is explicit');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'docs/'))) === 0, 'zero documents modified');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'artifacts/'))) === 0, 'zero artifacts modified');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'Config'))) === 0, 'zero config modified');

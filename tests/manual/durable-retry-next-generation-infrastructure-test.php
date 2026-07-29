@@ -105,12 +105,10 @@ exec(
 $assert(
     $exitCode === 0
         && $restrictedDiff === [
-            'app/Modules/Payments/Reconciliation/DTO/ReconciliationLease.php',
-            'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationClaimRepository.php',
-            'app/Modules/Payments/Reconciliation/Repository/PaymentReconciliationRepository.php',
-            'app/Modules/Payments/Reconciliation/Service/PaymentReconciliationProcessor.php',
+            'app/Modules/Payments/BusinessCompletion/Repository/BusinessCompletionRepository.php',
+            'app/Modules/Payments/BusinessCompletion/Service/BusinessCompletionProcessor.php',
         ],
-    'restricted paths limited to reconciliation authority seams'
+    'restricted paths limited to business completion authority seams'
 );
 $assert(
     str_contains(
