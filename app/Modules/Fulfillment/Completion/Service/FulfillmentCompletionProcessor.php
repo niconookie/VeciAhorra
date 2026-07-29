@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Fulfillment\Completion\Service;
 
 use Throwable;
+use VeciAhorra\Modules\Fulfillment\Completion\Contracts\FulfillmentCompletionAttemptProcessorInterface;
 use VeciAhorra\Modules\Fulfillment\Completion\DTO\FulfillmentCompletionResult;
 use VeciAhorra\Modules\Fulfillment\Completion\Exception\FulfillmentCompletionFailure;
 use VeciAhorra\Modules\Fulfillment\Completion\Repository\FulfillmentCompletionRepository;
 
-final class FulfillmentCompletionProcessor
+final class FulfillmentCompletionProcessor implements FulfillmentCompletionAttemptProcessorInterface
 {
     public function __construct(
         private readonly FulfillmentCompletionRepository $completions = new FulfillmentCompletionRepository()

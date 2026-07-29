@@ -7,8 +7,9 @@ namespace VeciAhorra\Modules\Fulfillment\Completion\Repository;
 use Throwable;
 use VeciAhorra\Database\Repository;
 use VeciAhorra\Exceptions\PersistenceException;
+use VeciAhorra\Modules\Fulfillment\Completion\Contracts\FulfillmentCompletionReadAuthorityInterface;
 
-final class FulfillmentCompletionRepository extends Repository
+final class FulfillmentCompletionRepository extends Repository implements FulfillmentCompletionReadAuthorityInterface
 {
     public const DEFAULT_LEASE_SECONDS = 600;
     private const TABLE = 'fulfillment_completions';

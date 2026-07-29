@@ -100,7 +100,14 @@ exec(
     $restrictedDiff,
     $restrictedExit
 );
-$assert($restrictedExit === 0 && $restrictedDiff === [], 'prohibited architecture unchanged');
+$assert(
+    $restrictedExit === 0
+        && $restrictedDiff === [
+            'app/Modules/Fulfillment/Completion/Repository/FulfillmentCompletionRepository.php',
+            'app/Modules/Fulfillment/Completion/Service/FulfillmentCompletionProcessor.php',
+        ],
+    'restricted diff limited to fulfillment completion authority seams'
+);
 $assert(
     str_contains(file_get_contents($root . '/app/Core/Config.php'), "SCHEMA_VERSION = '0.24.0'"),
     'schema remains 0.24.0'

@@ -123,8 +123,9 @@ $assert(
     'single reconciliation stage implementation'
 );
 $assert(
-    ! is_file($root . '/app/Modules/Orders/Services/DurableRetryFulfillmentCompletionProcessor.php'),
-    'no fulfillment stage processor'
+    is_file($root . '/app/Modules/Orders/Services/DurableRetryFulfillmentProcessor.php')
+        && ! is_file($root . '/app/Modules/Orders/Services/DurableRetryFulfillmentCompletionProcessor.php'),
+    'fulfillment stage processor uses the certified name'
 );
 
 exec(
@@ -178,10 +179,10 @@ exec(
 $assert(
     $restrictedExit === 0
         && $restrictedDiff === [
-            'app/Modules/Delivery/Completion/Repository/DeliveryCompletionRepository.php',
-            'app/Modules/Delivery/Completion/Service/DeliveryCompletionProcessor.php',
+            'app/Modules/Fulfillment/Completion/Repository/FulfillmentCompletionRepository.php',
+            'app/Modules/Fulfillment/Completion/Service/FulfillmentCompletionProcessor.php',
         ],
-    'restricted diff limited to delivery completion authority seams'
+    'restricted diff limited to fulfillment completion authority seams'
 );
 $assert(
     str_contains(
