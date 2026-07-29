@@ -7,8 +7,9 @@ namespace VeciAhorra\Modules\Delivery\Completion\Repository;
 use Throwable;
 use VeciAhorra\Database\Repository;
 use VeciAhorra\Exceptions\PersistenceException;
+use VeciAhorra\Modules\Delivery\Completion\Contracts\DeliveryCompletionReadAuthorityInterface;
 
-final class DeliveryCompletionRepository extends Repository
+final class DeliveryCompletionRepository extends Repository implements DeliveryCompletionReadAuthorityInterface
 {
     public const DEFAULT_LEASE_SECONDS = 600;
     private const TABLE = 'delivery_completions';

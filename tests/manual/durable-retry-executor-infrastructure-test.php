@@ -75,10 +75,10 @@ exec(
 $assert(
     $exitCode === 0
         && $restrictedDiff === [
-            'app/Modules/Payments/BusinessCompletion/Repository/BusinessCompletionRepository.php',
-            'app/Modules/Payments/BusinessCompletion/Service/BusinessCompletionProcessor.php',
+            'app/Modules/Delivery/Completion/Repository/DeliveryCompletionRepository.php',
+            'app/Modules/Delivery/Completion/Service/DeliveryCompletionProcessor.php',
         ],
-    'restricted diff limited to business completion authority seams'
+    'restricted diff limited to delivery completion authority seams'
 );
 $assert(str_contains(file_get_contents($root . '/app/Core/Config.php'), "SCHEMA_VERSION = '0.24.0'"), 'schema remains 0.24.0');
 

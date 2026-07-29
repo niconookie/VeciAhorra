@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Delivery\Completion\Service;
 
 use Throwable;
+use VeciAhorra\Modules\Delivery\Completion\Contracts\DeliveryCompletionAttemptProcessorInterface;
 use VeciAhorra\Modules\Delivery\Completion\DTO\DeliveryCompletionResult;
 use VeciAhorra\Modules\Delivery\Completion\Exception\DeliveryCompletionFailure;
 use VeciAhorra\Modules\Delivery\Completion\Repository\DeliveryCompletionRepository;
@@ -12,7 +13,7 @@ use VeciAhorra\Modules\Delivery\Models\Delivery;
 use VeciAhorra\Modules\Delivery\Repository\DeliveryRepository;
 use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
 
-final class DeliveryCompletionProcessor
+final class DeliveryCompletionProcessor implements DeliveryCompletionAttemptProcessorInterface
 {
     public function __construct(
         private readonly DeliveryCompletionRepository $completions = new DeliveryCompletionRepository(),

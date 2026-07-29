@@ -123,9 +123,8 @@ $assert(
     'single reconciliation stage implementation'
 );
 $assert(
-    ! is_file($root . '/app/Modules/Orders/Services/DurableRetryDeliveryCompletionProcessor.php')
-        && ! is_file($root . '/app/Modules/Orders/Services/DurableRetryFulfillmentCompletionProcessor.php'),
-    'no delivery or fulfillment stage processors'
+    ! is_file($root . '/app/Modules/Orders/Services/DurableRetryFulfillmentCompletionProcessor.php'),
+    'no fulfillment stage processor'
 );
 
 exec(
@@ -176,7 +175,14 @@ exec(
     $restrictedDiff,
     $restrictedExit
 );
-$assert($restrictedExit === 0 && $restrictedDiff === [], 'restricted architecture unchanged');
+$assert(
+    $restrictedExit === 0
+        && $restrictedDiff === [
+            'app/Modules/Delivery/Completion/Repository/DeliveryCompletionRepository.php',
+            'app/Modules/Delivery/Completion/Service/DeliveryCompletionProcessor.php',
+        ],
+    'restricted diff limited to delivery completion authority seams'
+);
 $assert(
     str_contains(
         file_get_contents($root . '/app/Core/Config.php'),

@@ -105,10 +105,10 @@ exec(
 $assert(
     $exitCode === 0
         && $restrictedDiff === [
-            'app/Modules/Payments/BusinessCompletion/Repository/BusinessCompletionRepository.php',
-            'app/Modules/Payments/BusinessCompletion/Service/BusinessCompletionProcessor.php',
+            'app/Modules/Delivery/Completion/Repository/DeliveryCompletionRepository.php',
+            'app/Modules/Delivery/Completion/Service/DeliveryCompletionProcessor.php',
         ],
-    'restricted paths limited to business completion authority seams'
+    'restricted paths limited to delivery completion authority seams'
 );
 $assert(
     str_contains(

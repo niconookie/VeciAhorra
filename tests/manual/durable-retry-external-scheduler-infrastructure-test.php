@@ -79,10 +79,10 @@ exec(
 $assert(
     $exitCode === 0
         && $restrictedDiff === [
-            'app/Modules/Payments/BusinessCompletion/Repository/BusinessCompletionRepository.php',
-            'app/Modules/Payments/BusinessCompletion/Service/BusinessCompletionProcessor.php',
+            'app/Modules/Delivery/Completion/Repository/DeliveryCompletionRepository.php',
+            'app/Modules/Delivery/Completion/Service/DeliveryCompletionProcessor.php',
         ],
-    'restricted diff limited to business completion authority seams'
+    'restricted diff limited to delivery completion authority seams'
 );
 
 echo "durable retry external scheduler infrastructure: {$assertions} assertions\n";

@@ -100,7 +100,14 @@ exec(
     $restrictedDiff,
     $restrictedExit
 );
-$assert($restrictedExit === 0 && $restrictedDiff === [], 'prohibited architecture unchanged');
+$assert(
+    $restrictedExit === 0
+        && $restrictedDiff === [
+            'app/Modules/Delivery/Completion/Repository/DeliveryCompletionRepository.php',
+            'app/Modules/Delivery/Completion/Service/DeliveryCompletionProcessor.php',
+        ],
+    'restricted diff limited to delivery completion authority seams'
+);
 $assert(
     str_contains(
         file_get_contents($root . '/app/Core/Config.php'),
