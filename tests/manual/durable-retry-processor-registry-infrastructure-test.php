@@ -158,33 +158,52 @@ foreach ([
     $assert(str_contains($exception, $reason), 'closed reason ' . $reason);
 }
 
-$allowed = [
-    '?? app/Modules/Orders/Contracts/'
+$certifiedPaths = [
+    'app/Modules/Orders/Contracts/'
         . 'DurableRetryStageProcessorResolverInterface.php',
-    '?? app/Modules/Orders/Exceptions/'
+    'app/Modules/Orders/Exceptions/'
         . 'DurableRetryProcessorConfigurationException.php',
-    '?? app/Modules/Orders/Services/DurableRetryProcessorRegistry.php',
-    '?? tests/manual/durable-retry-processor-registry-infrastructure-test.php',
-    '?? tests/manual/durable-retry-processor-registry-test.php',
+    'app/Modules/Orders/Services/DurableRetryProcessorRegistry.php',
+    'tests/manual/durable-retry-processor-registry-infrastructure-test.php',
+    'tests/manual/durable-retry-processor-registry-test.php',
 ];
-$status = [];
-exec('git status --short --untracked-files=all', $status, $statusCode);
-$assert($statusCode === 0, 'git status available');
-$microhito = array_values(array_filter(
-    $status,
-    static fn (string $line): bool =>
-        str_starts_with($line, '?? app/')
-        || str_starts_with($line, '?? tests/')
-));
-sort($allowed);
-sort($microhito);
-$assert($microhito === $allowed, 'exact five-file allowlist');
+$pathArguments = implode(
+    ' ',
+    array_map('escapeshellarg', $certifiedPaths)
+);
 $tracked = [];
-exec('git status --short --untracked-files=no', $tracked, $trackedCode);
-$assert($trackedCode === 0 && $tracked === [], 'existing tracked files intact');
+exec('git ls-files -- ' . $pathArguments, $tracked, $trackedCode);
+$untracked = [];
+exec(
+    'git ls-files --others --exclude-standard -- ' . $pathArguments,
+    $untracked,
+    $untrackedCode
+);
+$unstaged = [];
+exec('git diff --name-only -- ' . $pathArguments, $unstaged, $unstagedCode);
 $staged = [];
-exec('git diff --cached --name-only', $staged, $stagedCode);
-$assert($stagedCode === 0 && $staged === [], 'staging remains empty');
+exec(
+    'git diff --cached --name-only -- ' . $pathArguments,
+    $staged,
+    $stagedCode
+);
+sort($certifiedPaths);
+sort($tracked);
+sort($untracked);
+$assert(
+    $trackedCode === 0
+        && $untrackedCode === 0
+        && $unstagedCode === 0
+        && $stagedCode === 0,
+    'certified scope inspections succeed'
+);
+$assert(
+    ($tracked === $certifiedPaths && $untracked === [])
+        || ($tracked === [] && $untracked === $certifiedPaths),
+    'certified scope is coherently tracked or untracked'
+);
+$assert($unstaged === [], 'certified scope has no unstaged changes');
+$assert($staged === [], 'certified scope has no staged changes');
 
 echo "durable retry processor registry infrastructure: "
     . "{$assertions} assertions\n";
