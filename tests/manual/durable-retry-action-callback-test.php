@@ -2,6 +2,18 @@
 
 declare(strict_types=1);
 
+$callbackTestActions = [];
+function add_action(
+    string $hook,
+    callable $callback,
+    int $priority = 10,
+    int $acceptedArgs = 1
+): bool {
+    global $callbackTestActions;
+    $callbackTestActions[] = [$hook, $callback, $priority, $acceptedArgs];
+    return true;
+}
+
 require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
 
 use VeciAhorra\Modules\Orders\Contracts\DurableRetryExecutorInterface;
@@ -19,6 +31,7 @@ use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryProcessingPolicy;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryProcessingResult;
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryScheduleSnapshot;
 use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionCallback;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionHookRegistrar;
 use VeciAhorra\Modules\Orders\Services\DurableRetryExecutor;
 
 final class CallbackExecutorDouble implements DurableRetryExecutorInterface
@@ -198,7 +211,7 @@ $snapshot = static function (string $status, int $version): DurableRetrySchedule
 $scheduled = $snapshot('scheduled', 2);
 $claimed = $snapshot('claimed', 3);
 $consumed = $snapshot('consumed', 4);
-$trace = ['callback'];
+$trace = ['hook'];
 $repository = new CallbackRepositoryDouble($trace);
 $repository->readQueue[] = new DurableRetryPersistenceResult(
     DurableRetryPersistenceResult::EXISTING_COMPATIBLE,
@@ -224,10 +237,18 @@ $realExecutor = new DurableRetryExecutor(
     $resolver,
     $clock(...)
 );
-$integrated = (new DurableRetryActionCallback($realExecutor))
-    ->execute($hook, 70, 1);
-$assert($integrated->code() === DurableRetryExecutionResult::PROCESSED, 'integrated callback succeeds');
-$assert($trace === ['callback', 'read', 'resolve', 'claim', 'process', 'persist'], 'full order preserved');
+$integratedCallback = new DurableRetryActionCallback($realExecutor);
+(new DurableRetryActionHookRegistrar($integratedCallback))->register();
+$businessAction = array_values(array_filter(
+    $callbackTestActions,
+    static fn (array $action): bool => $action[0] === $hook
+))[0][1];
+$businessAction(70, 1);
+$assert(
+    $repository->transitions[1][1]->status() === 'consumed',
+    'integrated hook succeeds'
+);
+$assert($trace === ['hook', 'read', 'resolve', 'claim', 'process', 'persist'], 'full order preserved');
 $assert($resolver->calls === 1 && $processor->calls === 1, 'single resolution and process');
 $assert(count($repository->reads) === 1 && count($repository->transitions) === 2, 'existing executor budget preserved');
 $assert($coordinator->calls === 0, 'callback performs no scheduling');

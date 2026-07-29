@@ -39,6 +39,7 @@ use VeciAhorra\Modules\Orders\Services\DurableRetryExecutor;
 use VeciAhorra\Modules\Orders\Services\DurableRetryFulfillmentProcessor;
 use VeciAhorra\Modules\Orders\Services\DurableRetryReconciliationProcessor;
 use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionCallback;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionHookRegistrar;
 
 $assertions = 0;
 $assert = static function (bool $condition, string $message) use (&$assertions): void {
@@ -65,6 +66,16 @@ $callback = $application->durableRetryCallback();
 $assert($callback instanceof DurableRetryActionCallback, 'composition exposes callback');
 $assert($application->durableRetryCallback() === $callback, 'callback is shared in one graph');
 $assert($property($callback, 'executor') === $executor, 'callback receives same executor');
+$registrar = $application->container()->make(
+    DurableRetryActionHookRegistrar::class
+);
+$assert($registrar instanceof DurableRetryActionHookRegistrar, 'composition exposes registrar');
+$assert(
+    $application->container()->make(DurableRetryActionHookRegistrar::class)
+        === $registrar,
+    'registrar is shared in one graph'
+);
+$assert($property($registrar, 'callback') === $callback, 'registrar receives same callback');
 
 $resolver = $application->container()->make(
     DurableRetryStageProcessorResolverInterface::class
@@ -152,12 +163,17 @@ $GLOBALS['wpdb'] = $otherDatabase;
 $otherApplication = new Application();
 $otherExecutor = $otherApplication->durableRetryExecutor();
 $otherCallback = $otherApplication->durableRetryCallback();
+$otherRegistrar = $otherApplication->container()->make(
+    DurableRetryActionHookRegistrar::class
+);
 $otherResolver = $otherApplication->container()->make(
     DurableRetryStageProcessorResolverInterface::class
 );
 $assert($otherExecutor !== $executor, 'independent applications have independent executors');
 $assert($otherCallback !== $callback, 'independent applications have independent callbacks');
 $assert($property($otherCallback, 'executor') === $otherExecutor, 'other callback receives other executor');
+$assert($otherRegistrar !== $registrar, 'independent applications have independent registrars');
+$assert($property($otherRegistrar, 'callback') === $otherCallback, 'other registrar receives other callback');
 $assert($otherResolver !== $resolver, 'independent applications have independent registries');
 $assert(
     $otherResolver->resolve(DurableRetryStage::RECONCILIATION)

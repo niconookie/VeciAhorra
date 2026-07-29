@@ -29,6 +29,7 @@ $assert(substr_count($application, 'DurableRetryStageProcessorResolverInterface:
 $assert(substr_count($application, 'new DurableRetryExecutor(') === 1, 'one executor construction');
 $assert(substr_count($application, 'new DurableRetryActionCallback(') === 1, 'one callback construction');
 $assert(str_contains($application, 'public function durableRetryCallback(): DurableRetryActionCallback'), 'minimal callback API');
+$assert(substr_count($application, 'new DurableRetryActionHookRegistrar(') === 1, 'one registrar construction');
 
 foreach ([
     'new DurableRetryReconciliationProcessor(',
@@ -70,7 +71,8 @@ $forbiddenPaths = [
     'app/Modules/Orders/Services/DurableRetryBusinessCompletionProcessor.php',
     'app/Modules/Orders/Services/DurableRetryDeliveryCompletionProcessor.php',
     'app/Modules/Orders/Services/DurableRetryFulfillmentProcessor.php',
-    'app/Modules/Orders/Infrastructure',
+    'app/Modules/Orders/Infrastructure/DurableRetry/ActionSchedulerDurableRetryAdapter.php',
+    'app/Modules/Orders/Infrastructure/DurableRetry/DurableRetryActionCallback.php',
     'app/Modules/Fulfillment/Orchestration',
     'docs',
 ];

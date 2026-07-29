@@ -70,6 +70,7 @@ use VeciAhorra\Modules\Orders\Contracts\DurableRetryStageProcessorResolverInterf
 use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryProcessingPolicy;
 use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\ActionSchedulerDurableRetryAdapter;
 use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionCallback;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionHookRegistrar;
 use VeciAhorra\Modules\Orders\Repositories\DurableRetryScheduleRepository;
 use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
 use VeciAhorra\Modules\Orders\Services\DurableRetryBusinessCompletionProcessor;
@@ -295,6 +296,13 @@ final class Application
                     $this->container->make(DurableRetryExecutor::class)
                 )
         );
+        $this->container->singleton(
+            DurableRetryActionHookRegistrar::class,
+            fn (): DurableRetryActionHookRegistrar =>
+                new DurableRetryActionHookRegistrar(
+                    $this->container->make(DurableRetryActionCallback::class)
+                )
+        );
     }
 
     private function registerPaymentGateway(): void
@@ -355,6 +363,9 @@ final class Application
         add_action('init', [$unitTaxonomy, 'register'], 20);
 
         (new DurableCompletionOrchestration())->register();
+        $this->container
+            ->make(DurableRetryActionHookRegistrar::class)
+            ->register();
         (new WebpayCreateRecovery())->register();
         (new WebpayReturnRecovery())->register();
         $this->container->make(WebpayGatewayRegistration::class)->register();
