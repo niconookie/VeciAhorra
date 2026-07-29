@@ -78,11 +78,8 @@ exec(
 );
 $assert(
     $exitCode === 0
-        && $restrictedDiff === [
-            'app/Modules/Fulfillment/Completion/Repository/FulfillmentCompletionRepository.php',
-            'app/Modules/Fulfillment/Completion/Service/FulfillmentCompletionProcessor.php',
-        ],
-    'restricted diff limited to fulfillment completion authority seams'
+        && $restrictedDiff === [],
+    'restricted certified paths remain unchanged'
 );
 
 echo "durable retry external scheduler infrastructure: {$assertions} assertions\n";

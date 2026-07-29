@@ -78,22 +78,27 @@ $assert(is_string($policyInterface) && substr_count($policyInterface, 'decideNex
 $assert(is_string($executorInterface) && substr_count($executorInterface, 'execute(') === 1, 'executor interface unchanged');
 $assert(is_string($processorInterface) && substr_count($processorInterface, 'process(') === 1, 'processor interface unchanged');
 
-exec('git diff --name-only HEAD', $diff, $exit);
-$assert($exit === 0, 'diff allowlist inspection succeeds');
-$allowed = [
-    'app/Modules/Fulfillment/Completion/Repository/FulfillmentCompletionRepository.php',
-    'app/Modules/Fulfillment/Completion/Service/FulfillmentCompletionProcessor.php',
-    'tests/manual/durable-retry-business-completion-processor-infrastructure-test.php',
-    'tests/manual/durable-retry-delivery-completion-processor-infrastructure-test.php',
-    'tests/manual/durable-retry-executor-infrastructure-test.php',
-    'tests/manual/durable-retry-external-scheduler-infrastructure-test.php',
-    'tests/manual/durable-retry-next-generation-infrastructure-test.php',
-    'tests/manual/durable-retry-processing-nullable-attempt-infrastructure-test.php',
-    'tests/manual/durable-retry-reconciliation-processor-infrastructure-test.php',
+$restricted = [
+    'app/Core/Config.php',
+    'app/Database',
+    'app/Modules/Orders/Domain/DurableRetry',
+    'app/Modules/Orders/Services/DurableRetryExecutor.php',
+    'app/Modules/Orders/Repositories',
+    'app/Modules/Orders/Infrastructure',
+    'app/Modules/Payments',
+    'app/Modules/Delivery',
+    'app/Modules/Fulfillment',
+    'docs',
+    'artifacts',
 ];
-sort($allowed);
-sort($diff);
-$assert($diff === $allowed, 'exact tracked reconciliation seam diff allowlist');
+exec(
+    'git diff --name-only HEAD -- '
+        . implode(' ', array_map('escapeshellarg', $restricted)),
+    $diff,
+    $exit
+);
+$assert($exit === 0, 'restricted diff inspection succeeds');
+$assert($diff === [], 'restricted certified paths remain unchanged');
 $assert(
     is_file($root . '/tests/manual/durable-retry-executor-nullable-attempt-test.php')
         && is_file($root . '/tests/manual/durable-retry-processing-nullable-attempt-test.php'),
@@ -101,9 +106,9 @@ $assert(
 );
 $assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'app/Modules/Orders/Domain/DurableRetry/'))) === 0, 'nullable domain remains unchanged');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'app/Modules/Orders/Services/DurableRetryExecutor.php'))) === 0, 'executor remains unchanged');
-$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, '/Repository/'))) === 1, 'exactly one functional read authority adapted');
+$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, '/Repository/'))) === 0, 'functional read authorities remain unchanged');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'Coordinator'))) === 0, 'zero coordinators modified');
-$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'FulfillmentCompletion'))) === 2, 'fulfillment completion seam is explicit');
+$assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'FulfillmentCompletion'))) === 0, 'fulfillment completion remains unchanged');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'docs/'))) === 0, 'zero documents modified');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_starts_with($path, 'artifacts/'))) === 0, 'zero artifacts modified');
 $assert(count(array_filter($diff, static fn (string $path): bool => str_contains($path, 'Config'))) === 0, 'zero config modified');
