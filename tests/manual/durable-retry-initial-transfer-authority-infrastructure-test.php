@@ -49,6 +49,7 @@ $maintenanceAllowlist = [
     'tests/manual/durable-retry-legacy-authority-infrastructure-test.php',
     'tests/manual/durable-retry-next-generation-infrastructure-test.php',
     'tests/manual/durable-retry-schedule-infrastructure-test.php',
+    'tests/manual/durable-retry-initial-authority-producer-infrastructure-test.php',
 ];
 $trackedChanges = array_values(array_filter(
     $lines($trackedOutput),

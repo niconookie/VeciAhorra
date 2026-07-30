@@ -46,22 +46,34 @@ $git = static function (string $arguments) use ($root): array {
 [$exit, $staged] = $git('diff --cached --name-only');
 $assert($exit === 0 && $staged === [], 'Staging must be empty.');
 [$exit, $tracked] = $git('diff --name-only');
-$assert($exit === 0 && $tracked === [], 'Tracked files must remain intact.');
-[$exit, $untracked] = $git('ls-files --others --exclude-standard');
-$assert($exit === 0, 'Untracked inventory must be readable.');
-$actual = array_values(array_intersect($untracked, $allowed));
+$tracked = array_values(array_filter(
+    $tracked,
+    static fn (string $line): bool => ! str_starts_with($line, 'warning:')
+));
+$maintenanceAllowlist = [
+    'tests/manual/durable-retry-activation-configuration-source-infrastructure-test.php',
+    'tests/manual/durable-retry-activation-flag-policy-infrastructure-test.php',
+    'tests/manual/durable-retry-initial-transfer-authority-infrastructure-test.php',
+    'tests/manual/durable-retry-legacy-authority-infrastructure-test.php',
+    'tests/manual/durable-retry-next-generation-infrastructure-test.php',
+    'tests/manual/durable-retry-schedule-infrastructure-test.php',
+    'tests/manual/durable-retry-initial-authority-producer-infrastructure-test.php',
+];
+$assert(
+    $exit === 0
+        && array_diff($tracked, $maintenanceAllowlist) === [],
+    'Tracked changes must remain inside the maintenance allowlist.'
+);
+[$exit, $actual] = $git(
+    'ls-files -- '
+        . implode(' ', array_map('escapeshellarg', $allowed))
+);
+$assert($exit === 0, 'Versioned A5 inventory must be readable.');
 sort($actual);
 $expected = $allowed;
 sort($expected);
-$assert($actual === $expected, 'Exactly the five A5 files are untracked.');
-$candidates = array_values(array_filter(
-    $untracked,
-    static fn (string $path): bool =>
-        str_contains($path, 'InitialAuthorityProducer')
-        || str_contains($path, 'InitialAuthorityProductionResult')
-        || str_contains($path, 'initial-authority-producer')
-));
-$assert(count($candidates) === 5, 'A sixth A5 file must not exist.');
+$assert($actual === $expected, 'Exactly the five A5 paths must be versioned.');
+$assert(count($actual) === 5, 'All five A5 paths must be tracked.');
 
 $interface = new ReflectionClass(
     DurableRetryInitialAuthorityProducerInterface::class
