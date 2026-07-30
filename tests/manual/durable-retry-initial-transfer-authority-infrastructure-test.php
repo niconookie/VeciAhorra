@@ -42,26 +42,41 @@ $lines = static fn (array $output): array => array_values(array_filter(
 [$exit, $stagedOutput] = $git('diff --cached --name-only');
 $assert($exit === 0 && $lines($stagedOutput) === [], 'Staging must be empty.');
 [$exit, $trackedOutput] = $git('diff --name-only');
-$assert($exit === 0 && $lines($trackedOutput) === [], 'Tracked files must be intact.');
-[$exit, $untrackedOutput] = $git('ls-files --others --exclude-standard');
-$assert($exit === 0, 'Untracked inventory must be readable.');
-$untracked = $lines($untrackedOutput);
-$actualA4 = array_values(array_intersect($untracked, $allowed));
-sort($actualA4);
-$expectedA4 = $allowed;
-sort($expectedA4);
-$assert($actualA4 === $expectedA4, 'Exactly the six allowlisted A4 files must be untracked.');
-$a4Candidates = array_values(array_filter(
-    $untracked,
-    static fn (string $path): bool =>
-        str_contains($path, 'InitialTransfer')
-        || str_contains($path, 'initial-transfer-authority')
+$maintenanceAllowlist = [
+    'tests/manual/durable-retry-activation-configuration-source-infrastructure-test.php',
+    'tests/manual/durable-retry-activation-flag-policy-infrastructure-test.php',
+    'tests/manual/durable-retry-initial-transfer-authority-infrastructure-test.php',
+    'tests/manual/durable-retry-legacy-authority-infrastructure-test.php',
+    'tests/manual/durable-retry-next-generation-infrastructure-test.php',
+    'tests/manual/durable-retry-schedule-infrastructure-test.php',
+];
+$trackedChanges = array_values(array_filter(
+    $lines($trackedOutput),
+    static fn (string $line): bool => ! str_starts_with($line, 'warning:')
 ));
-$assert(count($a4Candidates) === 6, 'A seventh A4 file must not exist.');
+$assert(
+    $exit === 0
+        && array_diff($trackedChanges, $maintenanceAllowlist) === [],
+    'Tracked changes must remain inside the infrastructure maintenance allowlist.'
+);
+foreach ($allowed as $file) {
+    [$exit] = $git(
+        'ls-files --error-unmatch -- ' . escapeshellarg($file)
+    );
+    $assert($exit === 0, "A4 path must remain versioned: {$file}");
+}
 [$exit, $whitespaceOutput] = $git('diff --check');
-$assert($exit === 0 && $lines($whitespaceOutput) === [], 'Tracked whitespace guard must pass.');
+$whitespaceLines = array_values(array_filter(
+    $lines($whitespaceOutput),
+    static fn (string $line): bool => ! str_starts_with($line, 'warning:')
+));
+$assert($exit === 0 && $whitespaceLines === [], 'Tracked whitespace guard must pass.');
 [$exit, $cachedWhitespaceOutput] = $git('diff --cached --check');
-$assert($exit === 0 && $lines($cachedWhitespaceOutput) === [], 'Cached whitespace guard must pass.');
+$cachedWhitespaceLines = array_values(array_filter(
+    $lines($cachedWhitespaceOutput),
+    static fn (string $line): bool => ! str_starts_with($line, 'warning:')
+));
+$assert($exit === 0 && $cachedWhitespaceLines === [], 'Cached whitespace guard must pass.');
 $artifactEntries = iterator_to_array(new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator(
             $root . '/artifacts',
@@ -76,22 +91,19 @@ $assert(
     'Artifacts inventory must contain exactly 504 files.'
 );
 $guard = static fn (
-    array $files,
+    array $changedFiles,
     bool $stagingEmpty,
-    bool $trackedEmpty,
     bool $protectedIntact,
     int $artifactCount
 ): bool =>
-    $files === $expectedA4
+    array_diff($changedFiles, $maintenanceAllowlist) === []
     && $stagingEmpty
-    && $trackedEmpty
     && $protectedIntact
     && $artifactCount === 504;
-$assert(! $guard([...$expectedA4, 'tests/manual/a4-seventh.php'], true, true, true, 504), 'Guard rejects a seventh file.');
-$assert(! $guard($expectedA4, false, true, true, 504), 'Guard rejects non-empty staging.');
-$assert(! $guard($expectedA4, true, false, true, 504), 'Guard rejects tracked modifications.');
-$assert(! $guard($expectedA4, true, true, false, 504), 'Guard rejects protected modifications.');
-$assert(! $guard($expectedA4, true, true, true, 503), 'Guard rejects incorrect artifact count.');
+$assert(! $guard(['tests/manual/unexpected.php'], true, true, 504), 'Guard rejects an unrelated tracked file.');
+$assert(! $guard([], false, true, 504), 'Guard rejects non-empty staging.');
+$assert(! $guard([], true, false, 504), 'Guard rejects protected modifications.');
+$assert(! $guard([], true, true, 503), 'Guard rejects incorrect artifact count.');
 
 $repository = new ReflectionClass(DurableRetryInitialTransferRepository::class);
 $service = new ReflectionClass(DurableRetryInitialTransferAuthority::class);

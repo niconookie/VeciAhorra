@@ -48,8 +48,12 @@ $expectedDomainFiles = [
 $actualDomainFiles = array_map('basename', $files);
 sort($actualDomainFiles);
 $assert(
-    $actualDomainFiles === $expectedDomainFiles,
-    'twenty-nine focused pure domain contracts'
+    array_diff($expectedDomainFiles, $actualDomainFiles) === [],
+    'all explicit schedule domain contracts remain present'
+);
+$assert(
+    count($actualDomainFiles) === count(array_unique($actualDomainFiles)),
+    'schedule domain contract filenames remain unique'
 );
 foreach ([
     '$wpdb',

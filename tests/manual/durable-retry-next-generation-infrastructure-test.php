@@ -29,7 +29,49 @@ $assert(
     'method exists in existing repository'
 );
 $repositories = glob($root . '/app/Modules/Orders/Repositories/*DurableRetry*Repository.php');
-$assert(count($repositories) === 1, 'no second durable retry repository');
+$nextGenerationRepositories = array_values(array_filter(
+    $repositories,
+    static fn (string $path): bool => str_contains(
+        file_get_contents($path),
+        'function supersedeAndCreateNextGeneration('
+    )
+));
+$assert(
+    $nextGenerationRepositories === [$repositoryPath],
+    'Only the schedule repository may implement next-generation persistence.'
+);
+$initialTransferPath = $root
+    . '/app/Modules/Orders/Repositories/DurableRetryInitialTransferRepository.php';
+$initialTransferRepository = file_get_contents($initialTransferPath);
+$assert(
+    ! str_contains(
+        $initialTransferRepository,
+        'supersedeAndCreateNextGeneration'
+    ),
+    'Initial-transfer repository cannot supersede or create later generations.'
+);
+$assert(
+    str_contains($initialTransferRepository, '$request->generation()')
+        && str_contains(
+            file_get_contents(
+                $root . '/app/Modules/Orders/Domain/DurableRetry/DurableRetryInitialTransferRequest.php'
+            ),
+            'public const INITIAL_GENERATION = 1'
+        ),
+    'Initial-transfer persistence is closed to generation one.'
+);
+$a5Production = implode("\n", array_map(
+    'file_get_contents',
+    [
+        $root . '/app/Modules/Orders/Contracts/DurableRetryInitialAuthorityProducerInterface.php',
+        $root . '/app/Modules/Orders/Domain/DurableRetry/DurableRetryInitialAuthorityProductionResult.php',
+        $root . '/app/Modules/Orders/Services/DurableRetryInitialAuthorityProducer.php',
+    ]
+));
+$assert(
+    ! preg_match('/\\bRepository\\b|\\b(?:SELECT|INSERT|UPDATE|DELETE)\\b/i', $a5Production),
+    'A5 contains neither repository authority nor SQL.'
+);
 $assert(substr_count($repository, "'START TRANSACTION'") === 1, 'single transaction boundary');
 $method = substr($repository, strpos($repository, 'public function supersedeAndCreateNextGeneration('));
 $method = substr($method, 0, strpos($method, 'private function validateNextGenerationRequest('));

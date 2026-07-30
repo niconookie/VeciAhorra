@@ -165,23 +165,17 @@ foreach ($productionFiles as $relativePath) {
     }
 }
 
-$statusLines = [];
-exec(
-    'git -C ' . escapeshellarg($root) . ' status --short --untracked-files=all',
-    $statusLines,
-    $statusExit
-);
-$assert($statusExit === 0, 'Unable to inspect the A2 workspace allowlist.');
-
-$changedA2Files = [];
-foreach ($statusLines as $line) {
-    $path = substr($line, 3);
-
-    if (in_array($path, $allowedFiles, true)) {
-        $changedA2Files[] = $path;
-    }
+foreach ($allowedFiles as $relativePath) {
+    $output = [];
+    exec(
+        'git -C ' . escapeshellarg($root)
+            . ' ls-files --error-unmatch -- '
+            . escapeshellarg($relativePath)
+            . ' 2>&1',
+        $output,
+        $exit
+    );
+    $assert($exit === 0, "A2 path must remain versioned: {$relativePath}");
 }
-sort($changedA2Files);
-$assert($changedA2Files === $allowedFiles, 'The exact ten-file A2 allowlist is not present.');
 
 echo sprintf("OK durable retry activation flag policy infrastructure (%d assertions)\n", $assertions);

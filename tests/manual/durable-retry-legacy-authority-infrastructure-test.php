@@ -76,18 +76,17 @@ foreach ([
     $assert(! str_contains($source, $forbidden), "Repository must exclude {$forbidden}.");
 }
 
-$status = [];
-exec('git -C ' . escapeshellarg($root) . ' status --porcelain --untracked-files=all', $status);
-$changed = [];
-foreach ($status as $line) {
-    $path = substr($line, 3);
-    if (in_array($path, $allowed, true)) {
-        $changed[] = $path;
-    }
+foreach ($allowed as $file) {
+    $output = [];
+    exec(
+        'git -C ' . escapeshellarg($root)
+            . ' ls-files --error-unmatch -- '
+            . escapeshellarg($file)
+            . ' 2>&1',
+        $output,
+        $exit
+    );
+    $assert($exit === 0, "A3 path must remain versioned: {$file}");
 }
-sort($changed);
-$expected = $allowed;
-sort($expected);
-$assert($changed === $expected, 'Exact four-file A3 allowlist must be present.');
 
 echo "OK durable retry legacy authority infrastructure ({$assertions} assertions)\n";

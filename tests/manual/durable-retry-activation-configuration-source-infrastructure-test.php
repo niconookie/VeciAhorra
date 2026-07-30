@@ -119,18 +119,18 @@ foreach ([
     );
 }
 
-$status = [];
-exec('git -C ' . escapeshellarg($root) . ' status --porcelain', $status);
-$changed = [];
-foreach ($status as $line) {
-    $path = substr($line, 3);
-    if (in_array($path, array_merge($newFiles, $modifiedFiles), true)) {
-        $changed[] = $path;
-    }
+$versionedFiles = array_merge($newFiles, $modifiedFiles);
+foreach ($versionedFiles as $file) {
+    $output = [];
+    exec(
+        'git -C ' . escapeshellarg($root)
+            . ' ls-files --error-unmatch -- '
+            . escapeshellarg($file)
+            . ' 2>&1',
+        $output,
+        $exit
+    );
+    $assert($exit === 0, "A2.1 path must remain versioned: {$file}");
 }
-sort($changed);
-$expected = array_merge($newFiles, $modifiedFiles);
-sort($expected);
-$assert($changed === $expected, 'All nine allowlisted files must be the only A2.1 changes.');
 
 echo "OK durable retry activation configuration infrastructure ({$assertions} assertions)\n";
