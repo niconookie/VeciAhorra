@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use VeciAhorra\Core\Application;
 use VeciAhorra\Modules\Payments\Controller\PaymentController;
 use VeciAhorra\Modules\Payments\Controller\WebpayReturnController;
 use VeciAhorra\Modules\Payments\Gateway\WebpayCommitResult;
@@ -13,6 +14,10 @@ use VeciAhorra\Modules\Payments\Routes\PaymentRoutes;
 use VeciAhorra\Modules\Payments\Service\WebpayReturnService;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+
+$a10Materializer = (new Application())->container()->make(
+    \VeciAhorra\Modules\Payments\Reconciliation\Service\WebpayReconciliationMaterializer::class
+);
 
 function assertWebpayRestRoute(bool $condition, string $message): void
 {
@@ -129,7 +134,8 @@ $gateway = new RestRouteGateway(new WebpayCommitResult(
 $service = new WebpayReturnService(
     $gateway,
     new RestRouteSessions($session),
-    new RestRouteReturns()
+    new RestRouteReturns(),
+    $a10Materializer
 );
 $controller = new WebpayReturnController($service);
 $paymentController = (new ReflectionClass(PaymentController::class))

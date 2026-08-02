@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use VeciAhorra\Core\Application;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayException;
 use VeciAhorra\Modules\Payments\Gateway\WebpayCommitResult;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnContext;
@@ -15,6 +16,10 @@ use VeciAhorra\Modules\Payments\Requests\WebpayReturnRequest;
 use VeciAhorra\Modules\Payments\Service\WebpayReturnService;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+
+$a10Materializer = (new Application())->container()->make(
+    \VeciAhorra\Modules\Payments\Reconciliation\Service\WebpayReconciliationMaterializer::class
+);
 
 function assertWebpayReturn(bool $condition, string $message): void
 {
@@ -192,7 +197,8 @@ $returns = new FakeWebpayReturns();
 $service = new WebpayReturnService(
     $gateway,
     new FakeReturnPaymentSessions($session),
-    $returns
+    $returns,
+    $a10Materializer
 );
 $result = $service->process(WebpayReturnRequest::fromArray(['token_ws' => $token]));
 assertWebpayReturn($result->result === 'approved', 'No aprobo retorno coherente.');
@@ -209,7 +215,8 @@ $rejectedGateway = new FakeWebpayReturnGateway(new WebpayCommitResult(
 $rejected = (new WebpayReturnService(
     $rejectedGateway,
     new FakeReturnPaymentSessions($session),
-    new FakeWebpayReturns()
+    new FakeWebpayReturns(),
+    $a10Materializer
 ))->process(WebpayReturnRequest::fromArray(['token_ws' => str_repeat('R', 64)]));
 assertWebpayReturn($rejected->result === 'rejected', 'Rechazo financiero incorrecto.');
 
@@ -221,7 +228,8 @@ foreach ([999, 1001, 0, -1] as $amount) {
     $inconsistent = (new WebpayReturnService(
         $inconsistentGateway,
         new FakeReturnPaymentSessions($session),
-        new FakeWebpayReturns()
+        new FakeWebpayReturns(),
+        $a10Materializer
     ))->process(WebpayReturnRequest::fromArray([
         'token_ws' => str_repeat(chr(65 + ($amount & 15)), 64),
     ]));
@@ -232,7 +240,8 @@ $abortGateway = new FakeWebpayReturnGateway($approved);
 $abortService = new WebpayReturnService(
     $abortGateway,
     new FakeReturnPaymentSessions($session),
-    new FakeWebpayReturns()
+    new FakeWebpayReturns(),
+    $a10Materializer
 );
 $aborted = $abortService->process(WebpayReturnRequest::fromArray([
     'TBK_TOKEN' => str_repeat('A', 64),
@@ -252,7 +261,8 @@ assertWebpayReturn(
 $abortMismatch = (new WebpayReturnService(
     $abortGateway,
     new FakeReturnPaymentSessions($session),
-    new FakeWebpayReturns()
+    new FakeWebpayReturns(),
+    $a10Materializer
 ))->process(WebpayReturnRequest::fromArray([
     'TBK_TOKEN' => str_repeat('B', 64),
     'TBK_ORDEN_COMPRA' => 'VA' . str_repeat('F', 24),
@@ -287,7 +297,8 @@ $retryableReturns = new FakeWebpayReturns();
 $retryableService = new WebpayReturnService(
     $gatewayError,
     new FakeReturnPaymentSessions($session),
-    $retryableReturns
+    $retryableReturns,
+    $a10Materializer
 );
 $failed = $retryableService->process(WebpayReturnRequest::fromArray([
     'token_ws' => str_repeat('E', 64),
@@ -309,7 +320,8 @@ $concurrentGateway = new FakeWebpayReturnGateway($approved);
 $concurrent = (new WebpayReturnService(
     $concurrentGateway,
     new FakeReturnPaymentSessions($session),
-    $concurrentReturns
+    $concurrentReturns,
+    $a10Materializer
 ))->process(WebpayReturnRequest::fromArray(['token_ws' => $concurrentToken]));
 assertWebpayReturn(
     $concurrent->result === 'already_processed'
@@ -343,6 +355,7 @@ $wooService = new WebpayReturnService(
     new FakeWebpayReturnGateway($approved),
     new FakeReturnPaymentSessions(null),
     new FakeWebpayReturns(),
+    $a10Materializer,
     $wooContexts,
     $wooResolver
 );
@@ -386,6 +399,7 @@ $wooRetryService = new WebpayReturnService(
     new FakeWebpayReturnGateway($approved),
     new FakeReturnPaymentSessions(null),
     new FakeWebpayReturns(),
+    $a10Materializer,
     $wooRetryContexts,
     new FakeWebpayReturnGatewayResolver($wooRetryGateway)
 );
@@ -420,6 +434,7 @@ $wooMismatch = (new WebpayReturnService(
     new FakeWebpayReturnGateway($approved),
     new FakeReturnPaymentSessions(null),
     new FakeWebpayReturns(),
+    $a10Materializer,
     $wooMismatchContexts,
     new FakeWebpayReturnGatewayResolver($wooMismatchGateway)
 ))->process(WebpayReturnRequest::fromArray(['token_ws' => $wooMismatchToken]));

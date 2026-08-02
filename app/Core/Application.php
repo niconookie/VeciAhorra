@@ -53,6 +53,7 @@ use VeciAhorra\Modules\Frontend\FrontendModule;
 use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 use VeciAhorra\Modules\Catalog\CatalogModule;
 use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionOrchestration;
+use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionScheduler;
 use VeciAhorra\Modules\Payments\Orchestration\WebpayCreateRecovery;
 use VeciAhorra\Modules\Payments\Orchestration\WebpayReturnRecovery;
 use VeciAhorra\Modules\Checkout\Repository\CheckoutOrderRepository;
@@ -71,6 +72,8 @@ use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryProcessingPolicy;
 use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\ActionSchedulerDurableRetryAdapter;
 use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionCallback;
 use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionHookRegistrar;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryProductionComposition;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\WordPressOptionDurableRetryActivationConfigurationValueReader;
 use VeciAhorra\Modules\Orders\Repositories\DurableRetryScheduleRepository;
 use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
 use VeciAhorra\Modules\Orders\Services\DurableRetryBusinessCompletionProcessor;
@@ -80,6 +83,7 @@ use VeciAhorra\Modules\Orders\Services\DurableRetryExternalScheduleCoordinator;
 use VeciAhorra\Modules\Orders\Services\DurableRetryFulfillmentProcessor;
 use VeciAhorra\Modules\Orders\Services\DurableRetryProcessorRegistry;
 use VeciAhorra\Modules\Orders\Services\DurableRetryReconciliationProcessor;
+use VeciAhorra\Modules\Orders\Services\DurableRetryInitialProductionRouter;
 use VeciAhorra\Modules\Payments\BusinessCompletion\Repository\BusinessCompletionRepository;
 use VeciAhorra\Modules\Payments\BusinessCompletion\Service\BusinessCompletionProcessor;
 use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentOriginContextRepository;
@@ -89,6 +93,7 @@ use VeciAhorra\Modules\Payments\Reconciliation\Repository\ValidatedFinancialResu
 use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentCompletionHandlerRegistry;
 use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentReconciliationProcessor;
 use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentReconciliationTechnicalEvaluator;
+use VeciAhorra\Modules\Payments\Reconciliation\Service\WebpayReconciliationMaterializer;
 use VeciAhorra\Modules\Payments\Reconciliation\Support\SystemReconciliationClock;
 use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
 use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
@@ -100,6 +105,11 @@ use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
  */
 final class Application
 {
+    private static bool $registered = false;
+
+    private ?DurableRetryInitialProductionRouter
+        $durableRetryInitialProductionRouter = null;
+
     /**
      * Contenedor de dependencias.
      */
@@ -173,6 +183,10 @@ final class Application
 
     private function registerDurableRetryGraph(): void
     {
+        if ($this->durableRetryInitialProductionRouter !== null) {
+            return;
+        }
+
         $utcNow = static fn (): string => gmdate('Y-m-d H:i:s');
 
         $this->container->singleton(
@@ -184,6 +198,32 @@ final class Application
             DurableRetryExternalSchedulerInterface::class,
             static fn (): ActionSchedulerDurableRetryAdapter =>
                 new ActionSchedulerDurableRetryAdapter()
+        );
+
+        global $wpdb;
+
+        if (! $wpdb instanceof \wpdb) {
+            throw new \RuntimeException(
+                'A WordPress database connection is required.'
+            );
+        }
+        $database = $wpdb;
+        $composition = new DurableRetryProductionComposition(
+            $database,
+            new WordPressOptionDurableRetryActivationConfigurationValueReader(),
+            $this->container->make(DurableRetryExternalSchedulerInterface::class),
+            new DurableCompletionScheduler(),
+            $utcNow
+        );
+        $this->durableRetryInitialProductionRouter = $composition->router();
+        $this->container->singleton(
+            WebpayReconciliationMaterializer::class,
+            fn (): WebpayReconciliationMaterializer =>
+                new WebpayReconciliationMaterializer(
+                    new ValidatedFinancialResultRepository(),
+                    new PaymentReconciliationRepository(),
+                    $this->durableRetryInitialProductionRouter
+                )
         );
         $this->container->singleton(
             DurableRetryProcessingPolicyInterface::class,
@@ -359,6 +399,12 @@ final class Application
      */
     public function run(): void
     {
+        if (self::$registered) {
+            return;
+        }
+        self::$registered = true;
+
+        try {
         $unitTaxonomy = $this->container->make(UnitTaxonomy::class);
         add_action('init', [$unitTaxonomy, 'register'], 20);
 
@@ -367,7 +413,9 @@ final class Application
             ->make(DurableRetryActionHookRegistrar::class)
             ->register();
         (new WebpayCreateRecovery())->register();
-        (new WebpayReturnRecovery())->register();
+        (new WebpayReturnRecovery(
+            $this->container->make(WebpayReconciliationMaterializer::class)
+        ))->register();
         $this->container->make(WebpayGatewayRegistration::class)->register();
 
         $frontendModule = $this->container->make(
@@ -521,6 +569,10 @@ final class Application
                 'rest_api_init',
                 [$catalogRoutes, 'register']
             );
+        }
+        } catch (\Throwable $throwable) {
+            self::$registered = false;
+            throw $throwable;
         }
     }
 

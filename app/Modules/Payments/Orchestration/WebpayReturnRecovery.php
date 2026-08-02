@@ -14,8 +14,8 @@ final class WebpayReturnRecovery
     public const GROUP = 'veciahorra-webpay-return';
 
     public function __construct(
-        private readonly PaymentOriginContextRepository $origins = new PaymentOriginContextRepository(),
-        private readonly WebpayReconciliationMaterializer $materializer = new WebpayReconciliationMaterializer()
+        private readonly WebpayReconciliationMaterializer $materializer,
+        private readonly PaymentOriginContextRepository $origins = new PaymentOriginContextRepository()
     ) {}
 
     public function register(): void

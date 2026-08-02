@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Payments\Reconciliation\Service;
 
+use DateTimeImmutable;
+use DateTimeZone;
+use LogicException;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryInitialProductionRoutingResult;
+use VeciAhorra\Modules\Orders\Services\DurableRetryInitialProductionRouter;
 use VeciAhorra\Modules\Payments\Gateway\WebpayCommitResult;
 use VeciAhorra\Modules\Payments\Reconciliation\DTO\CreatePaymentReconciliation;
 use VeciAhorra\Modules\Payments\Reconciliation\DTO\DurablePaymentOrigin;
@@ -16,13 +21,13 @@ use VeciAhorra\Modules\Payments\Reconciliation\Model\PaymentReconciliation;
 use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentReconciliationRepository;
 use VeciAhorra\Modules\Payments\Reconciliation\Repository\ValidatedFinancialResultRepository;
 use VeciAhorra\Modules\Payments\Reconciliation\Support\WooCommerceTransactionReferenceFactory;
-use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionScheduler;
 
 final class WebpayReconciliationMaterializer
 {
     public function __construct(
-        private readonly ValidatedFinancialResultRepository $financialResults = new ValidatedFinancialResultRepository(),
-        private readonly PaymentReconciliationRepository $reconciliations = new PaymentReconciliationRepository()
+        private readonly ValidatedFinancialResultRepository $financialResults,
+        private readonly PaymentReconciliationRepository $reconciliations,
+        private readonly DurableRetryInitialProductionRouter $initialProductionRouter
     ) {
     }
 
@@ -122,7 +127,7 @@ final class WebpayReconciliationMaterializer
                 $financial->fingerprint()
             )
         );
-        (new DurableCompletionScheduler())->reconciliation($reconciliationId);
+        $this->publishRetryAuthorityCandidate($materialized);
         return $materialized;
     }
 
@@ -209,8 +214,53 @@ final class WebpayReconciliationMaterializer
                 $financial->fingerprint()
             )
         );
-        (new DurableCompletionScheduler())->reconciliation($reconciliationId);
+        $this->publishRetryAuthorityCandidate($materialized);
         return $materialized;
+    }
+
+    private function publishRetryAuthorityCandidate(
+        MaterializedReconciliation $materializedReconciliation
+    ): void {
+        $scheduledForValue = gmdate('Y-m-d H:i:s');
+        $scheduledFor = DateTimeImmutable::createFromFormat(
+            '!Y-m-d H:i:s',
+            $scheduledForValue,
+            new DateTimeZone('UTC')
+        );
+        $errors = DateTimeImmutable::getLastErrors();
+
+        if (
+            $scheduledFor === false
+            || ($errors !== false
+                && ($errors['warning_count'] !== 0 || $errors['error_count'] !== 0))
+            || $scheduledFor->format('Y-m-d H:i:s') !== $scheduledForValue
+            || $scheduledFor->getTimezone()->getName() !== 'UTC'
+            || $scheduledFor->getOffset() !== 0
+            || $scheduledFor->format('u') !== '000000'
+        ) {
+            throw new LogicException(
+                'Durable Retry production timestamp could not be created.'
+            );
+        }
+
+        $result = $this->initialProductionRouter->routeReconciliation(
+            $materializedReconciliation->reconciliationId(),
+            $scheduledFor
+        );
+
+        match ($result->state()) {
+            DurableRetryInitialProductionRoutingResult::LEGACY_SCHEDULED => null,
+            DurableRetryInitialProductionRoutingResult::LEGACY_UNAVAILABLE => null,
+            DurableRetryInitialProductionRoutingResult::DURABLE_SYNCHRONIZED => null,
+            DurableRetryInitialProductionRoutingResult::DURABLE_ALREADY_SYNCHRONIZED => null,
+            DurableRetryInitialProductionRoutingResult::DURABLE_EXTERNAL_UNAVAILABLE => null,
+            DurableRetryInitialProductionRoutingResult::DURABLE_COORDINATION_FAILED => null,
+            DurableRetryInitialProductionRoutingResult::DURABLE_COORDINATION_UNCERTAIN => null,
+            DurableRetryInitialProductionRoutingResult::AUTHORITY_CLOSED => null,
+            DurableRetryInitialProductionRoutingResult::RESOLUTION_FAILED => null,
+            DurableRetryInitialProductionRoutingResult::INVALID_INPUT => null,
+            DurableRetryInitialProductionRoutingResult::DEPENDENCY_FAILURE => null,
+        };
     }
 
     private function originId(DurablePaymentOrigin $origin): int

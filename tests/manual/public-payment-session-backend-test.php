@@ -20,6 +20,7 @@ use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
 use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
 use VeciAhorra\Modules\Payments\Orchestration\WebpayCreateRecovery;
 use VeciAhorra\Modules\Payments\Orchestration\WebpayReturnRecovery;
+use VeciAhorra\Modules\Payments\Reconciliation\Service\WebpayReconciliationMaterializer;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
 use VeciAhorra\Modules\Payments\Gateway\PaymentSessionContext;
 use VeciAhorra\Modules\Payments\Gateway\GatewaySessionResult;
@@ -688,7 +689,10 @@ try {
         'AUTH123', 'VD', 0, '0715', '2026-07-15T16:00:00Z', '1234', 0
     ));
     $returnService = new WebpayReturnService(
-        $returnGateway, new PaymentSessionRepository(), new WebpayReturnRepository()
+        $returnGateway,
+        new PaymentSessionRepository(),
+        new WebpayReturnRepository(),
+        $application->container()->make(WebpayReconciliationMaterializer::class)
     );
     $publicReturn = $returnService->process(WebpayReturnRequest::fromArray([
         'token_ws' => $publicToken,
@@ -723,7 +727,9 @@ try {
             . ' o ON o.id=r.origin_context_id WHERE o.payment_attempt_id=%s',
         $firstSession['payment_session_id']
     ));
-    (new WebpayReturnRecovery())->recover();
+    (new WebpayReturnRecovery(
+        $application->container()->make(WebpayReconciliationMaterializer::class)
+    ))->recover();
     assertPublicPaymentBackendSame(1, (int) $wpdb->get_var($wpdb->prepare(
         "SELECT COUNT(*) FROM {$wpdb->prefix}" . Config::TABLE_PREFIX
             . 'payment_reconciliations r JOIN ' . $originsTable
