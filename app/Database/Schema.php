@@ -7,6 +7,8 @@ namespace VeciAhorra\Database;
 use VeciAhorra\Database\Contracts\TableInterface;
 use VeciAhorra\Database\Tables\ProductsTable;
 use VeciAhorra\Database\Tables\StoresTable;
+use VeciAhorra\Database\Tables\CouriersTable;
+use VeciAhorra\Database\Tables\ServiceProvidersTable;
 
 /**
  * Registro central de todas las tablas del sistema.
@@ -24,10 +26,11 @@ final class Schema
 
             new StoresTable(),
             new ProductsTable(),
+            new CouriersTable(),
+            new ServiceProvidersTable(),
 
             // Próximamente...
             // new OrdersTable(),
-            // new CouriersTable(),
             // new InventoryTable(),
 
         ];

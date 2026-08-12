@@ -117,6 +117,7 @@ try {
         && $firstLease->owner() === $ownerA
         && $firstLease->version() === 1
         && $firstLease->expiresAt() !== ''
+        && $firstLease->confirmedAttemptNumber() === 1
         && $afterFirst?->owner() === $ownerA
         && $afterFirst->attemptCount() === 1
         && $afterFirst->version() === 1,
@@ -212,6 +213,7 @@ try {
     assertReconciliationLease(
         $secondAcquire->status() === LeaseAcquireResult::ACQUIRED
         && $secondVersion === $firstVersion + 1
+        && $secondAcquire->lease()?->confirmedAttemptNumber() === 2
         && $repository->releaseLease($id, $ownerA, $firstVersion)->status()
             === LeaseReleaseResult::NOT_OWNER
         && $repository->findLease($id)?->owner() === $ownerB

@@ -53,8 +53,50 @@ use VeciAhorra\Modules\Frontend\FrontendModule;
 use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 use VeciAhorra\Modules\Catalog\CatalogModule;
 use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionOrchestration;
+use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionScheduler;
 use VeciAhorra\Modules\Payments\Orchestration\WebpayCreateRecovery;
 use VeciAhorra\Modules\Payments\Orchestration\WebpayReturnRecovery;
+use VeciAhorra\Modules\Checkout\Repository\CheckoutOrderRepository;
+use VeciAhorra\Modules\Checkout\Repository\CheckoutRepository;
+use VeciAhorra\Modules\Delivery\Completion\Repository\DeliveryCompletionRepository;
+use VeciAhorra\Modules\Delivery\Completion\Service\DeliveryCompletionProcessor;
+use VeciAhorra\Modules\Delivery\Repository\DeliveryRepository;
+use VeciAhorra\Modules\Fulfillment\Completion\Repository\FulfillmentCompletionRepository;
+use VeciAhorra\Modules\Fulfillment\Completion\Service\FulfillmentCompletionProcessor;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryExternalScheduleCoordinatorInterface;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryExternalSchedulerInterface;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryProcessingPolicyInterface;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryScheduleRepositoryInterface;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryStageProcessorResolverInterface;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryProcessingPolicy;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\ActionSchedulerDurableRetryAdapter;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionCallback;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionHookRegistrar;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryProductionComposition;
+use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\WordPressOptionDurableRetryActivationConfigurationValueReader;
+use VeciAhorra\Modules\Orders\Repositories\DurableRetryScheduleRepository;
+use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
+use VeciAhorra\Modules\Orders\Services\DurableRetryBusinessCompletionProcessor;
+use VeciAhorra\Modules\Orders\Services\DurableRetryDeliveryCompletionProcessor;
+use VeciAhorra\Modules\Orders\Services\DurableRetryExecutor;
+use VeciAhorra\Modules\Orders\Services\DurableRetryExternalScheduleCoordinator;
+use VeciAhorra\Modules\Orders\Services\DurableRetryFulfillmentProcessor;
+use VeciAhorra\Modules\Orders\Services\DurableRetryProcessorRegistry;
+use VeciAhorra\Modules\Orders\Services\DurableRetryReconciliationProcessor;
+use VeciAhorra\Modules\Orders\Services\DurableRetryInitialProductionRouter;
+use VeciAhorra\Modules\Payments\BusinessCompletion\Repository\BusinessCompletionRepository;
+use VeciAhorra\Modules\Payments\BusinessCompletion\Service\BusinessCompletionProcessor;
+use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentOriginContextRepository;
+use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentReconciliationClaimRepository;
+use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentReconciliationRepository;
+use VeciAhorra\Modules\Payments\Reconciliation\Repository\ValidatedFinancialResultRepository;
+use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentCompletionHandlerRegistry;
+use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentReconciliationProcessor;
+use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentReconciliationTechnicalEvaluator;
+use VeciAhorra\Modules\Payments\Reconciliation\Service\WebpayReconciliationMaterializer;
+use VeciAhorra\Modules\Payments\Reconciliation\Support\SystemReconciliationClock;
+use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
+use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
 
 /**
  * Clase principal de la aplicación.
@@ -63,6 +105,11 @@ use VeciAhorra\Modules\Payments\Orchestration\WebpayReturnRecovery;
  */
 final class Application
 {
+    private static bool $registered = false;
+
+    private ?DurableRetryInitialProductionRouter
+        $durableRetryInitialProductionRouter = null;
+
     /**
      * Contenedor de dependencias.
      */
@@ -131,6 +178,171 @@ final class Application
                 gmdate('Y-m-d\TH:i:s\Z')
             )
         );
+        $this->registerDurableRetryGraph();
+    }
+
+    private function registerDurableRetryGraph(): void
+    {
+        if ($this->durableRetryInitialProductionRouter !== null) {
+            return;
+        }
+
+        $utcNow = static fn (): string => gmdate('Y-m-d H:i:s');
+
+        $this->container->singleton(
+            DurableRetryScheduleRepositoryInterface::class,
+            static fn (): DurableRetryScheduleRepository =>
+                new DurableRetryScheduleRepository()
+        );
+        $this->container->singleton(
+            DurableRetryExternalSchedulerInterface::class,
+            static fn (): ActionSchedulerDurableRetryAdapter =>
+                new ActionSchedulerDurableRetryAdapter()
+        );
+
+        global $wpdb;
+
+        if (! $wpdb instanceof \wpdb) {
+            throw new \RuntimeException(
+                'A WordPress database connection is required.'
+            );
+        }
+        $database = $wpdb;
+        $composition = new DurableRetryProductionComposition(
+            $database,
+            new WordPressOptionDurableRetryActivationConfigurationValueReader(),
+            $this->container->make(DurableRetryExternalSchedulerInterface::class),
+            new DurableCompletionScheduler(),
+            $utcNow
+        );
+        $this->durableRetryInitialProductionRouter = $composition->router();
+        $this->container->singleton(
+            WebpayReconciliationMaterializer::class,
+            fn (): WebpayReconciliationMaterializer =>
+                new WebpayReconciliationMaterializer(
+                    new ValidatedFinancialResultRepository(),
+                    new PaymentReconciliationRepository(),
+                    $this->durableRetryInitialProductionRouter
+                )
+        );
+        $this->container->singleton(
+            DurableRetryProcessingPolicyInterface::class,
+            static fn (): DurableRetryProcessingPolicy =>
+                new DurableRetryProcessingPolicy()
+        );
+        $this->container->singleton(
+            DurableRetryExternalScheduleCoordinatorInterface::class,
+            fn (): DurableRetryExternalScheduleCoordinator =>
+                new DurableRetryExternalScheduleCoordinator(
+                    $this->container->make(
+                        DurableRetryScheduleRepositoryInterface::class
+                    ),
+                    $this->container->make(
+                        DurableRetryExternalSchedulerInterface::class
+                    ),
+                    $utcNow
+                )
+        );
+        $this->container->singleton(
+            DurableRetryStageProcessorResolverInterface::class,
+            static function (): DurableRetryProcessorRegistry {
+                $claims = new PaymentReconciliationClaimRepository();
+                $origins = new PaymentOriginContextRepository();
+                $financialResults = new ValidatedFinancialResultRepository();
+                $reconciliations = new PaymentReconciliationRepository(
+                    $origins,
+                    $financialResults
+                );
+                $reconciliationAttempts = new PaymentReconciliationProcessor(
+                    $claims,
+                    $reconciliations,
+                    $origins,
+                    $financialResults,
+                    new PaymentReconciliationTechnicalEvaluator(),
+                    new SystemReconciliationClock(),
+                    30,
+                    PaymentReconciliationClaimRepository::DEFAULT_LEASE_SECONDS,
+                    new PaymentCompletionHandlerRegistry()
+                );
+
+                $businessCompletions = new BusinessCompletionRepository();
+                $orders = new OrderRepository();
+                $businessAttempts = new BusinessCompletionProcessor(
+                    $businessCompletions,
+                    $reconciliations,
+                    new CheckoutRepository(),
+                    new CheckoutOrderRepository(),
+                    new PaymentSessionRepository(),
+                    new PaymentRepository(),
+                    $orders
+                );
+
+                $deliveryCompletions = new DeliveryCompletionRepository();
+                $deliveryAttempts = new DeliveryCompletionProcessor(
+                    $deliveryCompletions,
+                    new DeliveryRepository(),
+                    $orders
+                );
+
+                $fulfillmentCompletions =
+                    new FulfillmentCompletionRepository();
+                $fulfillmentAttempts = new FulfillmentCompletionProcessor(
+                    $fulfillmentCompletions
+                );
+
+                return new DurableRetryProcessorRegistry([
+                    new DurableRetryReconciliationProcessor(
+                        $claims,
+                        $reconciliationAttempts,
+                        $reconciliations
+                    ),
+                    new DurableRetryBusinessCompletionProcessor(
+                        $businessAttempts,
+                        $businessCompletions
+                    ),
+                    new DurableRetryDeliveryCompletionProcessor(
+                        $deliveryAttempts,
+                        $deliveryCompletions
+                    ),
+                    new DurableRetryFulfillmentProcessor(
+                        $fulfillmentAttempts,
+                        $fulfillmentCompletions
+                    ),
+                ]);
+            }
+        );
+        $this->container->singleton(
+            DurableRetryExecutor::class,
+            fn (): DurableRetryExecutor => new DurableRetryExecutor(
+                $this->container->make(
+                    DurableRetryScheduleRepositoryInterface::class
+                ),
+                $this->container->make(
+                    DurableRetryProcessingPolicyInterface::class
+                ),
+                $this->container->make(
+                    DurableRetryExternalScheduleCoordinatorInterface::class
+                ),
+                $this->container->make(
+                    DurableRetryStageProcessorResolverInterface::class
+                ),
+                $utcNow
+            )
+        );
+        $this->container->singleton(
+            DurableRetryActionCallback::class,
+            fn (): DurableRetryActionCallback =>
+                new DurableRetryActionCallback(
+                    $this->container->make(DurableRetryExecutor::class)
+                )
+        );
+        $this->container->singleton(
+            DurableRetryActionHookRegistrar::class,
+            fn (): DurableRetryActionHookRegistrar =>
+                new DurableRetryActionHookRegistrar(
+                    $this->container->make(DurableRetryActionCallback::class)
+                )
+        );
     }
 
     private function registerPaymentGateway(): void
@@ -187,12 +399,23 @@ final class Application
      */
     public function run(): void
     {
+        if (self::$registered) {
+            return;
+        }
+        self::$registered = true;
+
+        try {
         $unitTaxonomy = $this->container->make(UnitTaxonomy::class);
         add_action('init', [$unitTaxonomy, 'register'], 20);
 
         (new DurableCompletionOrchestration())->register();
+        $this->container
+            ->make(DurableRetryActionHookRegistrar::class)
+            ->register();
         (new WebpayCreateRecovery())->register();
-        (new WebpayReturnRecovery())->register();
+        (new WebpayReturnRecovery(
+            $this->container->make(WebpayReconciliationMaterializer::class)
+        ))->register();
         $this->container->make(WebpayGatewayRegistration::class)->register();
 
         $frontendModule = $this->container->make(
@@ -347,6 +570,10 @@ final class Application
                 [$catalogRoutes, 'register']
             );
         }
+        } catch (\Throwable $throwable) {
+            self::$registered = false;
+            throw $throwable;
+        }
     }
 
     /**
@@ -355,5 +582,15 @@ final class Application
     public function container(): Container
     {
         return $this->container;
+    }
+
+    public function durableRetryExecutor(): DurableRetryExecutor
+    {
+        return $this->container->make(DurableRetryExecutor::class);
+    }
+
+    public function durableRetryCallback(): DurableRetryActionCallback
+    {
+        return $this->container->make(DurableRetryActionCallback::class);
     }
 }

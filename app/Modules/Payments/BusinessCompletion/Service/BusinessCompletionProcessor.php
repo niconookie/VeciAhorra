@@ -9,6 +9,7 @@ use VeciAhorra\Modules\Checkout\Models\Checkout;
 use VeciAhorra\Modules\Checkout\Repository\CheckoutOrderRepository;
 use VeciAhorra\Modules\Checkout\Repository\CheckoutRepository;
 use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
+use VeciAhorra\Modules\Payments\BusinessCompletion\Contracts\BusinessCompletionAttemptProcessorInterface;
 use VeciAhorra\Modules\Payments\BusinessCompletion\DTO\BusinessCompletionResult;
 use VeciAhorra\Modules\Payments\BusinessCompletion\Exception\BusinessCompletionFailure;
 use VeciAhorra\Modules\Payments\BusinessCompletion\Repository\BusinessCompletionRepository;
@@ -19,7 +20,7 @@ use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentReconciliationR
 use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
 use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
 
-final class BusinessCompletionProcessor
+final class BusinessCompletionProcessor implements BusinessCompletionAttemptProcessorInterface
 {
     public function __construct(
         private readonly BusinessCompletionRepository $completions = new BusinessCompletionRepository(),

@@ -7,9 +7,19 @@ namespace VeciAhorra\Modules\Delivery\Completion\Repository;
 use Throwable;
 use VeciAhorra\Database\Repository;
 use VeciAhorra\Exceptions\PersistenceException;
+use VeciAhorra\Modules\Delivery\Completion\Contracts\DeliveryCompletionReadAuthorityInterface;
 
-final class DeliveryCompletionRepository extends Repository
+final class DeliveryCompletionRepository extends Repository implements DeliveryCompletionReadAuthorityInterface
 {
+    public function checkoutForOrder(int $orderId): ?array
+    {
+        $row = $this->db()->get_row($this->db()->prepare(sprintf(
+            'SELECT c.* FROM %1$s c INNER JOIN %2$s co ON co.checkout_id = c.id'
+            . ' WHERE co.order_id = %%d LIMIT 1 FOR UPDATE',
+            $this->table('checkouts'), $this->table('checkout_orders')
+        ), $orderId), ARRAY_A);
+        return $row === null ? null : $row;
+    }
     public const DEFAULT_LEASE_SECONDS = 600;
     private const TABLE = 'delivery_completions';
 

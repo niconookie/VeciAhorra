@@ -13,10 +13,11 @@ use VeciAhorra\Modules\Payments\Reconciliation\DTO\LeaseRenewResult;
 use VeciAhorra\Modules\Payments\Reconciliation\DTO\ReconciliationLease;
 use VeciAhorra\Modules\Payments\Reconciliation\DTO\ReconciliationLeaseState;
 use VeciAhorra\Modules\Payments\Reconciliation\DTO\StatusTransitionResult;
+use VeciAhorra\Modules\Payments\Reconciliation\Contracts\PaymentReconciliationLeaseAuthorityInterface;
 use VeciAhorra\Modules\Payments\Reconciliation\Model\PaymentReconciliation;
 use VeciAhorra\Modules\Payments\Reconciliation\Support\ReconciliationValidation;
 
-final class PaymentReconciliationClaimRepository extends Repository
+final class PaymentReconciliationClaimRepository extends Repository implements PaymentReconciliationLeaseAuthorityInterface
 {
     public const DEFAULT_LEASE_SECONDS = 600;
     public const MAX_ATTEMPTS = 5;
@@ -28,6 +29,11 @@ final class PaymentReconciliationClaimRepository extends Repository
     public static function ownerId(): string
     {
         return 'worker_' . bin2hex(random_bytes(16));
+    }
+
+    public function newOwner(): string
+    {
+        return self::ownerId();
     }
 
     public function acquireLease(
@@ -80,7 +86,8 @@ final class PaymentReconciliationClaimRepository extends Repository
                     $reconciliationId,
                     $owner,
                     $lease->version(),
-                    (string) $lease->expiresAt()
+                    (string) $lease->expiresAt(),
+                    $lease->attemptCount()
                 )
             );
         }

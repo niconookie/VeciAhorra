@@ -25,6 +25,9 @@ use VeciAhorra\Database\Migrations\EnsureUniqueDeliveryOrder;
 use VeciAhorra\Database\Migrations\CreateFulfillmentCompletionsTable;
 use VeciAhorra\Database\Migrations\EnsureUniqueFulfillmentCompletion;
 use VeciAhorra\Database\Migrations\AddDurableWebpayCreateState;
+use VeciAhorra\Database\Migrations\CreateDurableRetrySchedulesTable;
+use VeciAhorra\Database\Migrations\AddStoreFulfillmentState;
+use VeciAhorra\Database\Migrations\CreateServiceZonesTables;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -113,6 +116,9 @@ final class MigrationManager
             new CreateFulfillmentCompletionsTable(),
             new EnsureUniqueFulfillmentCompletion(),
             new CreateDeliveryTrackingTable(),
+            new CreateDurableRetrySchedulesTable(),
+            new AddStoreFulfillmentState(),
+            new CreateServiceZonesTables(),
         ];
     }
 }

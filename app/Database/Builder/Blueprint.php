@@ -72,6 +72,11 @@ private ?Column $lastColumn = null;
         );
     }
 
+    public function char(string $name, int $length): self
+    {
+        return $this->add(new Column($name, "CHAR($length)"));
+    }
+
 /**
 * Columna TEXT.
 */
@@ -109,6 +114,11 @@ public function integerUnsigned(string $name): self
             'INT UNSIGNED'
         )
     );
+}
+
+public function tinyIntegerUnsigned(string $name): self
+{
+    return $this->add(new Column($name, 'TINYINT UNSIGNED'));
 }
 
 /**
@@ -199,6 +209,15 @@ public function default(string $value): self
 {
     if ($this->lastColumn !== null) {
         $this->lastColumn->default($value);
+    }
+
+    return $this;
+}
+
+public function defaultNull(): self
+{
+    if ($this->lastColumn !== null) {
+        $this->lastColumn->defaultNull();
     }
 
     return $this;

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use VeciAhorra\Core\Application;
 use VeciAhorra\Core\Config;
 use VeciAhorra\Database\Migrations\CreatePaymentOriginContextsTable;
 use VeciAhorra\Database\Migrations\CreatePaymentReconciliationsTable;
@@ -50,6 +51,10 @@ final class DurableAttemptReturnGateway implements WebpayReturnGatewayInterface
 }
 
 global $wpdb;
+
+$a10Materializer = (new Application())->container()->make(
+    WebpayReconciliationMaterializer::class
+);
 
 (new CreatePaymentOriginContextsTable())->up();
 (new CreateWebpayReturnsTable())->up();
@@ -204,10 +209,10 @@ try {
         $returnGateway,
         new PaymentSessionRepository(),
         new WebpayReturnRepository(),
+        $a10Materializer,
         $returnContexts,
         null,
-        $origins,
-        new WebpayReconciliationMaterializer()
+        $origins
     );
     $serviceResult = $returnService->process(
         WebpayReturnRequest::fromArray(['token_ws' => $serviceToken])
@@ -251,7 +256,7 @@ try {
         '1234',
         0
     );
-    $materializer = new WebpayReconciliationMaterializer();
+    $materializer = $a10Materializer;
     $materialized = $materializer->materialize(
         $tokenHash,
         $origins->find($createdOne->originContextId()),

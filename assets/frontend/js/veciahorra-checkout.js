@@ -587,6 +587,24 @@
             return selected ? selected.value : 'pickup';
         }
 
+        function checkoutPayload() {
+            var method = selectedMethod();
+            var payload = { fulfillment_method: method };
+
+            if (method === 'delivery') {
+                payload.delivery = {
+                    recipient_name: form.elements.recipient_name.value.trim(),
+                    contact_phone: form.elements.phone.value.trim(),
+                    address_line1: form.elements.address.value.trim(),
+                    commune: form.elements.commune.value.trim(),
+                    reference: form.elements.reference.value.trim(),
+                    notes: form.elements.notes.value.trim()
+                };
+            }
+
+            return payload;
+        }
+
         function renderDelivery(summary, preferredMethod) {
             deliveryEligible = summary.totalCents >= minimumCents;
             optionsRoot.replaceChildren(deliveryOption(
@@ -805,9 +823,7 @@
             creationOptions.headers = Object.assign({}, creationOptions.headers || {}, {
                 'Idempotency-Key': checkoutIdempotencyKey
             });
-            return config.api.post('/checkout', {
-                fulfillment_method: selectedMethod()
-            }, creationOptions).then(function (payload) {
+            return config.api.post('/checkout', checkoutPayload(), creationOptions).then(function (payload) {
                 var result = normalizedCheckout(payload);
                 if (!result.valid) {
                     validated = false;
@@ -899,7 +915,7 @@
         function updateDeliveryFields() {
             var delivery = deliveryEligible && selectedMethod() === 'delivery';
             deliveryFields.hidden = !delivery;
-            ['address', 'commune'].forEach(function (name) {
+            ['recipient_name', 'address', 'commune'].forEach(function (name) {
                 var input = form.elements[name];
                 input.required = delivery;
                 if (!delivery) {
@@ -1002,7 +1018,7 @@
 
             return config.api.post(
                 '/checkout/validate',
-                { fulfillment_method: selectedMethod() },
+                checkoutPayload(),
                 requestOptions(activeController.signal)
             ).then(function (payload) {
                 if (requestId !== requestSequence) {

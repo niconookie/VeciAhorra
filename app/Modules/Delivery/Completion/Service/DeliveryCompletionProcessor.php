@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Delivery\Completion\Service;
 
 use Throwable;
+use VeciAhorra\Modules\Delivery\Completion\Contracts\DeliveryCompletionAttemptProcessorInterface;
 use VeciAhorra\Modules\Delivery\Completion\DTO\DeliveryCompletionResult;
 use VeciAhorra\Modules\Delivery\Completion\Exception\DeliveryCompletionFailure;
 use VeciAhorra\Modules\Delivery\Completion\Repository\DeliveryCompletionRepository;
@@ -12,7 +13,7 @@ use VeciAhorra\Modules\Delivery\Models\Delivery;
 use VeciAhorra\Modules\Delivery\Repository\DeliveryRepository;
 use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
 
-final class DeliveryCompletionProcessor
+final class DeliveryCompletionProcessor implements DeliveryCompletionAttemptProcessorInterface
 {
     public function __construct(
         private readonly DeliveryCompletionRepository $completions = new DeliveryCompletionRepository(),
@@ -88,6 +89,11 @@ final class DeliveryCompletionProcessor
                         throw new DeliveryCompletionFailure('snapshot_order_not_paid', DeliveryCompletionResult::MANUAL_REVIEW);
                     }
                     $orderId = (int) $order['id'];
+                    $checkout = $this->completions->checkoutForOrder($orderId);
+                    $required = ['delivery_recipient_name','delivery_contact_phone','delivery_address_line1','delivery_commune'];
+                    if ($checkout === null || array_filter($required, static fn(string $field): bool => trim((string) ($checkout[$field] ?? '')) === '') !== []) {
+                        throw new DeliveryCompletionFailure('delivery_snapshot_invalid', DeliveryCompletionResult::MANUAL_REVIEW);
+                    }
                     $delivery = $this->deliveries->findByOrderIdForUpdate($orderId);
                     if ($delivery === null) {
                         $deliveryId = $this->deliveries->create([
@@ -96,6 +102,12 @@ final class DeliveryCompletionProcessor
                             'minimarket_id' => (int) $order['minimarket_id'],
                             'courier_id' => null,
                             'status' => Delivery::STATUS_PENDING,
+                            'delivery_recipient_name' => $checkout['delivery_recipient_name'],
+                            'delivery_contact_phone' => $checkout['delivery_contact_phone'],
+                            'delivery_address_line1' => $checkout['delivery_address_line1'],
+                            'delivery_commune' => $checkout['delivery_commune'],
+                            'delivery_reference' => $checkout['delivery_reference'],
+                            'delivery_notes' => $checkout['delivery_notes'],
                             'created_at' => current_time('mysql', true),
                             'updated_at' => current_time('mysql', true),
                         ]);
@@ -107,6 +119,12 @@ final class DeliveryCompletionProcessor
                         || (int) $delivery['minimarket_id'] !== (int) $order['minimarket_id']
                         || $delivery['courier_id'] !== null
                         || ($delivery['status'] ?? null) !== Delivery::STATUS_PENDING
+                        || (string) ($delivery['delivery_recipient_name'] ?? '') !== (string) $checkout['delivery_recipient_name']
+                        || (string) ($delivery['delivery_contact_phone'] ?? '') !== (string) $checkout['delivery_contact_phone']
+                        || (string) ($delivery['delivery_address_line1'] ?? '') !== (string) $checkout['delivery_address_line1']
+                        || (string) ($delivery['delivery_commune'] ?? '') !== (string) $checkout['delivery_commune']
+                        || ($delivery['delivery_reference'] ?? null) !== ($checkout['delivery_reference'] ?? null)
+                        || ($delivery['delivery_notes'] ?? null) !== ($checkout['delivery_notes'] ?? null)
                     ) {
                         throw new DeliveryCompletionFailure('delivery_identity_conflict', DeliveryCompletionResult::MANUAL_REVIEW);
                     }

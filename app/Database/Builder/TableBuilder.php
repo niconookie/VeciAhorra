@@ -62,9 +62,23 @@ final class TableBuilder
         return $this;
     }
 
+    public function char(string $name, int $length): self
+    {
+        $this->blueprint->char($name, $length);
+
+        return $this;
+    }
+
     public function integerUnsigned(string $name): self
     {
         $this->blueprint->integerUnsigned($name);
+
+        return $this;
+    }
+
+    public function tinyIntegerUnsigned(string $name): self
+    {
+        $this->blueprint->tinyIntegerUnsigned($name);
 
         return $this;
     }
@@ -128,6 +142,13 @@ final class TableBuilder
     public function default(string $value): self
     {
         $this->blueprint->default($value);
+
+        return $this;
+    }
+
+    public function defaultNull(): self
+    {
+        $this->blueprint->defaultNull();
 
         return $this;
     }

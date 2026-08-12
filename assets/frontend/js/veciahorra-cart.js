@@ -196,13 +196,21 @@
         function renderItem(item) {
             var row = document.createElement('tr');
             var remove = textNode('button', 'va-button va-button--danger', 'Eliminar');
+            var product = productCell(item);
 
             row.setAttribute('data-cart-item-id', String(item.id));
+            if (item.sector_compatible === false) {
+                row.classList.add('is-sector-incompatible');
+                var warning = document.createElement('p');
+                warning.className = 'va-cart-sector-warning';
+                warning.textContent = 'Esta oferta no está disponible en tu sector actual. Quítala o vuelve a un sector compatible antes de continuar.';
+                product.appendChild(warning);
+            }
             remove.type = 'button';
             remove.setAttribute('aria-label', 'Eliminar ' + (item.product_name || 'producto') + ' del carrito');
             remove.addEventListener('click', function () { removeItem(item); });
             row.append(
-                labeledCell('Producto', productCell(item)),
+                labeledCell('Producto', product),
                 labeledCell('Minimarket', item.minimarket_name || 'Minimarket no disponible'),
                 labeledCell('Precio unitario', money(item.unit_price_snapshot)),
                 labeledCell('Cantidad', quantityControl(item)),

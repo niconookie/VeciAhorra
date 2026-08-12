@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Database\Builder;
 
+use InvalidArgumentException;
+
 /**
  * VeciAhorra
  *
@@ -21,6 +23,8 @@ final class Column
     private bool $nullable = false;
 
     private ?string $default = null;
+
+    private bool $defaultNull = false;
 
     private bool $autoIncrement = false;
 
@@ -42,7 +46,31 @@ final class Column
 
     public function default(string $value): self
     {
+        if ($this->defaultNull) {
+            throw new InvalidArgumentException(
+                'A column cannot combine a scalar default with DEFAULT NULL.'
+            );
+        }
+
         $this->default = $value;
+
+        return $this;
+    }
+
+    public function defaultNull(): self
+    {
+        if (! $this->nullable) {
+            throw new InvalidArgumentException(
+                'DEFAULT NULL requires a nullable column.'
+            );
+        }
+        if ($this->default !== null) {
+            throw new InvalidArgumentException(
+                'A column cannot combine DEFAULT NULL with a scalar default.'
+            );
+        }
+
+        $this->defaultNull = true;
 
         return $this;
     }
@@ -73,6 +101,8 @@ final class Column
 
     if ($this->default !== null) {
         $sql .= " DEFAULT '{$this->default}'";
+    } elseif ($this->defaultNull) {
+        $sql .= ' DEFAULT NULL';
     }
 
     if ($this->autoIncrement) {

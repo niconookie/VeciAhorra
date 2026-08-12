@@ -27,10 +27,10 @@ final class WebpayReturnService
         private WebpayReturnGatewayInterface $gateway,
         private PaymentSessionRepository $sessions,
         private WebpayReturnRepository $returns,
+        private WebpayReconciliationMaterializer $materializer,
         private ?WebpayReturnContextRepositoryInterface $contexts = null,
         private ?WebpayReturnGatewayResolverInterface $gatewayResolver = null,
-        private ?PaymentOriginContextRepository $durableOrigins = null,
-        private ?WebpayReconciliationMaterializer $materializer = null
+        private ?PaymentOriginContextRepository $durableOrigins = null
     ) {
     }
 
@@ -259,9 +259,7 @@ final class WebpayReturnService
             : null;
 
         if ($durableOrigin !== null) {
-            $materializer = $this->materializer
-                ?? new WebpayReconciliationMaterializer();
-            $resumed = $materializer->resume($tokenHash, $durableOrigin);
+            $resumed = $this->materializer->resume($tokenHash, $durableOrigin);
             $resultStatus = is_string($row['result_status'] ?? null)
                 ? $row['result_status']
                 : null;
@@ -271,7 +269,7 @@ final class WebpayReturnService
                 && $storedFinancial !== null
                 && in_array($resultStatus, ['approved', 'rejected'], true)
             ) {
-                $materializer->materialize(
+                $this->materializer->materialize(
                     $tokenHash,
                     $durableOrigin,
                     $this->storedCommit($storedFinancial),
@@ -316,8 +314,7 @@ final class WebpayReturnService
             && $financial !== null
             && in_array($result->result, ['approved', 'rejected'], true)
         ) {
-            ($this->materializer ?? new WebpayReconciliationMaterializer())
-                ->materialize(
+            $this->materializer->materialize(
                     $tokenHash,
                     $durableOrigin,
                     $financial,
