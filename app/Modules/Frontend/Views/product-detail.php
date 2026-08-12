@@ -2,6 +2,7 @@
 /** @var string $instanceId */
 /** @var int $productId */
 /** @var string $cartUrl */
+/** @var string $catalogUrl */
 $titleId = $instanceId . '-product-title';
 $offersLabelId = $instanceId . '-offers-label';
 $selectionTitleId = $instanceId . '-selection-title';
@@ -53,6 +54,7 @@ $selectionTitleId = $instanceId . '-selection-title';
         </button>
         <p class="va-cart-action__message va-cart-action__message--success" role="status" aria-live="polite" data-va-cart-success hidden></p>
         <a class="va-button va-cart-action__link" href="<?php echo esc_url($cartUrl); ?>" data-va-view-cart hidden><?php esc_html_e('Ver carrito', 'veciahorra'); ?></a>
+        <a class="va-button va-button--secondary va-cart-action__link" href="<?php echo esc_url($catalogUrl); ?>" data-va-continue-shopping hidden><?php esc_html_e('Seguir comprando', 'veciahorra'); ?></a>
         <p class="va-cart-action__message va-cart-action__message--error" role="alert" data-va-cart-error hidden></p>
     </section>
 </article>

@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Fulfillment\Orchestration;
 
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryLegacyExclusionInterface;
+
 final class DurableCompletionOrchestration
 {
+    public function __construct(
+        private readonly DurableRetryLegacyExclusionInterface $legacyAuthority
+    ) {}
+
     public function register(): void
     {
-        $workers = new DurableCompletionWorkers();
+        $workers = new DurableCompletionWorkers($this->legacyAuthority);
         add_action(DurableCompletionScheduler::RECONCILIATION, [$workers, 'reconciliation'], 10, 1);
         add_action(DurableCompletionScheduler::BUSINESS, [$workers, 'business'], 10, 1);
         add_action(DurableCompletionScheduler::DELIVERY, [$workers, 'delivery'], 10, 1);

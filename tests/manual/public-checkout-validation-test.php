@@ -120,6 +120,36 @@ try {
     assertPublicCheckoutValidationSame('4000.00', $payload['data']['items'][0]['unit_price_snapshot']);
     assertPublicCheckoutValidationSame('8000.00', $payload['data']['items'][0]['subtotal']);
 
+    $delivery = [
+        'recipient_name' => 'Cliente Prueba',
+        'contact_phone' => '+56955550101',
+        'address_line1' => 'Calle Uno 123',
+        'commune' => 'Santiago',
+        'reference' => '',
+        'notes' => '',
+    ];
+    foreach ([
+        ['delivery' => $delivery, 'status' => 200, 'valid' => true],
+        ['delivery' => [...$delivery, 'address_line1' => ''], 'status' => 422],
+        ['delivery' => [...$delivery, 'commune' => ''], 'status' => 422],
+    ] as $case) {
+        $deliveryRequest = new WP_REST_Request('POST', '/veciahorra/v1/checkout/validate');
+        $deliveryRequest->set_header('content-type', 'application/json');
+        $deliveryRequest->set_header('X-Veciahorra-Cart-Session', $session);
+        $deliveryRequest->set_body((string) wp_json_encode([
+            'fulfillment_method' => 'delivery',
+            'delivery' => $case['delivery'],
+        ]));
+        $deliveryResponse = rest_do_request($deliveryRequest);
+        assertPublicCheckoutValidationSame($case['status'], $deliveryResponse->get_status());
+        if (isset($case['valid'])) {
+            assertPublicCheckoutValidationSame(
+                $case['valid'],
+                $deliveryResponse->get_data()['data']['valid'] ?? null
+            );
+        }
+    }
+
     $extra = new WP_REST_Request('POST', '/veciahorra/v1/checkout/validate');
     $extra->set_header('content-type', 'application/json');
     $extra->set_header('X-Veciahorra-Cart-Session', $session);

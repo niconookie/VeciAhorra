@@ -68,6 +68,7 @@ foreach ([
     'data-va-add-to-cart', 'disabled', 'aria-busy="false"',
     'data-va-add-loading', 'data-va-cart-success', 'aria-live="polite"',
     'data-va-cart-error', 'role="alert"', 'data-va-view-cart',
+    'data-va-continue-shopping', 'Seguir comprando',
     'Ver carrito', '/carrito-veciahorra/',
 ] as $contract) {
     assertPublicAddToCartContains($contract, $html);
@@ -91,6 +92,7 @@ foreach ([
     'cart.sessionHeader', "setAttribute('aria-busy'",
     '.finally(function ()',
     'viewCart.hidden = false',
+    'continueShopping.hidden = false',
     'No fue posible agregar el producto al carrito. Intenta nuevamente.',
 ] as $contract) {
     assertPublicAddToCartContains($contract, $javascript);

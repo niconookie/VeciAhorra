@@ -404,6 +404,37 @@
             return Math.max(floor, Math.min(requested, 15000));
         }
 
+        function rememberCheckout(checkoutId) {
+            var url;
+
+            if (!validCheckoutPublicId(checkoutId)) {
+                return false;
+            }
+            checkoutPublicId = checkoutId;
+            try {
+                url = new URL(window.location.href);
+                url.searchParams.set('checkout_id', checkoutId);
+                window.history.replaceState(window.history.state, '', url.toString());
+            } catch (ignore) {
+                // The in-memory checkout authority is enough for this page load.
+            }
+            return true;
+        }
+
+        function resumePaymentStatus(checkoutId, message) {
+            if (!rememberCheckout(checkoutId)) {
+                return Promise.reject({
+                    code: 'invalid_response',
+                    message: 'El servidor no entregó un checkout_id válido.'
+                });
+            }
+            paymentStartedAt = Date.now();
+            paymentStopped = false;
+            status.hidden = false;
+            status.textContent = message || 'Estamos confirmando el estado del pago…';
+            return pollPaymentStatus();
+        }
+
         function renderPaymentState(data) {
             var action = data.next_action;
             lastPaymentState = data;
@@ -713,7 +744,7 @@
             var timer;
             var options;
 
-            if (!validCheckoutPublicId(checkoutId)) {
+            if (!rememberCheckout(checkoutId)) {
                 return Promise.reject({
                     code: 'invalid_response',
                     message: 'El servidor no entregó un checkout_id válido.'
@@ -734,18 +765,30 @@
                 var data = payload && payload.success === true ? payload.data : null;
 
                 if (!data || typeof data.payment_session_id !== 'string'
-                    || typeof data.redirect_url !== 'string'
-                    || typeof data.token_ws !== 'string') {
-                    throw { code: 'invalid_response', message: 'La sesión de pago no entregó una redirección válida.' };
+                    || data.checkout_id !== checkoutId
+                    || typeof data.status !== 'string') {
+                    throw { code: 'invalid_response', message: 'La sesión de pago entregó una respuesta incompleta.' };
                 }
-                submitWebpay(data.redirect_url, data.token_ws);
-                return payload;
+                if (typeof data.redirect_url === 'string'
+                    && typeof data.token_ws === 'string') {
+                    submitWebpay(data.redirect_url, data.token_ws);
+                    return payload;
+                }
+                return resumePaymentStatus(
+                    checkoutId,
+                    'La sesión de pago se está preparando. Confirmando estado…'
+                ).then(function () { return payload; });
             }).catch(function (requestError) {
-                showValidationErrors([{
-                    message: communicationMessage(requestError)
-                }]);
-                status.textContent = 'El pedido fue creado, pero no fue posible iniciar el pago.';
-                return null;
+                return resumePaymentStatus(
+                    checkoutId,
+                    'El pedido fue creado. Estamos verificando si el pago pudo iniciarse…'
+                ).catch(function () {
+                    showValidationErrors([{
+                        message: communicationMessage(requestError)
+                    }]);
+                    status.textContent = 'El pedido fue creado, pero no fue posible confirmar el inicio del pago.';
+                    return null;
+                });
             }).finally(function () {
                 window.clearTimeout(timer);
             });

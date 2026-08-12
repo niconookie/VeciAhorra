@@ -57,6 +57,7 @@ final class FrontendController
                 'instanceId' => $instanceId,
                 'productId' => $productId,
                 'cartUrl' => $this->routeResolver()->cart(),
+                'catalogUrl' => $this->routeResolver()->catalog(),
             ]);
         } else {
             $this->assets->enqueueCatalog();
@@ -120,6 +121,7 @@ final class FrontendController
         $page = $this->views->render('cart', [
             'instanceId' => $instanceId,
             'checkoutUrl' => $this->routeResolver()->checkout(),
+            'catalogUrl' => $this->routeResolver()->catalog(),
         ]);
 
         return $this->views->render('layout', [
@@ -143,6 +145,7 @@ final class FrontendController
         $instanceId = 'va-checkout-' . $this->instance;
         $page = $this->views->render('checkout', [
             'instanceId' => $instanceId,
+            'buyerName' => $this->authenticatedBuyerName(),
         ]);
 
         return $this->views->render('layout', [
@@ -182,6 +185,8 @@ final class FrontendController
             'instanceId' => $instanceId,
             'loggedIn' => $loggedIn,
             'loginUrl' => wp_login_url($ordersUrl),
+            'catalogUrl' => $this->routeResolver()->catalog(),
+            'logoutUrl' => wp_logout_url(home_url('/')),
         ]);
     }
 
@@ -205,5 +210,17 @@ final class FrontendController
         }
 
         return (int) $raw;
+    }
+
+    private function authenticatedBuyerName(): string
+    {
+        if (! is_user_logged_in()) {
+            return '';
+        }
+
+        $user = wp_get_current_user();
+        $displayName = trim((string) $user->display_name);
+
+        return $displayName !== '' ? $displayName : (string) $user->user_login;
     }
 }

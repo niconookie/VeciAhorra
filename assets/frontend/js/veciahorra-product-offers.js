@@ -259,6 +259,7 @@
         var addLoading = root.querySelector('[data-va-add-loading]');
         var cartSuccess = root.querySelector('[data-va-cart-success]');
         var viewCart = root.querySelector('[data-va-view-cart]');
+        var continueShopping = root.querySelector('[data-va-continue-shopping]');
         var cartError = root.querySelector('[data-va-cart-error]');
         var productImage = root.querySelector('[data-va-product-image]');
         var productImageMissing = root.querySelector('[data-va-product-image-missing]');
@@ -504,6 +505,7 @@
                             + '.'
                     );
                     viewCart.hidden = false;
+                    continueShopping.hidden = false;
 
                     return response;
                 })

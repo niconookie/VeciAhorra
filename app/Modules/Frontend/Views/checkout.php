@@ -1,5 +1,6 @@
 <?php
 /** @var string $instanceId */
+/** @var string $buyerName */
 $titleId = $instanceId . '-title';
 $deliveryLegendId = $instanceId . '-delivery-legend';
 ?>
@@ -22,8 +23,7 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
         <p class="va-empty-state__message"><?php esc_html_e('Agrega productos antes de continuar.', 'veciahorra'); ?></p>
     </div>
 
-    <section class="va-alert va-alert--info" tabindex="-1" aria-live="polite"
-        data-va-payment-status-panel hidden>
+    <section class="va-alert va-alert--info" tabindex="-1" aria-live="polite" data-va-payment-status-panel hidden>
         <h2><?php esc_html_e('Estado de tu pago', 'veciahorra'); ?></h2>
         <p data-va-payment-status-message></p>
         <a class="va-button" data-va-payment-status-action hidden></a>
@@ -50,10 +50,10 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
 
         <form class="va-checkout-form" data-va-checkout-form novalidate>
             <section aria-labelledby="<?php echo esc_attr($instanceId . '-customer-title'); ?>">
-                <h2 id="<?php echo esc_attr($instanceId . '-customer-title'); ?>"><?php esc_html_e('Datos del cliente', 'veciahorra'); ?></h2>
+                <h2 id="<?php echo esc_attr($instanceId . '-customer-title'); ?>"><?php esc_html_e('Comprador', 'veciahorra'); ?></h2>
+                <p class="va-checkout-buyer" data-va-checkout-buyer-name><?php echo esc_html($buyerName); ?></p>
+                <p class="va-help-text"><?php esc_html_e('La identidad del comprador proviene de la sesión iniciada y no se puede modificar aquí.', 'veciahorra'); ?></p>
                 <div class="va-checkout-form__grid">
-                    <div class="va-field"><label for="<?php echo esc_attr($instanceId . '-first-name'); ?>"><?php esc_html_e('Nombre', 'veciahorra'); ?></label><input id="<?php echo esc_attr($instanceId . '-first-name'); ?>" name="first_name" autocomplete="given-name" required data-va-field><p class="va-field__error" id="<?php echo esc_attr($instanceId . '-first-name-error'); ?>" data-va-field-error hidden></p></div>
-                    <div class="va-field"><label for="<?php echo esc_attr($instanceId . '-last-name'); ?>"><?php esc_html_e('Apellido', 'veciahorra'); ?></label><input id="<?php echo esc_attr($instanceId . '-last-name'); ?>" name="last_name" autocomplete="family-name" required data-va-field><p class="va-field__error" id="<?php echo esc_attr($instanceId . '-last-name-error'); ?>" data-va-field-error hidden></p></div>
                     <div class="va-field"><label for="<?php echo esc_attr($instanceId . '-phone'); ?>"><?php esc_html_e('Teléfono', 'veciahorra'); ?></label><input id="<?php echo esc_attr($instanceId . '-phone'); ?>" name="phone" type="tel" autocomplete="tel" required data-va-field><p class="va-field__error" id="<?php echo esc_attr($instanceId . '-phone-error'); ?>" data-va-field-error hidden></p></div>
                     <div class="va-field"><label for="<?php echo esc_attr($instanceId . '-email'); ?>"><?php esc_html_e('Correo electrónico', 'veciahorra'); ?></label><input id="<?php echo esc_attr($instanceId . '-email'); ?>" name="email" type="email" autocomplete="email" required data-va-field><p class="va-field__error" id="<?php echo esc_attr($instanceId . '-email-error'); ?>" data-va-field-error hidden></p></div>
                 </div>
@@ -68,7 +68,7 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
             <section class="va-checkout-address" data-va-delivery-fields hidden aria-labelledby="<?php echo esc_attr($instanceId . '-address-title'); ?>">
                 <h2 id="<?php echo esc_attr($instanceId . '-address-title'); ?>"><?php esc_html_e('Datos de despacho', 'veciahorra'); ?></h2>
                 <div class="va-checkout-form__grid">
-                    <div class="va-field"><label for="<?php echo esc_attr($instanceId . '-recipient-name'); ?>"><?php esc_html_e('Nombre de quien recibe', 'veciahorra'); ?></label><input id="<?php echo esc_attr($instanceId . '-recipient-name'); ?>" name="recipient_name" autocomplete="name" data-va-field><p class="va-field__error" id="<?php echo esc_attr($instanceId . '-recipient-name-error'); ?>" data-va-field-error hidden></p></div>
+                    <div class="va-field"><label for="<?php echo esc_attr($instanceId . '-recipient-name'); ?>"><?php esc_html_e('Nombre de quien recibe', 'veciahorra'); ?></label><input id="<?php echo esc_attr($instanceId . '-recipient-name'); ?>" name="recipient_name" autocomplete="name" value="<?php echo esc_attr($buyerName); ?>" data-va-field><p class="va-field__error" id="<?php echo esc_attr($instanceId . '-recipient-name-error'); ?>" data-va-field-error hidden></p></div>
                     <div class="va-field"><label for="<?php echo esc_attr($instanceId . '-address'); ?>"><?php esc_html_e('Dirección', 'veciahorra'); ?></label><input id="<?php echo esc_attr($instanceId . '-address'); ?>" name="address" autocomplete="street-address" data-va-field><p class="va-field__error" id="<?php echo esc_attr($instanceId . '-address-error'); ?>" data-va-field-error hidden></p></div>
                     <div class="va-field"><label for="<?php echo esc_attr($instanceId . '-commune'); ?>"><?php esc_html_e('Comuna', 'veciahorra'); ?></label><input id="<?php echo esc_attr($instanceId . '-commune'); ?>" name="commune" data-va-field><p class="va-field__error" id="<?php echo esc_attr($instanceId . '-commune-error'); ?>" data-va-field-error hidden></p></div>
                     <div class="va-field"><label for="<?php echo esc_attr($instanceId . '-reference'); ?>"><?php esc_html_e('Referencia', 'veciahorra'); ?></label><input id="<?php echo esc_attr($instanceId . '-reference'); ?>" name="reference" data-va-field></div>

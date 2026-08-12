@@ -1,0 +1,90 @@
+/* Shared VeciAhorra branding for the theme-owned desktop and mobile header. */
+.site-branding .site-title,
+.site-branding .site-description,
+.site-branding .site-logo-container + .site-title-container,
+[data-id="logo"] .site-title-container,
+[data-id="logo"] .site-title {
+    display: none !important;
+}
+
+.site-branding,
+[data-id="logo"] {
+    min-inline-size: 0;
+}
+
+.custom-logo-link,
+[data-id="logo"] .site-logo-container {
+    align-items: center;
+    display: inline-flex;
+    max-inline-size: min(15rem, 36vw);
+}
+
+.custom-logo-link .custom-logo,
+[data-id="logo"] .site-logo-container img,
+[data-id="logo"] img,
+[data-id="logo"] .custom-logo {
+    block-size: auto;
+    inline-size: auto;
+    max-block-size: 4.5rem;
+    max-inline-size: 100%;
+    object-fit: contain;
+}
+
+.va-access-menu-item + .va-access-menu-item {
+    margin-inline-start: 0.35rem;
+}
+
+.va-access-menu-item > a {
+    align-items: center;
+    display: inline-flex !important;
+    min-block-size: 2.35rem;
+    padding: 0.45rem 0.75rem !important;
+}
+
+.va-access-user-name {
+    align-items: center;
+    color: inherit;
+    display: inline-flex;
+    font-weight: 700;
+    max-inline-size: 13rem;
+    min-block-size: 2.35rem;
+    overflow: hidden;
+    padding: 0.45rem 0.55rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 48rem) {
+    .custom-logo-link,
+    [data-id="logo"] .site-logo-container {
+        max-inline-size: min(11rem, 55vw);
+    }
+
+    .custom-logo-link .custom-logo,
+    [data-id="logo"] .site-logo-container img,
+    [data-id="logo"] img,
+    [data-id="logo"] .custom-logo {
+        max-block-size: 3.75rem;
+    }
+
+    .ct-header-trigger,
+    [data-id="trigger"] {
+        flex: 0 0 auto;
+    }
+
+    .mobile-menu,
+    .mobile-menu ul,
+    [data-id="mobile-menu"] {
+        max-inline-size: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .mobile-menu .va-access-menu-item + .va-access-menu-item {
+        margin-inline-start: 0;
+    }
+
+    .mobile-menu .va-access-user-name {
+        max-inline-size: 100%;
+        white-space: normal;
+    }
+}

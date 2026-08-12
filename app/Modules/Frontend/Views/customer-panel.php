@@ -2,6 +2,8 @@
 /** @var string $instanceId */
 /** @var bool $loggedIn */
 /** @var string $loginUrl */
+/** @var string $catalogUrl */
+/** @var string $logoutUrl */
 $mainId = $instanceId . '-main';
 $titleId = $instanceId . '-title';
 ?>
@@ -12,6 +14,10 @@ $titleId = $instanceId . '-title';
             <h1 id="<?php echo esc_attr($titleId); ?>"><?php esc_html_e('Mis compras', 'veciahorra'); ?></h1>
             <?php if ($loggedIn) : ?>
                 <p><?php esc_html_e('Consulta tus compras realizadas en VeciAhorra.', 'veciahorra'); ?></p>
+                <p class="va-customer-panel__actions">
+                    <a class="va-button" href="<?php echo esc_url($catalogUrl); ?>"><?php esc_html_e('Ir al catálogo', 'veciahorra'); ?></a>
+                    <a href="<?php echo esc_url($logoutUrl); ?>"><?php esc_html_e('Cerrar sesión', 'veciahorra'); ?></a>
+                </p>
             <?php else : ?>
                 <p><?php esc_html_e('Debes iniciar sesión para consultar tus compras.', 'veciahorra'); ?></p>
             <?php endif; ?>

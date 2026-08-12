@@ -75,6 +75,7 @@ use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryActionHook
 use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\DurableRetryProductionComposition;
 use VeciAhorra\Modules\Orders\Infrastructure\DurableRetry\WordPressOptionDurableRetryActivationConfigurationValueReader;
 use VeciAhorra\Modules\Orders\Repositories\DurableRetryScheduleRepository;
+use VeciAhorra\Modules\Orders\Repositories\DurableRetryLegacyAuthorityRepository;
 use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
 use VeciAhorra\Modules\Orders\Services\DurableRetryBusinessCompletionProcessor;
 use VeciAhorra\Modules\Orders\Services\DurableRetryDeliveryCompletionProcessor;
@@ -109,6 +110,8 @@ final class Application
 
     private ?DurableRetryInitialProductionRouter
         $durableRetryInitialProductionRouter = null;
+
+    private \wpdb $database;
 
     /**
      * Contenedor de dependencias.
@@ -208,6 +211,7 @@ final class Application
             );
         }
         $database = $wpdb;
+        $this->database = $database;
         $composition = new DurableRetryProductionComposition(
             $database,
             new WordPressOptionDurableRetryActivationConfigurationValueReader(),
@@ -408,7 +412,9 @@ final class Application
         $unitTaxonomy = $this->container->make(UnitTaxonomy::class);
         add_action('init', [$unitTaxonomy, 'register'], 20);
 
-        (new DurableCompletionOrchestration())->register();
+        (new DurableCompletionOrchestration(
+            new DurableRetryLegacyAuthorityRepository($this->database)
+        ))->register();
         $this->container
             ->make(DurableRetryActionHookRegistrar::class)
             ->register();
@@ -592,5 +598,10 @@ final class Application
     public function durableRetryCallback(): DurableRetryActionCallback
     {
         return $this->container->make(DurableRetryActionCallback::class);
+    }
+
+    public function durableRetryWebpayMaterializer(): WebpayReconciliationMaterializer
+    {
+        return $this->container->make(WebpayReconciliationMaterializer::class);
     }
 }
