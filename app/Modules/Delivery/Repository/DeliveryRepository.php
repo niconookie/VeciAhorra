@@ -20,6 +20,9 @@ final class DeliveryRepository extends Repository
         'minimarket_id',
         'courier_id',
         'status',
+        'delivery_recipient_name', 'delivery_contact_phone',
+        'delivery_address_line1', 'delivery_commune',
+        'delivery_reference', 'delivery_notes',
         'created_at',
         'updated_at',
     ];
@@ -189,6 +192,17 @@ final class DeliveryRepository extends Repository
                 'No fue posible asignar el repartidor.'
             );
         }
+    }
+
+    public function acceptAvailable(int $deliveryId, int $courierId, string $updatedAt): int
+    {
+        $result = $this->db()->query($this->db()->prepare(sprintf(
+            'UPDATE %s SET courier_id = %%d, status = %%s, updated_at = %%s'
+            . ' WHERE id = %%d AND courier_id IS NULL AND status = %%s',
+            $this->table(self::TABLE)
+        ), $courierId, 'assigned', $updatedAt, $deliveryId, 'pending'));
+        if ($result === false) throw new PersistenceException('No fue posible aceptar la entrega.');
+        return (int) $result;
     }
 
     /**

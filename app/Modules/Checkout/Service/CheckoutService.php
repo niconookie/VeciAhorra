@@ -84,11 +84,13 @@ final class CheckoutService
             ? $this->idempotencyService->key((string) $payload['idempotency_key'])
             : null;
         $method = $this->method($payload);
+        $delivery = $this->deliverySnapshot($payload, $method);
         $ownerKey = $this->ownerKey($owner);
         if ($key !== null) {
             $existing = $this->checkoutRepository->findByIdempotency($ownerKey, $key);
             if ($existing !== null) {
-                if (($existing['fulfillment_method'] ?? null) !== $method) {
+                if (($existing['fulfillment_method'] ?? null) !== $method
+                    || $this->storedDeliverySnapshot($existing) !== $delivery) {
                     throw new ConflictException(
                         'La clave de idempotencia fue usada con otro fulfillment_method.',
                         'idempotency_conflict'
@@ -289,10 +291,12 @@ final class CheckoutService
                 'operation' => 'checkout.create.v1',
                 'owner_key' => $ownerKey,
                 'fulfillment_method' => $method,
+                'delivery' => $this->deliverySnapshot($ownerInput, $method),
                 'currency' => 'CLP',
                 'total_amount' => $this->formatCents($totalCents),
                 'orders' => $orderIds,
             ], JSON_UNESCAPED_SLASHES));
+            $snapshot = $this->deliverySnapshot($ownerInput, $method);
             $id = $this->checkoutRepository->create([
                 'public_id' => Checkout::publicId(),
                 'owner_type' => $owner['owner_type'],
@@ -300,6 +304,12 @@ final class CheckoutService
                 'session_id' => $owner['session_id'],
                 'status' => Checkout::STATUS_PENDING,
                 'fulfillment_method' => $method,
+                'delivery_recipient_name' => $snapshot['recipient_name'] ?? null,
+                'delivery_contact_phone' => $snapshot['contact_phone'] ?? null,
+                'delivery_address_line1' => $snapshot['address_line1'] ?? null,
+                'delivery_commune' => $snapshot['commune'] ?? null,
+                'delivery_reference' => $snapshot['reference'] ?? null,
+                'delivery_notes' => $snapshot['notes'] ?? null,
                 'idempotency_owner_key' => $ownerKey,
                 'idempotency_key' => $key,
                 'request_fingerprint' => $fingerprint,
@@ -364,6 +374,29 @@ final class CheckoutService
             'expires_at' => (string) $checkout['expires_at'],
             'created_at' => (string) $checkout['created_at'],
             'updated_at' => (string) $checkout['updated_at'],
+        ];
+    }
+
+    private function deliverySnapshot(array $payload, string $method): ?array
+    {
+        if ($method === 'pickup') return null;
+        $delivery = $payload['delivery'] ?? null;
+        if (! is_array($delivery)) {
+            throw new \InvalidArgumentException('Los datos de despacho son obligatorios.');
+        }
+        return $delivery;
+    }
+
+    private function storedDeliverySnapshot(array $checkout): ?array
+    {
+        if (($checkout['fulfillment_method'] ?? null) === 'pickup') return null;
+        return [
+            'recipient_name'=>$checkout['delivery_recipient_name'] ?? null,
+            'contact_phone'=>$checkout['delivery_contact_phone'] ?? null,
+            'address_line1'=>$checkout['delivery_address_line1'] ?? null,
+            'commune'=>$checkout['delivery_commune'] ?? null,
+            'reference'=>$checkout['delivery_reference'] ?? null,
+            'notes'=>$checkout['delivery_notes'] ?? null,
         ];
     }
 

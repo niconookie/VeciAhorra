@@ -34,19 +34,35 @@ final class CourierRepository extends Repository
 
     public function isApproved(array $courier): bool
     {
-        if (isset($courier['status'])) {
-            return (string) $courier['status'] === 'approved';
-        }
+        return array_key_exists('status', $courier)
+            && (string) $courier['status'] === 'approved';
+    }
 
-        if (array_key_exists('approved_at', $courier)) {
-            return $courier['approved_at'] !== null
-                && $courier['approved_at'] !== '';
-        }
+    public function all(): array
+    {
+        return $this->db()->get_results(sprintf('SELECT * FROM %s ORDER BY id DESC', $this->table(self::TABLE)), ARRAY_A);
+    }
 
-        if (array_key_exists('is_approved', $courier)) {
-            return (int) $courier['is_approved'] === 1;
+    public function save(array $data, ?int $id = null): int
+    {
+        if ($id === null) {
+            if ($this->db()->insert($this->table(self::TABLE), $data) !== 1) throw new \RuntimeException('No fue posible crear Courier.');
+            return (int) $this->db()->insert_id;
         }
+        if ($this->db()->update($this->table(self::TABLE), $data, ['id'=>$id]) === false) throw new \RuntimeException('No fue posible editar Courier.');
+        return $id;
+    }
 
-        return false;
+    public function transition(int $id, string $status, string $now): void
+    {
+        $current = $this->find($id) ?? throw new \RuntimeException('Courier inexistente.');
+        $from = (string) $current['status'];
+        if ($from === $status) return;
+        if (! (($status === 'approved' && in_array($from, ['pending','inactive'], true)) || ($status === 'inactive' && in_array($from, ['pending','approved'], true)))) {
+            throw new \DomainException('Transicion Courier invalida.');
+        }
+        $data = ['status'=>$status, 'updated_at'=>$now];
+        if ($status === 'approved') $data['approved_at'] = $now;
+        if ($this->db()->update($this->table(self::TABLE), $data, ['id'=>$id]) === false) throw new \RuntimeException('No fue posible cambiar Courier.');
     }
 }

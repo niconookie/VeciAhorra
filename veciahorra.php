@@ -66,3 +66,5 @@ add_action(
 */
 
 VeciAhorra\Core\Bootstrap::boot();
+
+(new VeciAhorra\Modules\Couriers\CourierModule())->register();
