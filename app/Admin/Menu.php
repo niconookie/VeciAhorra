@@ -14,6 +14,9 @@ use VeciAhorra\Modules\Stores\Requests\StoreAdminPageRequest;
 final class Menu
 {
     private ?string $storesPageHook = null;
+    private ?string $dashboardPageHook = null;
+
+    public function __construct(private DashboardReadRepository $dashboardRead = new DashboardReadRepository()) {}
 
     public function register(): void
     {
@@ -28,10 +31,11 @@ final class Menu
         );
 
         add_action('admin_enqueue_scripts', [$this, 'enqueueStoreAssets']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueueDashboardAssets']);
     }
     public function buildMenu(): void
     {
-        add_menu_page(
+        $dashboardHook = add_menu_page(
             'VeciAhorra',
             'VeciAhorra',
             'manage_options',
@@ -58,6 +62,7 @@ final class Menu
             'veciahorra-stores',
             [$this, 'stores']
         );
+        $this->dashboardPageHook = is_string($dashboardHook) ? $dashboardHook : null;
         $this->storesPageHook = is_string($hook) ? $hook : null;
 
         /*
@@ -95,10 +100,18 @@ add_submenu_page(
 
     public function dashboard(): void
     {
-        echo '<div class="wrap">';
-        echo '<h1>Dashboard VeciAhorra</h1>';
-        echo '<p>Bienvenido al Marketplace.</p>';
-        echo '</div>';
+        if (! current_user_can('manage_options')) {
+            wp_die(esc_html__('No autorizado.', 'veciahorra'));
+        }
+
+        $snapshot = $this->dashboardRead->snapshot();
+        require __DIR__ . '/Views/dashboard.php';
+    }
+
+    public function enqueueDashboardAssets(string $hookSuffix): void
+    {
+        if ($this->dashboardPageHook === null || $hookSuffix !== $this->dashboardPageHook) return;
+        wp_enqueue_style('veciahorra-dashboard-admin', VA_PLUGIN_URL . 'assets/admin/css/dashboard.css', [], Config::PLUGIN_VERSION);
     }
 
     /**

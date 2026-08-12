@@ -1,0 +1,19 @@
+.va-dashboard { max-width: 90rem; }
+.va-dashboard__header { align-items: flex-start; display: flex; gap: 2rem; justify-content: space-between; margin-bottom: 1.5rem; }
+.va-dashboard__header h1 { margin-bottom: .35rem; }
+.va-dashboard__header p { color: #50575e; margin: 0; }
+.va-dashboard__date { text-align: right; }
+.va-dashboard section { margin-top: 2rem; }
+.va-dashboard section > h2 { font-size: 1.15rem; letter-spacing: .04em; margin-bottom: .75rem; text-transform: uppercase; }
+.va-dashboard__grid { display: grid; gap: 1rem; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.va-dashboard__grid--network { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.va-dashboard-card { background: #fff; border: 1px solid #dcdcde; border-left: .3rem solid #2271b1; border-radius: .35rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); min-width: 0; padding: 1.15rem; }
+.va-dashboard-card p { color: #50575e; font-weight: 600; margin: 0; }
+.va-dashboard-card strong { display: block; font-size: clamp(1.65rem, 3vw, 2.35rem); line-height: 1.15; margin: .55rem 0; overflow-wrap: anywhere; }
+.va-dashboard-card small { color: #646970; }
+.va-dashboard-card--compact { border-left-color: #00a32a; }
+.va-dashboard-table-wrap { max-width: 100%; overflow-x: auto; }
+.va-dashboard table { min-width: 58rem; }
+.va-dashboard__meta { color: #646970; text-align: right; }
+@media (max-width: 75rem) { .va-dashboard__grid, .va-dashboard__grid--network { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 48rem) { .va-dashboard__header { display: block; } .va-dashboard__date { margin-top: .75rem !important; text-align: left; } .va-dashboard__grid, .va-dashboard__grid--network { grid-template-columns: minmax(0, 1fr); } }
