@@ -307,10 +307,13 @@ final class CatalogService
     private function publicStores(array $ids): array
     {
         $stores = [];
+        $zoneId = (new \VeciAhorra\Modules\Sectorization\CurrentSector())->id();
+        if ($zoneId <= 0) return [];
+        $allowed = array_fill_keys((new \VeciAhorra\Modules\Sectorization\ServiceZoneRepository())->allowedStoreIds($zoneId), true);
 
         foreach (array_chunk($ids, self::READ_BATCH_SIZE) as $batch) {
             foreach ($this->stores->findActiveByIds($batch) as $store) {
-                if ($store instanceof Store && (int) $store->id > 0) {
+                if ($store instanceof Store && (int) $store->id > 0 && isset($allowed[(int) $store->id])) {
                     $stores[(int) $store->id] = (string) $store->business_name;
                 }
             }

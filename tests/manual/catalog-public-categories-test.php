@@ -7,7 +7,10 @@ use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
+session_save_path(sys_get_temp_dir());
+ob_start();
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+require_once __DIR__ . '/support/SectorizationFixture.php';
 
 function assertPublicCategories(bool $condition, string $message): void
 {
@@ -137,6 +140,7 @@ try {
     $createInventory($inactiveStore, $storeSeed + 2, 700, 2);
 
     wp_set_current_user(0);
+    sectorizationFixtureSelect([$storeSeed, $storeSeed + 1], $token);
     $response = publicCategoriesRequest('/veciahorra/v1/catalog/categories');
     assertPublicCategoriesSame(200, $response->get_status());
     $body = $response->get_data();
@@ -171,6 +175,7 @@ try {
 
     echo "PASS catalog-public-categories-test\n";
 } finally {
+    sectorizationFixtureClearCurrent();
     $wpdb->query('ROLLBACK');
     clean_term_cache([], 'product_cat');
     wp_set_current_user(0);

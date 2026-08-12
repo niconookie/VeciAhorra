@@ -35,6 +35,14 @@ final class CheckoutValidationService
         $errors = [];
         $validCount = 0;
         $totalCents = 0;
+        $zoneId = (new \VeciAhorra\Modules\Sectorization\CurrentSector())->id();
+        $allowedSectorStores = $zoneId > 0
+            ? array_fill_keys(
+                (new \VeciAhorra\Modules\Sectorization\ServiceZoneRepository())
+                    ->allowedStoreIds($zoneId),
+                true
+            )
+            : [];
         $activeMinimarketIds = array_fill_keys(array_map(
             static fn (array $store): int => (int) $store['id'],
             $this->storeRepository->findActiveByIds(array_map(
@@ -45,7 +53,11 @@ final class CheckoutValidationService
         ), true);
 
         foreach ($cartItems as $cartItem) {
-            $result = $this->validateItem($cartItem, $activeMinimarketIds);
+            $result = $this->validateItem(
+                $cartItem,
+                $activeMinimarketIds,
+                $allowedSectorStores
+            );
             $items[] = $result;
 
             if ($result['valid']) {
@@ -85,10 +97,14 @@ final class CheckoutValidationService
         ];
     }
 
-    /** @param array<int, true> $activeMinimarketIds */
+    /**
+     * @param array<int, true> $activeMinimarketIds
+     * @param array<int, true> $allowedSectorStores
+     */
     private function validateItem(
         array $cartItem,
-        array $activeMinimarketIds
+        array $activeMinimarketIds,
+        array $allowedSectorStores
     ): array
     {
         $id = (int) ($cartItem['id'] ?? 0);
@@ -98,6 +114,9 @@ final class CheckoutValidationService
         $quantity = (int) ($cartItem['quantity'] ?? 0);
         $snapshot = $cartItem['unit_price_snapshot'] ?? null;
         $errors = [];
+        if (! isset($allowedSectorStores[$minimarketId])) {
+            $errors[] = $this->error('inventory_out_of_sector', 'La oferta no está disponible en el sector actual.');
+        }
         $snapshotCents = $this->decimalToCents($snapshot);
 
         if ($inventoryId <= 0) {

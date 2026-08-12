@@ -7,7 +7,10 @@ use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
+session_save_path(sys_get_temp_dir());
+ob_start();
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+require_once __DIR__ . '/support/SectorizationFixture.php';
 
 function assertPublicCatalog(bool $condition, string $message): void
 {
@@ -139,6 +142,10 @@ try {
     $createInventory($draftId, $seed + 5, 2.00, 8);
 
     wp_set_current_user(0);
+    sectorizationFixtureClearCurrent();
+    $withoutSector = publicCatalogRequest('/veciahorra/v1/catalog/products?search=' . rawurlencode($token));
+    assertPublicCatalogSame(0, $withoutSector->get_data()['meta']['total'] ?? null);
+    sectorizationFixtureSelect(range($seed, $seed + 6), $token);
     $response = publicCatalogRequest(
         '/veciahorra/v1/catalog/products?search=' . rawurlencode($token)
     );
@@ -235,6 +242,7 @@ try {
 
     echo "PASS catalog-public-api-test\n";
 } finally {
+    sectorizationFixtureClearCurrent();
     $wpdb->query('ROLLBACK');
     wp_set_current_user(0);
 }

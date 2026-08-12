@@ -4,6 +4,21 @@
     var config = window.VeciAhorra || {};
     var baseUrl = String(config.restUrl || '').replace(/\/+$/, '');
 
+    function mountSectorSelector() {
+        document.querySelectorAll('[data-va-sector-selector]').forEach(function (root) {
+            var select = root.querySelector('[data-va-sector-select]');
+            var message = root.querySelector('[data-va-sector-message]');
+            if (!select || select.dataset.ready === '1') return;
+            select.dataset.ready = '1';
+            Promise.all([request('GET','sectors'),request('GET','sector/current')]).then(function(values){
+                var zones=(values[0]&&values[0].data)||[],current=(values[1]&&values[1].data)||null;
+                zones.forEach(function(zone){var option=document.createElement('option');option.value=String(zone.id);option.textContent=zone.name+' · '+zone.commune;select.appendChild(option);});
+                if(current)select.value=String(current.id);
+            }).catch(function(){message.textContent='No fue posible cargar los sectores.';});
+            select.addEventListener('change',function(){if(!select.value)return;select.disabled=true;request('POST','sector/current/'+encodeURIComponent(select.value)).then(function(response){var zone=response.data;message.textContent='Sector actualizado: '+zone.name+'. Revisaremos tu carrito.';window.location.reload();}).catch(function(error){message.textContent=error.message||'No fue posible cambiar el sector.';select.disabled=false;});});
+        });
+    }
+
     function normalizedError(status, payload, fallback) {
         var moduleError = payload && payload.error;
 
@@ -118,4 +133,5 @@
     };
 
     window.VeciAhorra = config;
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountSectorSelector); else mountSectorSelector();
 }(window));

@@ -129,6 +129,10 @@ final class CartService
             update_meta_cache('post', array_values($imageIds));
         }
 
+        $zoneId = (new \VeciAhorra\Modules\Sectorization\CurrentSector())->id();
+        $allowedSectorStores = $zoneId > 0
+            ? array_fill_keys((new \VeciAhorra\Modules\Sectorization\ServiceZoneRepository())->allowedStoreIds($zoneId), true)
+            : [];
         foreach ($items as &$item) {
             $quantity = $this->cartQuantity($item['quantity'] ?? null);
             $unitCents = $this->decimalToCents(
@@ -158,6 +162,7 @@ final class CartService
             $item['subtotal'] = $subtotalCents === null
                 ? null
                 : $this->formatCents($subtotalCents);
+            $item['sector_compatible'] = isset($allowedSectorStores[(int) ($item['minimarket_id'] ?? 0)]);
 
             if (
                 $subtotalCents !== null
@@ -319,6 +324,10 @@ final class CartService
             throw new InvalidArgumentException(
                 'El minimarket asociado no esta disponible.'
             );
+        }
+        $zoneId = (new \VeciAhorra\Modules\Sectorization\CurrentSector())->id();
+        if ($zoneId <= 0 || ! (new \VeciAhorra\Modules\Sectorization\ServiceZoneRepository())->storeAllowed($zoneId, $minimarketId)) {
+            throw new InvalidArgumentException('La oferta no está disponible en el sector actual.');
         }
 
         $price = $this->normalizedPrice(
