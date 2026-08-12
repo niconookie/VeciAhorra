@@ -20,7 +20,7 @@ final class CourierDeliveryRepository extends Repository
     }
     private function complete(): string
     {
-        return "o.status='paid' AND c.fulfillment_method='delivery' AND s.business_name<>'' AND s.address IS NOT NULL AND s.address<>'' AND s.commune IS NOT NULL AND s.commune<>'' AND COALESCE(NULLIF(s.mobile,''),s.phone)<>'' AND d.delivery_recipient_name IS NOT NULL AND d.delivery_recipient_name<>'' AND d.delivery_contact_phone IS NOT NULL AND d.delivery_contact_phone<>'' AND d.delivery_address_line1 IS NOT NULL AND d.delivery_address_line1<>'' AND d.delivery_commune IS NOT NULL AND d.delivery_commune<>''";
+        return "o.status='paid' AND o.store_fulfillment_status='ready_for_pickup' AND c.fulfillment_method='delivery' AND s.business_name<>'' AND s.address IS NOT NULL AND s.address<>'' AND s.commune IS NOT NULL AND s.commune<>'' AND COALESCE(NULLIF(s.mobile,''),s.phone)<>'' AND d.delivery_recipient_name IS NOT NULL AND d.delivery_recipient_name<>'' AND d.delivery_contact_phone IS NOT NULL AND d.delivery_contact_phone<>'' AND d.delivery_address_line1 IS NOT NULL AND d.delivery_address_line1<>'' AND d.delivery_commune IS NOT NULL AND d.delivery_commune<>''";
     }
     public function available(): array { return $this->db()->get_results($this->projection()." WHERE d.status='pending' AND d.courier_id IS NULL AND ".$this->complete().' ORDER BY d.id ASC', ARRAY_A); }
     public function findAvailable(int $id): ?array { $r=$this->db()->get_row($this->db()->prepare($this->projection()." WHERE d.id=%d AND d.status='pending' AND d.courier_id IS NULL AND ".$this->complete().' LIMIT 1',$id),ARRAY_A);return $r===null?null:$r; }
@@ -29,7 +29,7 @@ final class CourierDeliveryRepository extends Repository
     public function find(int $id): ?array { $r=$this->db()->get_row($this->db()->prepare($this->projection().' WHERE d.id=%d LIMIT 1',$id),ARRAY_A); return $r===null?null:$r; }
     public function accept(int $id,int $courierId,string $now): int
     {
-        $sql="UPDATE {$this->table('deliveries')} SET courier_id=%d,status='assigned',updated_at=%s WHERE id=%d AND courier_id IS NULL AND status='pending'";
+        $sql="UPDATE {$this->table('deliveries')} d INNER JOIN {$this->table('orders')} o ON o.id=d.order_id AND o.minimarket_id=d.minimarket_id SET d.courier_id=%d,d.status='assigned',d.updated_at=%s WHERE d.id=%d AND d.courier_id IS NULL AND d.status='pending' AND o.status='paid' AND o.store_fulfillment_status='ready_for_pickup'";
         $r=$this->db()->query($this->db()->prepare($sql,$courierId,$now,$id));
         if($r===false)throw new PersistenceException('No fue posible aceptar la entrega.');
         return (int)$r;

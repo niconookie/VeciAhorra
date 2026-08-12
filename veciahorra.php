@@ -67,5 +67,6 @@ add_action(
 
 VeciAhorra\Core\Bootstrap::boot();
 
+(new VeciAhorra\Modules\Minimarket\MinimarketModule())->register();
 (new VeciAhorra\Modules\Couriers\CourierModule())->register();
 (new VeciAhorra\Modules\ServiceProviders\ServiceProviderModule())->register();
