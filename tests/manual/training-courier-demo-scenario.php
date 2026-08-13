@@ -26,7 +26,9 @@ try {
         if ($matches === []) {
             vaCourierDemoAssert($wpdb->insert($prefix . 'orders', [
                 'customer_id' => (int) $context['customer']->ID, 'minimarket_id' => (int) $context['store']['id'],
-                'total' => '2190.00', 'status' => 'paid', 'reservation_expires_at' => null,
+                'total' => '2190.00', 'status' => 'paid', 'store_fulfillment_status' => 'ready_for_pickup',
+                'store_confirmed_at' => $now, 'store_preparation_started_at' => $now, 'store_ready_for_pickup_at' => $now,
+                'reservation_expires_at' => null,
                 'created_at' => $now, 'updated_at' => $now,
             ]) === 1, "No se creó Order {$scenario}");
             $orderId = (int) $wpdb->insert_id;
@@ -67,11 +69,16 @@ try {
                 && (int) $order['minimarket_id'] === (int) $context['store']['id']
                 && (int) $delivery['customer_id'] === (int) $context['customer']->ID
                 && (int) $delivery['minimarket_id'] === (int) $context['store']['id'], "Colisión con datos ajenos {$scenario}");
-            vaCourierDemoAssert($wpdb->update($prefix . 'orders', ['status' => 'paid', 'updated_at' => $now], ['id' => $orderId]) !== false, "No se restauró Order {$scenario}");
+            vaCourierDemoAssert($wpdb->update($prefix . 'orders', [
+                'status' => 'paid', 'store_fulfillment_status' => 'ready_for_pickup',
+                'store_confirmed_at' => $now, 'store_preparation_started_at' => $now,
+                'store_ready_for_pickup_at' => $now, 'updated_at' => $now,
+            ], ['id' => $orderId]) !== false, "No se restauró Order {$scenario}");
             vaCourierDemoAssert($wpdb->update($prefix . 'deliveries', ['courier_id' => $courierId, 'status' => $status, 'updated_at' => $now], ['id' => (int) $delivery['id']]) !== false, "No se restauró Delivery {$scenario}");
         }
     }
     $rows = vaCourierDemoValidate($context);
+    $projection = vaCourierDemoCourierProjection($rows, (int) $context['courierId']);
     vaCourierDemoAssert(vaCourierDemoOfficialOffers($context) === $officialBefore, 'El fixture alteró ofertas oficiales.');
     $wpdb->query('COMMIT');
 } catch (Throwable $exception) {
@@ -79,7 +86,10 @@ try {
     throw $exception;
 }
 
-echo 'PASS COURIER_ID=16 DEMO_ORDERS=3 DEMO_DELIVERIES=3 AVAILABLE=1 ASSIGNED=1 IN_PROGRESS=1', PHP_EOL;
+echo 'PASS COURIER_ID=16 DEMO_ORDERS=3 DEMO_DELIVERIES=3'
+    . ' AVAILABLE=' . count($projection['available'])
+    . ' ASSIGNED=' . count($projection['assigned'])
+    . ' IN_PROGRESS=' . count($projection['inProgress']), PHP_EOL;
 echo 'TRAINING_COURIER_ORDER_IDS=[' . implode(',', array_map(static fn(array $row): int => (int) $row['order_id'], $rows)) . ']', PHP_EOL;
 echo 'TRAINING_COURIER_DELIVERY_IDS=[' . implode(',', array_map(static fn(array $row): int => (int) $row['delivery_id'], $rows)) . ']', PHP_EOL;
 echo 'OFFICIAL_4_4=PASS INVENTORY_MUTATIONS=0', PHP_EOL;

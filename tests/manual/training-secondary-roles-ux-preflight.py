@@ -78,7 +78,12 @@ try:
         console(role)
 
     path = login("courier")
-    wait.until(lambda d: "Diego Morales" in d.find_element(By.TAG_NAME, "body").text)
+    wait.until(
+        lambda d: [
+            item.find_element(By.TAG_NAME, "strong").text
+            for item in d.find_elements(By.CSS_SELECTOR, "[data-va-courier-summary] article")
+        ] == ["1", "2", "1"]
+    )
     body = driver.find_element(By.TAG_NAME, "body").text
     check(body.count("Panel de repartidor") == 1, "Título courier no es único")
     metrics = driver.find_elements(By.CSS_SELECTOR, "[data-va-courier-summary] article")

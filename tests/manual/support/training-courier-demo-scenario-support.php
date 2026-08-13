@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use VeciAhorra\Core\Config;
 use VeciAhorra\Modules\Couriers\Identity\CourierRole;
+use VeciAhorra\Modules\Couriers\Repository\CourierDeliveryRepository;
 
 const VA_COURIER_DEMO_MARKERS = [
     'CD-01' => 'training-courier-demo-cd-01-v1',
@@ -87,6 +88,7 @@ function vaCourierDemoRows(array $context): array
     $sql = $wpdb->prepare(
         "SELECT c.public_id,c.id checkout_id,c.user_id,c.status checkout_status,c.fulfillment_method,c.total_amount,
                 co.id checkout_order_id,o.id order_id,o.customer_id,o.minimarket_id,o.total,o.status order_status,
+                o.store_fulfillment_status,o.store_confirmed_at,o.store_preparation_started_at,o.store_ready_for_pickup_at,
                 oi.id order_item_id,oi.product_id,oi.inventory_id,oi.quantity,oi.unit_price,oi.subtotal,
                 d.id delivery_id,d.customer_id delivery_customer_id,d.minimarket_id delivery_minimarket_id,d.courier_id,d.status delivery_status,
                 d.delivery_recipient_name,d.delivery_contact_phone,d.delivery_address_line1,d.delivery_commune
@@ -118,7 +120,11 @@ function vaCourierDemoValidate(array $context): array
         vaCourierDemoAssert(
             (int) $row['user_id'] === (int) $context['customer']->ID
             && $row['checkout_status'] === 'payment_completed' && $row['fulfillment_method'] === 'delivery'
-            && $row['order_status'] === 'paid' && (int) $row['customer_id'] === (int) $context['customer']->ID
+            && $row['order_status'] === 'paid' && $row['store_fulfillment_status'] === 'ready_for_pickup'
+            && trim((string) $row['store_confirmed_at']) !== ''
+            && trim((string) $row['store_preparation_started_at']) !== ''
+            && trim((string) $row['store_ready_for_pickup_at']) !== ''
+            && (int) $row['customer_id'] === (int) $context['customer']->ID
             && (int) $row['minimarket_id'] === (int) $context['store']['id']
             && (int) $row['product_id'] === (int) $context['inventory']['product_id']
             && (int) $row['inventory_id'] === (int) $context['inventory']['inventory_id']
@@ -138,5 +144,38 @@ function vaCourierDemoValidate(array $context): array
         $payments = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$context['prefix']}payments WHERE checkout_id=%d", (int) $row['checkout_id']));
         vaCourierDemoAssert($payments === 0, "El fixture no debe inventar Payment: {$marker}");
     }
+    $available = $byMarker[VA_COURIER_DEMO_MARKERS['CD-01']];
+    vaCourierDemoAssert($available['delivery_status'] === 'pending', 'CD-01 no satisface Delivery.status=pending.');
+    vaCourierDemoAssert($available['courier_id'] === null, 'CD-01 no satisface Delivery.courier_id IS NULL.');
+    vaCourierDemoAssert($available['order_status'] === 'paid', 'CD-01 no satisface Order.status=paid.');
+    vaCourierDemoAssert($available['store_fulfillment_status'] === 'ready_for_pickup', 'CD-01 no satisface Order.store_fulfillment_status=ready_for_pickup.');
+    vaCourierDemoAssert($available['fulfillment_method'] === 'delivery', 'CD-01 no satisface Checkout.fulfillment_method=delivery.');
+    vaCourierDemoAssert(trim((string) $context['store']['business_name']) !== '', 'CD-01 no tiene nombre de minimarket disponible.');
+    vaCourierDemoAssert(trim((string) $context['store']['address']) !== '', 'CD-01 no tiene direccion de retiro.');
+    vaCourierDemoAssert(trim((string) $context['store']['commune']) !== '', 'CD-01 no tiene comuna de retiro.');
+    vaCourierDemoAssert(trim((string) ($context['store']['mobile'] ?: $context['store']['phone'])) !== '', 'CD-01 no tiene contacto de minimarket.');
+    vaCourierDemoAssert(trim((string) $available['delivery_recipient_name']) !== '', 'CD-01 no tiene destinatario.');
+    vaCourierDemoAssert(trim((string) $available['delivery_contact_phone']) !== '', 'CD-01 no tiene telefono de entrega.');
+    vaCourierDemoAssert(trim((string) $available['delivery_address_line1']) !== '', 'CD-01 no tiene direccion de entrega.');
+    vaCourierDemoAssert(trim((string) $available['delivery_commune']) !== '', 'CD-01 no tiene comuna de entrega.');
+
     return $rows;
+}
+
+function vaCourierDemoCourierProjection(array $rows, int $courierId): array
+{
+    $repository = new CourierDeliveryRepository();
+    $fixtureIds = array_map(static fn(array $row): int => (int) $row['delivery_id'], $rows);
+    $available = array_values(array_filter($repository->available(), static fn(array $row): bool => in_array((int) $row['id'], $fixtureIds, true)));
+    $owned = array_values(array_filter($repository->owned($courierId), static fn(array $row): bool => in_array((int) $row['id'], $fixtureIds, true)));
+    $assigned = array_values(array_filter($owned, static fn(array $row): bool => $row['status'] === 'assigned'));
+    $inProgress = array_values(array_filter($owned, static fn(array $row): bool => $row['status'] === 'picked_up'));
+    $byMarker = array_column($rows, null, 'public_id');
+
+    vaCourierDemoAssert(count($available) === 1, 'AVAILABLE demo debe ser 1 segun CourierDeliveryRepository::available().');
+    vaCourierDemoAssert((int) $available[0]['id'] === (int) $byMarker[VA_COURIER_DEMO_MARKERS['CD-01']]['delivery_id'], 'AVAILABLE demo no corresponde a CD-01.');
+    vaCourierDemoAssert(count($assigned) === 1, 'ASSIGNED demo debe ser 1.');
+    vaCourierDemoAssert(count($inProgress) === 1, 'IN_PROGRESS demo debe ser 1.');
+
+    return compact('fixtureIds', 'available', 'owned', 'assigned', 'inProgress');
 }
