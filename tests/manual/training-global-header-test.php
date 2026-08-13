@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use VeciAhorra\Modules\CustomerAccess\CustomerAccessModule;
 use VeciAhorra\Modules\ServiceProviders\ServiceProviderModule;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
@@ -87,7 +88,7 @@ foreach ($roles as $role => $keepsPurchases) {
     );
 }
 
-$landing = (new ServiceProviderModule())->landing();
+$landing = (new ServiceProviderModule(new CustomerAccessModule()))->landing();
 assertGlobalHeader(! str_contains($landing, 'va-sp-header'), 'La landing conserva una cabecera propia.');
 
 $css = file_get_contents(VA_PLUGIN_PATH . 'assets/frontend/css/global-header.css');

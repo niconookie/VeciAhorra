@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\ServiceProviders;
 
 use VeciAhorra\Core\Config;
+use VeciAhorra\Modules\CustomerAccess\CustomerAccessModule;
 use VeciAhorra\Modules\Frontend\Assets\FrontendAssets;
 use VeciAhorra\Modules\ServiceProviders\Admin\ServiceProviderAdminPage;
 use VeciAhorra\Modules\ServiceProviders\Domain\ServiceCatalog;
@@ -16,6 +17,10 @@ final class ServiceProviderModule
     public const REGISTRATION = 'veciahorra_service_provider_registration';
     public const PANEL = 'veciahorra_service_provider_panel';
     public const SERVICES = 'veciahorra_services';
+
+    public function __construct(private CustomerAccessModule $customerAccess)
+    {
+    }
 
     public function register(): void
     {
@@ -66,15 +71,26 @@ final class ServiceProviderModule
     {
         $this->assets();
         $logo = $this->logo();
+        $registrationUrl = $this->customerAccess->registrationUrl($this->servicesUrl());
         return '<main class="va-sp va-sp-landing">'
-            . '<section class="va-sp-hero" id="inicio"><div class="va-sp-hero-copy"><p class="va-sp-eyebrow">Prestadores de servicios</p><h1>Tu talento merece ser conocido en tu barrio.</h1><p class="va-sp-lead">Crea tu perfil profesional, aumenta tu visibilidad y conecta con personas que necesitan tus servicios cerca de ti.</p><div class="va-sp-actions"><a class="va-sp-button" href="#planes">Crear mi perfil</a><a class="va-sp-button secondary" href="#como-funciona">Conocer el proceso</a></div><div class="va-sp-trust"><span>✓ Registro guiado</span><span>✓ Perfil verificado</span><span>✓ Mayor visibilidad local</span></div></div>'
-            . '<div class="va-sp-profile-stage"><span class="va-sp-verified-pill">● Perfil verificado</span><article class="va-sp-demo-profile"><div class="va-sp-profile-cover"><span class="va-sp-service-icon">🔧</span><span class="va-sp-badge featured">Destacado</span></div><div class="va-sp-profile-body"><div class="va-sp-profile-title"><div><p>Gasfitería y reparaciones</p><h2>José Martínez</h2></div><span class="va-sp-rating">★ 4,9</span></div><p>Instalaciones, mantenciones y emergencias domiciliarias. Atención en San Miguel y comunas cercanas.</p><div class="va-sp-tags"><span>San Miguel</span><span>Respuesta rápida</span><span>8 años exp.</span></div><span class="va-sp-button navy">Solicitar contacto</span></div></article><div class="va-sp-mini-stat exposure"><strong>+3×</strong><span>más exposición</span></div><div class="va-sp-mini-stat response"><strong>24 h</strong><span>respuesta sugerida</span></div></div></section>'
+            . '<section class="va-sp-hero" id="inicio"><div class="va-sp-hero-copy"><p class="va-sp-eyebrow">Prestadores de servicios</p><h1>Tu talento merece ser conocido en tu barrio.</h1><p class="va-sp-lead">Crea tu perfil profesional, aumenta tu visibilidad y conecta con personas que buscan servicios locales.</p><div class="va-sp-actions"><a class="va-sp-button" href="' . esc_url($registrationUrl) . '">Crear mi perfil</a><a class="va-sp-button secondary" href="#como-funciona">Conocer el proceso</a></div><div class="va-sp-trust"><span>✓ Registro general VeciAhorra</span><span>✓ Revisión antes de publicar</span><span>✓ Visibilidad local</span></div></div>'
+            . '<div class="va-sp-profile-stage" aria-label="Ejemplo ilustrativo de un perfil profesional"><article class="va-sp-demo-profile"><div class="va-sp-profile-cover"><span class="va-sp-service-icon" aria-hidden="true">🔧</span><span class="va-sp-badge featured">Ejemplo</span></div><div class="va-sp-profile-body"><div class="va-sp-profile-title"><div><p>Servicio profesional local</p><h2>Tu perfil puede estar aquí</h2></div></div><p>Presenta de forma clara tu especialidad, zona de atención y medios de contacto.</p><div class="va-sp-tags"><span>Información ficticia</span><span>Vista ilustrativa</span></div><a class="va-sp-button navy" href="' . esc_url($registrationUrl) . '">Quiero registrarme</a></div></article></div></section>'
             . '<section class="va-sp-section va-sp-how" id="como-funciona"><div class="va-sp-section-heading"><p class="va-sp-eyebrow">Simple y transparente</p><h2>De profesional local a prestador visible en cuatro pasos</h2><p>El proceso está diseñado para ser rápido, confiable y fácil de completar.</p></div><div class="va-sp-steps">'
             . '<article><span>01</span><h3>Elige tu plan</h3><p>Define el nivel de exposición de tu servicio.</p></article><article><span>02</span><h3>Completa tu perfil</h3><p>Cuenta qué haces, dónde atiendes y cómo contactarte.</p></article><article><span>03</span><h3>Verificamos tus datos</h3><p>Revisamos identidad, antecedentes y especialidad.</p></article><article><span>04</span><h3>Publicamos tu servicio</h3><p>Tu perfil queda visible para los vecinos de tu zona.</p></article></div></section>'
-            . '<section class="va-sp-section va-sp-plans" id="planes"><div class="va-sp-section-heading left"><p class="va-sp-eyebrow">Planes simples</p><h2>Elige cuánta visibilidad necesita tu servicio</h2><p>Sin contratos largos. Podrás cambiar de plan desde tu panel.</p></div><div class="va-sp-plan-grid"><article><h3>Plan Local</h3><strong><small>$</small>1.000 <span>/ mes</span></strong><p>Para comenzar a mostrar tus servicios en tu comuna.</p><ul><li>✓ Perfil público verificado</li><li>✓ Aparición en búsquedas locales</li><li>✓ Datos de contacto y horarios</li><li>✓ Panel de consultas</li></ul><a href="#registro" class="va-sp-button secondary" data-va-choose-plan="local">Elegir Plan Local</a></article><article class="featured"><span class="va-sp-popular">Mayor exposición</span><h3>Plan Destacado</h3><strong><small>$</small>2.000 <span>/ mes</span></strong><p>Para aparecer antes y participar en acciones comerciales.</p><ul><li>✓ Todo lo incluido en Plan Local</li><li>✓ Posición preferente en resultados</li><li>✓ Sello “Destacado” en el perfil</li><li>✓ Acceso prioritario a campañas</li></ul><a href="#registro" class="va-sp-button" data-va-choose-plan="featured">Elegir Plan Destacado</a></article></div></section>'
-            . '<section class="va-sp-section va-sp-registration" id="registro"><div class="va-sp-section-heading"><p class="va-sp-eyebrow">Registro guiado</p><h2>Construye tu perfil paso a paso</h2><p>Cinco etapas conectadas con tu perfil VeciAhorra.</p></div><div class="va-sp-wizard" data-va-provider-panel><aside><p>Tu avance</p><h3>Activa tu perfil profesional</h3><p>Completa cada etapa y guarda tu perfil.</p><ol data-va-wizard-progress><li class="current"><span>1</span><b>Plan</b></li><li><span>2</span><b>Cuenta</b></li><li><span>3</span><b>Servicio</b></li><li><span>4</span><b>Verificación</b></li><li><span>5</span><b>Confirmación</b></li></ol><div class="va-sp-help">?<span><b>¿Necesitas ayuda?</b><small>Soporte durante el registro</small></span></div></aside><div class="va-sp-wizard-main"><p class="va-sp-provider-state" data-va-provider-status></p><p data-va-provider-observation></p>' . $this->providerForm(true) . '</div></div></section>'
+            . '<section class="va-sp-section va-sp-plans" id="planes"><div class="va-sp-section-heading left"><p class="va-sp-eyebrow">Planes informativos</p><h2>Elige cuánta visibilidad necesita tu servicio</h2><p>Estos valores son informativos. El registro no realiza cobros ni suscripciones.</p></div><div class="va-sp-plan-grid"><article><h3>Plan Local</h3><strong><small>$</small>1.000 <span>/ mes</span></strong><p>Para comenzar a mostrar tus servicios en tu comuna.</p><ul><li>✓ Perfil público verificado</li><li>✓ Aparición en búsquedas locales</li><li>✓ Datos de contacto y horarios</li><li>✓ Panel de consultas</li></ul><a href="' . esc_url($registrationUrl) . '" class="va-sp-button secondary">Elegir Plan Local</a></article><article class="featured"><span class="va-sp-popular">Mayor exposición</span><h3>Plan Destacado</h3><strong><small>$</small>2.000 <span>/ mes</span></strong><p>Para aparecer antes y participar en acciones comerciales.</p><ul><li>✓ Todo lo incluido en Plan Local</li><li>✓ Posición preferente en resultados</li><li>✓ Sello “Destacado” en el perfil</li><li>✓ Acceso prioritario a campañas</li></ul><a href="' . esc_url($registrationUrl) . '" class="va-sp-button">Elegir Plan Destacado</a></article><article class="communal"><h3>Plan Comunal</h3><strong><small>$</small>3.000 <span>/ mes</span></strong><p>Para ampliar la presencia del servicio en su territorio.</p><ul><li>✓ Todo lo incluido en Plan Local</li><li>✓ Posición preferente en resultados</li><li>✓ Sello “Destacado” en el perfil</li><li>✓ Acceso prioritario a campañas</li><li>✓ Visibilidad en toda la comuna</li></ul><a href="' . esc_url($registrationUrl) . '" class="va-sp-button">Elegir Plan Comunal</a></article></div></section>'
             . '<section class="va-sp-process" id="proceso"><div><p class="va-sp-eyebrow light">Operación VeciAhorra</p><h2>Del registro a la publicación, con control en cada etapa</h2><p>El modelo contempla validación, revisión humana y ciclos de corrección antes de publicar el perfil.</p><div class="va-sp-metrics"><span><strong>48 h</strong>Revisión comunicacional</span><span><strong>5 días</strong>Plazo comunicacional</span><span><strong>1 folio</strong>Trazabilidad por solicitud</span></div></div><div class="va-sp-flow"><article><small>Prestador</small><strong>Registro y antecedentes</strong><span>Selecciona plan y completa perfil</span></article><i>→</i><article><small>Web</small><strong>Validación</strong><span>Controla los datos declarados</span></article><i>→</i><article><small>Administración</small><strong>Revisión</strong><span>Aprueba, observa o rechaza</span></article><i>→</i><article><small>Publicado</small><strong>Perfil activo</strong><span>Aplica exposición según plan</span></article></div></section>'
             . '<footer class="va-sp-footer"><div>' . $logo . '</div><p>Incorporación de prestadores · VeciAhorra</p></footer></main>';
+    }
+
+    private function servicesUrl(): string
+    {
+        $pages = get_posts(['post_type' => 'page', 'post_status' => 'publish', 'numberposts' => -1]);
+        foreach ($pages as $page) {
+            if (has_shortcode($page->post_content, self::SERVICES)) {
+                return (string) get_permalink($page);
+            }
+        }
+        return home_url('/servicios/');
     }
 
     public function panel(): string
@@ -89,6 +105,9 @@ final class ServiceProviderModule
     public function services(): string
     {
         $this->assets();
+        if (! is_user_logged_in()) {
+            return $this->landing();
+        }
         $categories = wp_json_encode(ServiceCatalog::publicData(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
         return '<section class="va-sp va-sp-services" data-va-services><header><p class="va-sp-eyebrow">Talento cerca de ti</p><h1>Servicios para tu hogar y tu barrio</h1><p>Encuentra prestadores verificados por categoría y comuna.</p></header><form class="va-sp-service-filters" data-va-services-filter><label>Categoría<select name="category_key"><option value="">Todas las categorías</option></select></label><label>Subcategoría<select name="subcategory_key"><option value="">Todas las subcategorías</option></select></label><label>Comuna<input name="commune" placeholder="Ej. San Miguel"></label><button class="va-sp-button">Buscar servicios</button></form><p class="va-sp-results-status" data-va-services-status aria-live="polite"></p><div class="va-sp-service-grid" data-va-services-list></div><div class="va-sp-public-detail" data-va-service-detail></div><script type="application/json" data-va-service-categories>' . (string) $categories . '</script></section>';
     }

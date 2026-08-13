@@ -70,7 +70,7 @@ final class CustomerAccessModule
         }
 
         if (is_user_logged_in()) {
-            wp_safe_redirect($this->customerPanelUrl());
+            wp_safe_redirect($this->requestedRedirectUrl());
             exit;
         }
 
@@ -110,7 +110,7 @@ final class CustomerAccessModule
         $user->set_role('customer');
         wp_set_current_user((int) $userId);
         wp_set_auth_cookie((int) $userId, true, is_ssl());
-        wp_safe_redirect($this->customerPanelUrl());
+        wp_safe_redirect($this->requestedRedirectUrl());
         exit;
     }
 
@@ -139,6 +139,7 @@ final class CustomerAccessModule
             <form method="post" action="">
                 <?php wp_nonce_field('veciahorra_customer_registration', '_va_customer_nonce'); ?>
                 <input type="hidden" name="veciahorra_customer_registration" value="1">
+                <input type="hidden" name="redirect_to" value="<?php echo esc_attr($this->requestedRedirectUrl()); ?>">
                 <label>Nombre *<input name="first_name" required autocomplete="given-name" value="<?php echo esc_attr(wp_unslash((string) ($_POST['first_name'] ?? ''))); ?>"></label>
                 <label>Apellido *<input name="last_name" required autocomplete="family-name" value="<?php echo esc_attr(wp_unslash((string) ($_POST['last_name'] ?? ''))); ?>"></label>
                 <label>Correo electrónico *<input name="email" type="email" required autocomplete="email" value="<?php echo esc_attr(wp_unslash((string) ($_POST['email'] ?? ''))); ?>"></label>
@@ -273,10 +274,27 @@ final class CustomerAccessModule
         return $page instanceof \WP_Post ? (int) $page->ID : 0;
     }
 
-    private function registrationUrl(): string
+    public function registrationUrl(?string $redirectTo = null): string
     {
         $id = $this->registrationPageId();
-        return $id > 0 ? (string) get_permalink($id) : home_url('/' . self::PAGE_SLUG . '/');
+        $url = $id > 0 ? (string) get_permalink($id) : home_url('/' . self::PAGE_SLUG . '/');
+        if ($redirectTo === null) {
+            return $url;
+        }
+
+        $redirectTo = wp_validate_redirect(esc_url_raw($redirectTo), '');
+        return $redirectTo !== '' ? add_query_arg('redirect_to', $redirectTo, $url) : $url;
+    }
+
+    private function requestedRedirectUrl(): string
+    {
+        $value = $_POST['redirect_to'] ?? $_GET['redirect_to'] ?? null;
+        if (! is_string($value)) {
+            return $this->customerPanelUrl();
+        }
+
+        $url = esc_url_raw(wp_unslash($value));
+        return $url !== '' ? wp_validate_redirect($url, $this->customerPanelUrl()) : $this->customerPanelUrl();
     }
 
     private function customerPanelUrl(): string
