@@ -44,6 +44,18 @@ function registrationForm(string $url): array
     ) {
         throw new RuntimeException('No fue posible obtener el formulario, nonce o redirect_to.');
     }
+    foreach (['first_name', 'last_name'] as $name) {
+        if (preg_match('/<input[^>]+name="' . $name . '"[^>]+type="text"/', $response['body']) !== 1) {
+            throw new RuntimeException("{$name} no conserva type=text.");
+        }
+    }
+    if (
+        ! str_contains($response['body'], 'va-customer-registration-page')
+        || ! str_contains($response['body'], 'veciahorra-customer-registration-css')
+        || ! str_contains($response['body'], 'va-customer-registration__grid')
+    ) {
+        throw new RuntimeException('Falta estructura o asset visual del registro.');
+    }
     return ['nonce' => html_entity_decode($nonce[1]), 'redirect_to' => html_entity_decode($redirect[1])];
 }
 
@@ -117,8 +129,12 @@ try {
     wp_set_current_user(0);
     wp_clear_auth_cookie();
     $invalidNonce = registrationRequest($registrationUrl, registrationPayload($emails['invalid_nonce'], 'invalid', $servicesUrl));
-    if (get_user_by('email', $emails['invalid_nonce']) || $invalidNonce['location'] !== '') {
-        throw new RuntimeException('Nonce inválido creó usuario o redirigió.');
+    if (
+        get_user_by('email', $emails['invalid_nonce'])
+        || $invalidNonce['location'] !== ''
+        || ! str_contains($invalidNonce['body'], 'role="alert"')
+    ) {
+        throw new RuntimeException('Nonce inválido creó usuario, redirigió o perdió la alerta accesible.');
     }
 
     foreach ($createdUsers as $user) {

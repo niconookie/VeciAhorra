@@ -1,0 +1,217 @@
+.va-customer-registration-page {
+    background: #f4f8f2;
+}
+
+.va-customer-registration-page .entry-header {
+    display: none;
+}
+
+.va-customer-registration-page .entry-content {
+    padding-block: clamp(2.5rem, 6vw, 5rem);
+}
+
+.va-customer-registration-page .va-customer-registration {
+    box-sizing: border-box;
+    width: min(calc(100% - 2rem), 45rem);
+    max-width: 45rem;
+    margin-inline: auto;
+    padding: clamp(1.5rem, 4vw, 3rem);
+    border: 1px solid #dfe6ed;
+    border-radius: 1.125rem;
+    background: #fff;
+    box-shadow: 0 1.5rem 3.75rem rgba(6, 44, 87, 0.12);
+    color: #10233a;
+}
+
+.va-customer-registration *,
+.va-customer-registration *::before,
+.va-customer-registration *::after {
+    box-sizing: border-box;
+}
+
+.va-customer-registration__header {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.va-customer-registration__eyebrow {
+    margin-bottom: 0.625rem;
+    color: #4d9818;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.va-customer-registration__header h1 {
+    margin-bottom: 0.75rem;
+    color: #062c57;
+    font-size: clamp(2rem, 5vw, 2.75rem);
+    line-height: 1.08;
+}
+
+.va-customer-registration__header > p:last-child {
+    max-width: 34rem;
+    margin: 0 auto;
+    color: #627084;
+}
+
+.va-customer-registration form {
+    margin: 0;
+}
+
+.va-customer-registration__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+}
+
+.va-customer-registration__field {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin: 0;
+    color: #062c57;
+    font-size: 0.875rem;
+    font-weight: 700;
+}
+
+.va-customer-registration__field--full {
+    grid-column: 1 / -1;
+}
+
+.va-customer-registration__field input {
+    width: 100%;
+    min-width: 0;
+    min-height: 3rem;
+    margin: 0;
+    padding: 0.75rem 0.875rem;
+    border: 1px solid #cbd6df;
+    border-radius: 0.5rem;
+    background: #fff;
+    color: #10233a;
+    font: inherit;
+    font-weight: 400;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.va-customer-registration__field input:hover {
+    border-color: #8fa2b4;
+}
+
+.va-customer-registration__field input:focus-visible {
+    border-color: #4d9818;
+    outline: 0;
+    box-shadow: 0 0 0 3px rgba(99, 182, 38, 0.24);
+}
+
+.va-customer-registration__field input:disabled {
+    cursor: not-allowed;
+    background: #edf1f4;
+    color: #627084;
+    opacity: 0.75;
+}
+
+.va-customer-registration__actions {
+    margin-top: 1.5rem;
+}
+
+.va-customer-registration__actions .va-button {
+    display: inline-flex;
+    width: 100%;
+    min-height: 3rem;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 0.5rem;
+    background: #63b626;
+    color: #fff;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.va-customer-registration__actions .va-button:hover {
+    background: #4d9818;
+    transform: translateY(-1px);
+}
+
+.va-customer-registration__actions .va-button:focus-visible {
+    outline: 3px solid rgba(6, 44, 87, 0.32);
+    outline-offset: 3px;
+}
+
+.va-customer-registration__actions .va-button:disabled {
+    cursor: not-allowed;
+    background: #8fa2b4;
+    transform: none;
+    opacity: 0.75;
+}
+
+.va-customer-registration .va-alert--error {
+    margin-bottom: 1.5rem;
+    padding: 1rem 1.125rem;
+    border: 1px solid #cf5f5f;
+    border-radius: 0.625rem;
+    background: #fff2f2;
+    color: #7b2020;
+}
+
+.va-customer-registration .va-alert--error ul {
+    margin: 0;
+    padding-inline-start: 1.25rem;
+}
+
+.va-customer-registration__login {
+    margin: 1.5rem 0 0;
+    color: #627084;
+    text-align: center;
+}
+
+.va-customer-registration__login a {
+    color: #0b4778;
+    font-weight: 800;
+    text-decoration: underline;
+    text-decoration-thickness: 0.1em;
+    text-underline-offset: 0.18em;
+}
+
+.va-customer-registration__login a:hover {
+    color: #4d9818;
+}
+
+.va-customer-registration__login a:focus-visible {
+    border-radius: 0.2rem;
+    outline: 3px solid rgba(99, 182, 38, 0.3);
+    outline-offset: 3px;
+}
+
+@media (max-width: 40rem) {
+    .va-customer-registration-page .entry-content {
+        padding-block: 1.5rem;
+    }
+
+    .va-customer-registration-page .va-customer-registration {
+        width: min(calc(100% - 1rem), 45rem);
+        padding: 1.5rem;
+        border-radius: 1rem;
+    }
+
+    .va-customer-registration__grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+    }
+
+    .va-customer-registration__field--full {
+        grid-column: auto;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .va-customer-registration__field input,
+    .va-customer-registration__actions .va-button {
+        transition: none;
+    }
+}

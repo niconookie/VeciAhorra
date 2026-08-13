@@ -9,6 +9,7 @@ final class CustomerAccessModule
     public const SHORTCODE = 'veciahorra_customer_registration';
     private const PAGE_SLUG = 'registro-cliente';
     private const HEADER_STYLE = 'veciahorra-global-header';
+    private const REGISTRATION_STYLE = 'veciahorra-customer-registration';
 
     /** @var list<string> */
     private const HEADER_MENU_LOCATIONS = [
@@ -34,7 +35,9 @@ final class CustomerAccessModule
         add_filter('show_admin_bar', [$this, 'showAdminBar']);
         add_filter('wp_nav_menu_objects', [$this, 'filterRoleMenuItems'], 20, 2);
         add_filter('wp_nav_menu_items', [$this, 'appendAccessLinks'], 20, 2);
+        add_filter('body_class', [$this, 'bodyClass']);
         add_action('wp_enqueue_scripts', [$this, 'enqueueHeaderStyle']);
+        add_action('wp_enqueue_scripts', [$this, 'enqueueRegistrationStyle']);
     }
 
     public function ensureRegistrationPage(): void
@@ -132,22 +135,29 @@ final class CustomerAccessModule
 
         ob_start();
         ?>
-        <section class="va-customer-registration">
-            <h1>Crear cuenta de cliente</h1>
-            <p>Regístrate para consultar tus compras y comprar en los comercios de tu barrio.</p>
+        <section class="va-customer-registration" aria-labelledby="va-customer-registration-title">
+            <header class="va-customer-registration__header">
+                <p class="va-customer-registration__eyebrow">Cuenta VeciAhorra</p>
+                <h1 id="va-customer-registration-title">Crear cuenta de cliente</h1>
+                <p>Regístrate para consultar tus compras y comprar en los comercios de tu barrio.</p>
+            </header>
             <?php echo $messages; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
             <form method="post" action="">
                 <?php wp_nonce_field('veciahorra_customer_registration', '_va_customer_nonce'); ?>
                 <input type="hidden" name="veciahorra_customer_registration" value="1">
                 <input type="hidden" name="redirect_to" value="<?php echo esc_attr($this->requestedRedirectUrl()); ?>">
-                <label>Nombre *<input name="first_name" required autocomplete="given-name" value="<?php echo esc_attr(wp_unslash((string) ($_POST['first_name'] ?? ''))); ?>"></label>
-                <label>Apellido *<input name="last_name" required autocomplete="family-name" value="<?php echo esc_attr(wp_unslash((string) ($_POST['last_name'] ?? ''))); ?>"></label>
-                <label>Correo electrónico *<input name="email" type="email" required autocomplete="email" value="<?php echo esc_attr(wp_unslash((string) ($_POST['email'] ?? ''))); ?>"></label>
-                <label>Contraseña *<input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
-                <label>Confirmar contraseña *<input name="password_confirmation" type="password" minlength="8" required autocomplete="new-password"></label>
-                <button class="va-button" type="submit">Crear mi cuenta</button>
+                <div class="va-customer-registration__grid">
+                    <label class="va-customer-registration__field">Nombre *<input name="first_name" type="text" required autocomplete="given-name" value="<?php echo esc_attr(wp_unslash((string) ($_POST['first_name'] ?? ''))); ?>"></label>
+                    <label class="va-customer-registration__field">Apellido *<input name="last_name" type="text" required autocomplete="family-name" value="<?php echo esc_attr(wp_unslash((string) ($_POST['last_name'] ?? ''))); ?>"></label>
+                    <label class="va-customer-registration__field va-customer-registration__field--full">Correo electrónico *<input name="email" type="email" required autocomplete="email" value="<?php echo esc_attr(wp_unslash((string) ($_POST['email'] ?? ''))); ?>"></label>
+                    <label class="va-customer-registration__field">Contraseña *<input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+                    <label class="va-customer-registration__field">Confirmar contraseña *<input name="password_confirmation" type="password" minlength="8" required autocomplete="new-password"></label>
+                </div>
+                <div class="va-customer-registration__actions">
+                    <button class="va-button" type="submit">Crear mi cuenta</button>
+                </div>
             </form>
-            <p>¿Ya tienes una cuenta? <a href="<?php echo esc_url(wp_login_url($this->customerPanelUrl())); ?>">Iniciar sesión</a></p>
+            <p class="va-customer-registration__login">¿Ya tienes una cuenta? <a href="<?php echo esc_url(wp_login_url($this->customerPanelUrl())); ?>">Iniciar sesión</a></p>
         </section>
         <?php
         return (string) ob_get_clean();
@@ -259,6 +269,28 @@ final class CustomerAccessModule
         );
     }
 
+    /** @param list<string> $classes @return list<string> */
+    public function bodyClass(array $classes): array
+    {
+        if ($this->isRegistrationPage()) {
+            $classes[] = 'va-customer-registration-page';
+        }
+        return $classes;
+    }
+
+    public function enqueueRegistrationStyle(): void
+    {
+        if (! $this->isRegistrationPage()) {
+            return;
+        }
+        wp_enqueue_style(
+            self::REGISTRATION_STYLE,
+            VA_PLUGIN_URL . 'assets/frontend/css/customer-registration.css',
+            [],
+            \VeciAhorra\Core\Config::PLUGIN_VERSION
+        );
+    }
+
     public function destinationFor(\WP_User $user): string
     {
         if (user_can($user, 'manage_options')) return admin_url('admin.php?page=veciahorra');
@@ -284,6 +316,14 @@ final class CustomerAccessModule
 
         $redirectTo = wp_validate_redirect(esc_url_raw($redirectTo), '');
         return $redirectTo !== '' ? add_query_arg('redirect_to', $redirectTo, $url) : $url;
+    }
+
+    private function isRegistrationPage(): bool
+    {
+        $page = get_queried_object();
+        return $page instanceof \WP_Post
+            && $page->post_type === 'page'
+            && has_shortcode($page->post_content, self::SHORTCODE);
     }
 
     private function requestedRedirectUrl(): string
