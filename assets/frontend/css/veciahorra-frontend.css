@@ -25,7 +25,7 @@
 .veciahorra-frontend .va-catalog__filters { align-items: start; background: var(--va-color-background); border: 1px solid var(--va-color-border); border-radius: var(--va-radius-lg); display: grid; gap: var(--va-space-3); padding: var(--va-space-3); }
 .veciahorra-frontend .va-catalog__filters .va-field { display: grid; gap: var(--va-space-2); }
 .veciahorra-frontend .va-catalog__filters label { font-weight: 700; }
-.veciahorra-frontend .va-catalog__filters input, .veciahorra-frontend .va-catalog__filters select { background: var(--va-color-background); border: 1px solid var(--va-color-border); border-radius: var(--va-radius-md); color: inherit; height: 2.75rem; padding: var(--va-space-2) var(--va-space-3); width: 100%; }
+.veciahorra-frontend .va-catalog__filters input, .veciahorra-frontend .va-catalog__filters select { background: var(--va-color-background); border: 1px solid var(--va-color-border); border-radius: var(--va-radius-md); color: inherit; min-height: 2.75rem; padding: var(--va-space-2) var(--va-space-3); width: 100%; }
 .veciahorra-frontend .va-catalog__filters input:focus-visible, .veciahorra-frontend .va-catalog__filters select:focus-visible { outline: 0.1875rem solid color-mix(in srgb, var(--va-color-primary) 35%, transparent); outline-offset: 0.125rem; }
 .veciahorra-frontend .va-catalog__filters select:disabled { cursor: not-allowed; opacity: 0.65; }
 .veciahorra-frontend .va-catalog__filter-actions { display: flex; flex-wrap: wrap; gap: var(--va-space-2); }
@@ -114,7 +114,7 @@
 .veciahorra-frontend .va-cart-quantity__button:disabled { cursor: not-allowed; opacity: 0.5; }
 .veciahorra-frontend .va-cart-quantity__button:focus-visible { outline: 0.1875rem solid var(--va-color-secondary); outline-offset: 0.125rem; }
 .veciahorra-frontend .va-public-cart__total { align-items: center; display: flex; font-size: 1.25rem; gap: var(--va-space-4); justify-content: flex-end; padding-block: var(--va-space-3); }
-.veciahorra-frontend .va-public-cart__checkout { display: flex; justify-content: flex-end; }
+.veciahorra-frontend .va-public-cart__checkout { display: flex; flex-wrap: wrap; gap: var(--va-space-3); justify-content: space-between; }
 .veciahorra-frontend .va-public-cart__checkout .va-button { align-items: center; display: inline-flex; text-decoration: none; }
 .veciahorra-frontend .va-checkout { display: grid; gap: var(--va-space-4); }
 .veciahorra-frontend .va-checkout h1,
@@ -123,6 +123,7 @@
 .veciahorra-frontend .va-checkout__content { display: grid; gap: var(--va-space-5); }
 .veciahorra-frontend .va-checkout__summary,
 .veciahorra-frontend .va-checkout-form { display: grid; gap: var(--va-space-4); }
+.veciahorra-frontend .va-checkout-buyer { font-size: 1.05rem; font-weight: 700; margin-bottom: var(--va-space-1); }
 .veciahorra-frontend .va-checkout-group { border: 1px solid var(--va-color-border); border-radius: var(--va-radius-lg); margin-bottom: var(--va-space-3); padding: var(--va-space-3); }
 .veciahorra-frontend .va-checkout-group__items { display: grid; gap: var(--va-space-2); }
 .veciahorra-frontend .va-checkout-line { border-bottom: 1px solid var(--va-color-border); display: grid; gap: var(--va-space-1); padding-block: var(--va-space-2); }

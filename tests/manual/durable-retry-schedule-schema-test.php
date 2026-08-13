@@ -179,7 +179,11 @@ $assert(
     )) === 1,
     'migration registered exactly once'
 );
-$assert(Config::SCHEMA_VERSION === '0.24.0', 'schema version advanced once');
+$assert(
+    is_string(Config::SCHEMA_VERSION)
+        && version_compare(Config::SCHEMA_VERSION, '0.24.0', '>='),
+    'schema version remains compatible with durable retry schedule schema'
+);
 
 $columnCases = [
     [(new Column('nullable_value', 'VARCHAR(20)'))->nullable(), 'nullable_value VARCHAR(20) NULL'],

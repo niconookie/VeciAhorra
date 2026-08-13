@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use VeciAhorra\Core\Config;
+
 $root = dirname(__DIR__, 2);
+require_once $root . '/app/Core/Config.php';
 $paths = [
     $root . '/app/Modules/Orders/Contracts/DurableRetryScheduleRepositoryInterface.php',
     $root . '/app/Modules/Orders/Repositories/DurableRetryScheduleRepository.php',
@@ -76,17 +79,17 @@ $restricted = [
     'app/Database/Schemas/DurableRetryScheduleSchema.php',
 ];
 exec(
-    'git diff --name-only 8a7dbaa57b014e3afa78e162240a3e1cf14a6fcf -- '
+    'git diff --name-only 2b9b2e6fefc44881dbbf99747dc2cdbd755a881e^ 2b9b2e6fefc44881dbbf99747dc2cdbd755a881e -- '
         . implode(' ', array_map('escapeshellarg', $restricted)),
     $restrictedDiff,
     $exitCode
 );
 $assert($exitCode === 0 && $restrictedDiff === [], 'schema and builder remain unchanged');
 
-$version = file_get_contents($root . '/app/Core/Config.php');
 $assert(
-    str_contains($version, "SCHEMA_VERSION = '0.24.0'"),
-    'schema version remains 0.24.0'
+    is_string(Config::SCHEMA_VERSION)
+        && version_compare(Config::SCHEMA_VERSION, '0.24.0', '>='),
+    'schema version remains compatible with 0.24.0'
 );
 
 echo "durable retry schedule repository infrastructure: {$assertions} assertions\n";

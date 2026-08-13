@@ -19,16 +19,27 @@ use VeciAhorra\Modules\Payments\Reconciliation\Model\PaymentReconciliation;
 use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentReconciliationClaimRepository;
 use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentReconciliationRepository;
 use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentReconciliationProcessor;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryLegacyExclusionInterface;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryAuthorityIdentity;
 
 final class DurableCompletionWorkers
 {
     public function __construct(
+        private readonly DurableRetryLegacyExclusionInterface $legacyAuthority,
         private readonly DurableCompletionScheduler $scheduler = new DurableCompletionScheduler(),
         private readonly CompletionBranchPolicy $branches = new CompletionBranchPolicy()
     ) {}
 
     public function reconciliation(int $id): void
     {
+        $authority = $this->legacyAuthority->classify(
+            DurableRetryAuthorityIdentity::reconciliation($id)
+        );
+
+        if (! $authority->isLegacyAuthorized()) {
+            return;
+        }
+
         $claims = new PaymentReconciliationClaimRepository();
         $claim = $claims->acquireLease($id, PaymentReconciliationClaimRepository::ownerId());
         if ($claim->acquired()) {

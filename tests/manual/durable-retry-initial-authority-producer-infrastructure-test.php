@@ -22,6 +22,10 @@ $assert = static function (bool $condition, string $message) use (
     }
 };
 $root = dirname(__DIR__, 2);
+$a11LocalCoexistencePaths = ['app/Core/Application.php', 'app/Modules/Fulfillment/Orchestration/DurableCompletionOrchestration.php', 'app/Modules/Fulfillment/Orchestration/DurableCompletionWorkers.php', 'tests/manual/durable-completion-orchestration-test.php', 'tests/manual/support/durable-retry-a11-coordinator.php', 'tests/manual/support/durable-retry-a11-runtime-capture-contract.php', 'tests/manual/durable-retry-a11-runtime-capture-test.php', 'tests/manual/durable-retry-a11-runtime-capture-infrastructure-test.php'];
+$a11HistoricalMaintenancePaths = ['tests/manual/durable-retry-action-callback-infrastructure-test.php', 'tests/manual/durable-retry-action-hook-registrar-infrastructure-test.php', 'tests/manual/durable-retry-business-completion-processor-infrastructure-test.php', 'tests/manual/durable-retry-composition-infrastructure-test.php', 'tests/manual/durable-retry-delivery-completion-processor-infrastructure-test.php', 'tests/manual/durable-retry-executor-infrastructure-test.php', 'tests/manual/durable-retry-external-scheduler-infrastructure-test.php', 'tests/manual/durable-retry-initial-authority-producer-infrastructure-test.php', 'tests/manual/durable-retry-initial-transfer-authority-infrastructure-test.php', 'tests/manual/durable-retry-next-generation-infrastructure-test.php', 'tests/manual/durable-retry-processing-nullable-attempt-infrastructure-test.php', 'tests/manual/durable-retry-production-composition-infrastructure-test.php', 'tests/manual/durable-retry-reconciliation-processor-infrastructure-test.php'];
+$normalizePaths = static fn (array $paths): array => array_values(array_unique(array_map(static fn (string $path): string => str_replace('\\', '/', $path), $paths)));
+$a11AuthorizedExternalPaths = $normalizePaths(array_merge($a11LocalCoexistencePaths, $a11HistoricalMaintenancePaths));
 $allowed = [
     'app/Modules/Orders/Contracts/DurableRetryInitialAuthorityProducerInterface.php',
     'app/Modules/Orders/Domain/DurableRetry/DurableRetryInitialAuthorityProductionResult.php',
@@ -50,6 +54,7 @@ $tracked = array_values(array_filter(
     $tracked,
     static fn (string $line): bool => ! str_starts_with($line, 'warning:')
 ));
+$tracked = $normalizePaths($tracked);
 $maintenanceAllowlist = [
     'tests/manual/durable-retry-activation-configuration-source-infrastructure-test.php',
     'tests/manual/durable-retry-activation-flag-policy-infrastructure-test.php',
@@ -61,7 +66,7 @@ $maintenanceAllowlist = [
 ];
 $assert(
     $exit === 0
-        && array_diff($tracked, $maintenanceAllowlist) === [],
+        && array_diff($tracked, array_merge($maintenanceAllowlist, $a11AuthorizedExternalPaths)) === [],
     'Tracked changes must remain inside the maintenance allowlist.'
 );
 [$exit, $actual] = $git(

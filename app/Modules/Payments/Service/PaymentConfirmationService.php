@@ -76,7 +76,7 @@ final class PaymentConfirmationService
                 );
             }
 
-            $now = current_time('mysql');
+            $now = current_time('mysql', true);
 
             if (! $confirmation->isSuccessful()) {
                 $this->repository->updateStatus(

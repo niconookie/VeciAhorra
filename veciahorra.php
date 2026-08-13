@@ -71,3 +71,5 @@ VeciAhorra\Core\Bootstrap::boot();
 (new VeciAhorra\Modules\Couriers\CourierModule())->register();
 (new VeciAhorra\Modules\Sectorization\SectorizationModule())->register();
 (new VeciAhorra\Modules\ServiceProviders\ServiceProviderModule())->register();
+(new VeciAhorra\Modules\CustomerAccess\CustomerAccessModule())->register();
+(new VeciAhorra\Modules\LoginBranding\LoginBrandingModule())->register();

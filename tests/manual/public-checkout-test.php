@@ -65,19 +65,26 @@ foreach ([-1, 1.5, NAN, INF, true, false, [], new stdClass(), '8000abc'] as $inv
 }
 
 $controller = $container->make(FrontendController::class);
+$customers = get_users(['role' => 'customer', 'number' => 1]);
+assertPublicCheckout($customers !== [], 'Falta usuario cliente para probar identidad de checkout.');
+wp_set_current_user((int) $customers[0]->ID);
 $html = $controller->renderCheckout();
 foreach ([
     'data-va-checkout', 'data-va-checkout-loading', 'data-va-checkout-empty',
     'data-va-checkout-groups', 'data-va-checkout-total',
-    'data-va-checkout-form', 'name="first_name"', 'name="last_name"',
+    'data-va-checkout-form', 'data-va-checkout-buyer-name', 'Comprador',
     'name="phone"', 'name="email"', 'data-va-delivery-options',
-    'data-va-delivery-fields', 'name="address"', 'name="commune"',
+    'data-va-delivery-fields', 'name="recipient_name"', 'Nombre de quien recibe',
+    'name="address"', 'name="commune"',
     'name="reference"', 'name="notes"', 'Crear pedido',
     'data-va-checkout-result', 'Pedido creado correctamente.',
     'aria-live="polite"', 'novalidate',
 ] as $contract) {
     assertPublicCheckoutContains($contract, $html);
 }
+assertPublicCheckout(! str_contains($html, 'name="first_name"'), 'Checkout vuelve a pedir nombre del comprador.');
+assertPublicCheckout(! str_contains($html, 'name="last_name"'), 'Checkout vuelve a pedir apellido del comprador.');
+assertPublicCheckoutContains(esc_html((string) $customers[0]->display_name), $html);
 assertPublicCheckout(
     shortcode_exists(FrontendController::CHECKOUT_SHORTCODE),
     'No se registro el shortcode publico de checkout.'
@@ -93,6 +100,8 @@ $cartHtml = $controller->renderCart();
 remove_filter('veciahorra_frontend_checkout_url', $checkoutUrlFilter);
 assertPublicCheckoutContains('data-va-cart-checkout', $cartHtml);
 assertPublicCheckoutContains('Continuar al checkout', $cartHtml);
+assertPublicCheckoutContains('data-va-cart-continue-shopping', $cartHtml);
+assertPublicCheckoutContains('Seguir comprando', $cartHtml);
 $unavailableUrlFilter = static fn (): string => '';
 add_filter('veciahorra_frontend_checkout_url', $unavailableUrlFilter);
 $unavailableCartHtml = $controller->renderCart();
@@ -118,7 +127,9 @@ foreach ([
     'Compra validada correctamente.', 'Creando pedido…',
     'minimumDeliveryAmount', 'deliveryOption(', "'pickup'",
     "'delivery'", 'summary.totalCents >= minimumCents',
-    "['address', 'commune']", 'aria-invalid', 'aria-describedby',
+    'function checkoutPayload()', 'recipient_name:', 'contact_phone:',
+    'address_line1:', 'commune:', 'reference:', 'notes:',
+    "['recipient_name', 'address', 'commune']", 'aria-invalid', 'aria-describedby',
     'event.preventDefault()', "'/checkout'", 'Resultado pendiente',
     "'/payments/session'", 'paymentIdempotencyKey',
     "form.method = 'POST'", 'form.action = redirect.href',
@@ -130,6 +141,11 @@ foreach ([
     '/payment-status', 'pollPaymentStatus', 'poll_after_ms',
     'paymentInFlight', 'pagehide', 'stopPaymentPolling',
     'Date.now() - paymentStartedAt > 300000',
+    'rememberCheckout', "url.searchParams.set('checkout_id', checkoutId)",
+    'window.history.replaceState', 'resumePaymentStatus',
+    "data.checkout_id !== checkoutId", "typeof data.status !== 'string'",
+    'La sesión de pago se está preparando.',
+    'Estamos verificando si el pago pudo iniciarse',
 ] as $contract) {
     assertPublicCheckoutContains($contract, $javascript);
 }
@@ -158,6 +174,10 @@ assertPublicCheckout(
 assertPublicCheckout(
     substr_count($javascript, "'/checkout'") === 1,
     'Debe existir una sola llamada al endpoint transaccional.'
+);
+assertPublicCheckout(
+    substr_count($javascript, 'checkoutPayload()') === 3,
+    'Validate y create deben compartir un unico builder de payload.'
 );
 assertPublicCheckout(
     substr_count($javascript, "'/payments/session'") === 1,

@@ -1,6 +1,7 @@
 <?php
 /** @var string $instanceId */
 /** @var string $checkoutUrl */
+/** @var string $catalogUrl */
 $titleId = $instanceId . '-title';
 ?>
 <section class="va-public-cart" data-va-cart aria-labelledby="<?php echo esc_attr($titleId); ?>">
@@ -48,6 +49,7 @@ $titleId = $instanceId . '-title';
             <strong data-va-cart-total></strong>
         </footer>
         <div class="va-public-cart__checkout">
+            <a class="va-button va-button--secondary" href="<?php echo esc_url($catalogUrl); ?>" data-va-cart-continue-shopping><?php esc_html_e('Seguir comprando', 'veciahorra'); ?></a>
             <?php if ($checkoutUrl !== '') : ?>
                 <a class="va-button" href="<?php echo esc_url($checkoutUrl); ?>" data-va-cart-checkout><?php esc_html_e('Continuar al checkout', 'veciahorra'); ?></a>
             <?php else : ?>

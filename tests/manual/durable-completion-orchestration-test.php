@@ -25,6 +25,29 @@ use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionScheduler;
 use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionRecovery;
 use VeciAhorra\Modules\Fulfillment\Orchestration\CompletionBranchPolicy;
 use VeciAhorra\Modules\Payments\Reconciliation\DTO\DurablePaymentOrigin;
+use VeciAhorra\Modules\Fulfillment\Orchestration\DurableCompletionWorkers;
+use VeciAhorra\Modules\Orders\Contracts\DurableRetryLegacyExclusionInterface;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryAuthorityIdentity;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryAuthorityIdentityCollection;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryIndeterminateReason;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryLegacyAuthorityBatchResult;
+use VeciAhorra\Modules\Orders\Domain\DurableRetry\DurableRetryLegacyAuthorityResult;
+
+final class A11HistoricalAuthorityDouble implements DurableRetryLegacyExclusionInterface
+{
+    public array $calls = [];
+    public DurableRetryLegacyAuthorityResult|Throwable $next;
+    public function classify(DurableRetryAuthorityIdentity $identity): DurableRetryLegacyAuthorityResult
+    {
+        $this->calls[] = $identity;
+        if ($this->next instanceof Throwable) { throw $this->next; }
+        return $this->next;
+    }
+    public function classifyBatch(DurableRetryAuthorityIdentityCollection $identities): DurableRetryLegacyAuthorityBatchResult
+    {
+        throw new LogicException('Worker must classify one identity.');
+    }
+}
 
 $scheduler = new DurableCompletionScheduler();
 $scheduler->reconciliation(519);
@@ -99,4 +122,39 @@ if ($branches->nextForOrigin(DurablePaymentOrigin::ORIGIN_VECIAHORRA) !== Comple
     throw new RuntimeException('La politica durable de ramas no es exhaustiva o segura.');
 }
 
-echo "PASS durable-completion-orchestration-test actions=4 retry_backoff=120 capped=5 recovery_queries=4\n";
+$authority = new A11HistoricalAuthorityDouble();
+$workers = new DurableCompletionWorkers($authority, $scheduler, $branches);
+foreach ([
+    DurableRetryLegacyAuthorityResult::durable(),
+    DurableRetryLegacyAuthorityResult::indeterminate(DurableRetryIndeterminateReason::QUERY_FAILED),
+] as $blocked) {
+    $authority->next = $blocked;
+    $before = count($actions);
+    $workers->reconciliation(519);
+    if (count($actions) !== $before) {
+        throw new RuntimeException('Fail-closed authority scheduled legacy work.');
+    }
+}
+if (count($authority->calls) !== 2
+    || $authority->calls[0]->diagnosticKey() !== 'reconciliation:519'
+    || $authority->calls[1]->diagnosticKey() !== 'reconciliation:519') {
+    throw new RuntimeException('Worker did not classify the exact A3 identity.');
+}
+$failure = new RuntimeException('A3 test failure');
+$authority->next = $failure;
+$caught = null;
+try { $workers->reconciliation(519); } catch (RuntimeException $exception) { $caught = $exception; }
+if ($caught !== $failure) { throw new RuntimeException('A3 exception did not propagate.'); }
+$caught = null;
+try { $workers->reconciliation(0); } catch (Throwable $exception) { $caught = $exception; }
+if ($caught === null || count($authority->calls) !== 3) {
+    throw new RuntimeException('Invalid identity did not fail before A3.');
+}
+$classify = strpos($workerSource, '$this->legacyAuthority->classify(');
+$claim = strpos($workerSource, 'new PaymentReconciliationClaimRepository()');
+if ($classify === false || $claim === false || $classify > $claim
+    || substr_count($workerSource, '$this->legacyAuthority->classify(') !== 1) {
+    throw new RuntimeException('A3 is not the first reconciliation authority.');
+}
+
+echo "PASS durable-completion-orchestration-test actions=4 retry_backoff=120 capped=5 recovery_queries=4 a11_guard=4\n";
