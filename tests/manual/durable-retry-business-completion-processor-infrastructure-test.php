@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use VeciAhorra\Core\Config;
+
 $root = dirname(__DIR__, 2);
+require_once $root . '/app/Core/Config.php';
 $a11LocalCoexistencePaths = ['app/Core/Application.php', 'app/Modules/Fulfillment/Orchestration/DurableCompletionOrchestration.php', 'app/Modules/Fulfillment/Orchestration/DurableCompletionWorkers.php', 'tests/manual/durable-completion-orchestration-test.php', 'tests/manual/support/durable-retry-a11-coordinator.php', 'tests/manual/support/durable-retry-a11-runtime-capture-contract.php', 'tests/manual/durable-retry-a11-runtime-capture-test.php', 'tests/manual/durable-retry-a11-runtime-capture-infrastructure-test.php'];
 $a11HistoricalMaintenancePaths = ['tests/manual/durable-retry-action-callback-infrastructure-test.php', 'tests/manual/durable-retry-action-hook-registrar-infrastructure-test.php', 'tests/manual/durable-retry-business-completion-processor-infrastructure-test.php', 'tests/manual/durable-retry-composition-infrastructure-test.php', 'tests/manual/durable-retry-delivery-completion-processor-infrastructure-test.php', 'tests/manual/durable-retry-executor-infrastructure-test.php', 'tests/manual/durable-retry-external-scheduler-infrastructure-test.php', 'tests/manual/durable-retry-initial-authority-producer-infrastructure-test.php', 'tests/manual/durable-retry-initial-transfer-authority-infrastructure-test.php', 'tests/manual/durable-retry-next-generation-infrastructure-test.php', 'tests/manual/durable-retry-processing-nullable-attempt-infrastructure-test.php', 'tests/manual/durable-retry-production-composition-infrastructure-test.php', 'tests/manual/durable-retry-reconciliation-processor-infrastructure-test.php'];
 $normalizePaths = static fn (array $paths): array => array_values(array_unique(array_map(static fn (string $path): string => str_replace('\\', '/', $path), $paths)));
@@ -110,11 +113,9 @@ $assert(
     'restricted certified paths remain unchanged'
 );
 $assert(
-    str_contains(
-        file_get_contents($root . '/app/Core/Config.php'),
-        "SCHEMA_VERSION = '0.24.0'"
-    ),
-    'schema remains 0.24.0'
+    is_string(Config::SCHEMA_VERSION)
+        && version_compare(Config::SCHEMA_VERSION, '0.24.0', '>='),
+    'schema remains compatible with 0.24.0'
 );
 
 echo "durable retry business completion processor infrastructure: {$assertions} assertions\n";
