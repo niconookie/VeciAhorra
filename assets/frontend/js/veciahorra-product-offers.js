@@ -213,7 +213,7 @@
         var choice = document.createElement('span');
 
         button.type = 'button';
-        button.className = 'va-offer-card' + (selected ? ' va-offer-card--selected' : '');
+        button.className = 'va-card va-offer-card' + (selected ? ' va-offer-card--selected' : '');
         button.setAttribute('role', 'radio');
         button.setAttribute('aria-checked', selected ? 'true' : 'false');
         button.setAttribute('data-inventory-id', String(offer.inventory_id));
@@ -236,7 +236,7 @@
     function createUnavailableOffer() {
         var card = document.createElement('div');
 
-        card.className = 'va-offer-card va-offer-card--unavailable';
+        card.className = 'va-card va-offer-card va-offer-card--unavailable';
         card.setAttribute('aria-disabled', 'true');
         card.textContent = 'Oferta no disponible';
 

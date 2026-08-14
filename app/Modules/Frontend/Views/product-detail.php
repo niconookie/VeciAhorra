@@ -7,14 +7,14 @@ $titleId = $instanceId . '-product-title';
 $offersLabelId = $instanceId . '-offers-label';
 $selectionTitleId = $instanceId . '-selection-title';
 ?>
-<article class="va-product-detail" data-va-product-detail data-product-id="<?php echo esc_attr((string) $productId); ?>" aria-labelledby="<?php echo esc_attr($titleId); ?>">
+<article class="veciahorra-frontend va-design-system va-product-detail" data-va-product-detail data-product-id="<?php echo esc_attr((string) $productId); ?>" aria-labelledby="<?php echo esc_attr($titleId); ?>">
     <header class="va-product-detail__header">
-        <div class="va-product-detail__media">
+        <div class="va-product-detail__media va-card">
             <img class="va-product-detail__image" data-va-product-image alt="" hidden>
             <span class="va-product-detail__image-missing" data-va-product-image-missing><?php esc_html_e('Imagen no disponible', 'veciahorra'); ?></span>
         </div>
-        <div class="va-product-detail__intro">
-        <p class="va-product-detail__eyebrow"><?php esc_html_e('Producto', 'veciahorra'); ?></p>
+        <div class="va-product-detail__intro va-section-heading">
+        <p class="va-product-detail__eyebrow va-eyebrow"><?php esc_html_e('Producto', 'veciahorra'); ?></p>
         <h1 id="<?php echo esc_attr($titleId); ?>" data-va-product-name><?php esc_html_e('Cargando producto…', 'veciahorra'); ?></h1>
         <p class="va-product-detail__description" data-va-product-description></p>
         </div>
@@ -26,7 +26,7 @@ $selectionTitleId = $instanceId . '-selection-title';
     </div>
     <div class="va-alert va-alert--error" role="alert" data-va-product-error hidden></div>
 
-    <section class="va-offer-section" data-va-offer-section hidden>
+    <section class="va-offer-section va-card" data-va-offer-section hidden>
         <h2 id="<?php echo esc_attr($offersLabelId); ?>"><?php esc_html_e('Ofertas disponibles', 'veciahorra'); ?></h2>
         <p class="va-help-text"><?php esc_html_e('Selecciona el minimarket donde deseas comprar.', 'veciahorra'); ?></p>
         <div class="va-offer-grid" role="radiogroup" aria-labelledby="<?php echo esc_attr($offersLabelId); ?>" data-va-offer-list></div>
@@ -36,7 +36,7 @@ $selectionTitleId = $instanceId . '-selection-title';
         </div>
     </section>
 
-    <section class="va-selection-summary" aria-labelledby="<?php echo esc_attr($selectionTitleId); ?>" aria-live="polite" data-va-selection-summary hidden>
+    <section class="va-selection-summary va-card" aria-labelledby="<?php echo esc_attr($selectionTitleId); ?>" aria-live="polite" data-va-selection-summary hidden>
         <h2 id="<?php echo esc_attr($selectionTitleId); ?>"><?php esc_html_e('Oferta seleccionada', 'veciahorra'); ?></h2>
         <p data-va-selection-status><?php esc_html_e('Aún no has seleccionado una oferta.', 'veciahorra'); ?></p>
         <dl class="va-selection-summary__values" data-va-selection-values hidden>
@@ -46,14 +46,14 @@ $selectionTitleId = $instanceId . '-selection-title';
         </dl>
     </section>
 
-    <section class="va-cart-action" aria-labelledby="<?php echo esc_attr($instanceId . '-cart-title'); ?>">
+    <section class="va-cart-action va-card" aria-labelledby="<?php echo esc_attr($instanceId . '-cart-title'); ?>">
         <h2 id="<?php echo esc_attr($instanceId . '-cart-title'); ?>"><?php esc_html_e('Agregar al carrito', 'veciahorra'); ?></h2>
-        <button class="va-button va-cart-action__button" type="button" data-va-add-to-cart disabled aria-busy="false">
+        <button class="va-button va-button--primary va-cart-action__button" type="button" data-va-add-to-cart disabled aria-busy="false">
             <span data-va-add-label><?php esc_html_e('Agregar al carrito', 'veciahorra'); ?></span>
             <span data-va-add-loading hidden><?php esc_html_e('Agregando…', 'veciahorra'); ?></span>
         </button>
         <p class="va-cart-action__message va-cart-action__message--success" role="status" aria-live="polite" data-va-cart-success hidden></p>
-        <a class="va-button va-cart-action__link" href="<?php echo esc_url($cartUrl); ?>" data-va-view-cart hidden><?php esc_html_e('Ver carrito', 'veciahorra'); ?></a>
+        <a class="va-button va-button--primary va-cart-action__link" href="<?php echo esc_url($cartUrl); ?>" data-va-view-cart hidden><?php esc_html_e('Ver carrito', 'veciahorra'); ?></a>
         <a class="va-button va-button--secondary va-cart-action__link" href="<?php echo esc_url($catalogUrl); ?>" data-va-continue-shopping hidden><?php esc_html_e('Seguir comprando', 'veciahorra'); ?></a>
         <p class="va-cart-action__message va-cart-action__message--error" role="alert" data-va-cart-error hidden></p>
     </section>
