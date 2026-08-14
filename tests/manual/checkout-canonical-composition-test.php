@@ -25,6 +25,7 @@ require_once dirname(__DIR__, 5) . '/wp-load.php';
 require_once ABSPATH . 'wp-admin/includes/user.php';
 
 const CHECKOUT_CANONICAL_BASELINE = '79417aea5d1e1724500fabdf2bfb48ef5ce9bea1';
+const CHECKOUT_CANONICAL_CERTIFICATION = 'e32e1466c24c0f3df281fd92873e028aa4008b8e';
 const CHECKOUT_CANONICAL_FILE = 'tests/manual/checkout-canonical-composition-test.php';
 const CHECKOUT_CANONICAL_FAILURE = 'CHECKOUT_CANONICAL_INDUCED_LATE_ROLLBACK';
 
@@ -53,31 +54,70 @@ function canonicalSame(mixed $expected, mixed $actual, string $code, string $mes
     );
 }
 
-function canonicalGit(string $arguments): string
+/** @param list<string> $arguments */
+function canonicalGit(array $arguments): string
 {
     $root = dirname(__DIR__, 2);
-    $command = 'git -C ' . escapeshellarg($root) . ' ' . $arguments . ' 2>&1';
-    $output = shell_exec($command);
-    if (! is_string($output)) {
-        throw new RuntimeException('No fue posible ejecutar la guardia Git.');
+    $command = ['git', '-C', $root, ...$arguments];
+    $pipes = [];
+    $process = proc_open(
+        $command,
+        [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        $pipes,
+        null,
+        null,
+        ['bypass_shell' => true]
+    );
+    if (! is_resource($process)) {
+        throw new RuntimeException('Git command=' . implode(' ', $arguments) . ' no pudo iniciarse.');
     }
-    return trim($output);
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exitCode = proc_close($process);
+    $logical = implode(' ', $arguments);
+    if ($exitCode !== 0) {
+        $safeError = substr(trim(str_replace(["\r\n", "\r"], "\n", (string) $stderr)), 0, 500);
+        throw new RuntimeException("Git command={$logical}; exit={$exitCode}; stderr={$safeError}");
+    }
+    return trim(str_replace(["\r\n", "\r"], "\n", (string) $stdout));
+}
+
+function canonicalGitRegression(): void
+{
+    canonicalSame(CHECKOUT_CANONICAL_CERTIFICATION, canonicalGit(['rev-parse', CHECKOUT_CANONICAL_CERTIFICATION]), 'C01', 'Git exitoso con stdout');
+    echo "PASS GIT_NONEMPTY_OUTPUT\n";
+    canonicalSame('', canonicalGit(['diff', '--name-only', 'HEAD', '--', 'app/Core/Config.php']), 'C02', 'Git exitoso con stdout vacio');
+    echo "PASS GIT_EMPTY_OUTPUT\n";
+    try {
+        canonicalGit(['rev-parse', '--verify', 'refs/heads/checkout-canonical-invalid-ref']);
+        throw new RuntimeException('El comando Git invalido fue aceptado.');
+    } catch (RuntimeException $exception) {
+        canonicalAssert(str_contains($exception->getMessage(), 'rev-parse --verify')
+            && str_contains($exception->getMessage(), 'exit=')
+            && str_contains($exception->getMessage(), 'stderr='), 'C03', 'Git fallido conserva diagnostico');
+    }
+    echo "PASS GIT_NONZERO_EXIT\n";
 }
 
 function canonicalGitGuard(): void
 {
-    $head = canonicalGit('rev-parse HEAD');
-    $staged = array_values(array_filter(explode("\n", canonicalGit('diff --cached --name-only'))));
-    $tracked = canonicalGit('status --short --untracked-files=no');
-    if ($head === CHECKOUT_CANONICAL_BASELINE) {
-        canonicalSame([CHECKOUT_CANONICAL_FILE], $staged, 'C01', 'guardia Git precommit');
-        canonicalSame('', $tracked === '' ? '' : preg_replace('/^A  .*$/m', '', $tracked), 'C02', 'sin delta rastreado ajeno');
+    $head = canonicalGit(['rev-parse', 'HEAD']);
+    $staged = array_values(array_filter(explode("\n", canonicalGit(['diff', '--cached', '--name-only']))));
+    $tracked = canonicalGit(['status', '--short', '--untracked-files=no']);
+    if ($head === CHECKOUT_CANONICAL_CERTIFICATION) {
+        $clean = $staged === [] && $tracked === '';
+        $precommit = $staged === [CHECKOUT_CANONICAL_FILE]
+            && $tracked === 'M  ' . CHECKOUT_CANONICAL_FILE;
+        canonicalAssert($clean || $precommit, 'C01', 'guardia Git del commit publicado o correccion precommit');
+        canonicalAssert($clean || $tracked === 'M  ' . CHECKOUT_CANONICAL_FILE, 'C02', 'sin delta rastreado ajeno');
         return;
     }
-    canonicalSame(CHECKOUT_CANONICAL_BASELINE, canonicalGit('rev-parse HEAD^'), 'C01', 'parent postcommit');
+    canonicalSame(CHECKOUT_CANONICAL_CERTIFICATION, canonicalGit(['rev-parse', 'HEAD^']), 'C01', 'parent correctivo postcommit');
     canonicalSame('', $tracked, 'C02', 'working tree postcommit limpio');
-    canonicalSame('', canonicalGit('diff --cached --name-only'), 'C03', 'staging postcommit vacio');
-    canonicalSame(CHECKOUT_CANONICAL_FILE, canonicalGit('diff-tree --no-commit-id --name-only -r HEAD'), 'C04', 'commit limitado al harness');
+    canonicalSame('', canonicalGit(['diff', '--cached', '--name-only']), 'C03', 'staging postcommit vacio');
+    canonicalSame(CHECKOUT_CANONICAL_FILE, canonicalGit(['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD']), 'C04', 'commit limitado al harness');
 }
 
 function canonicalProperty(object $object, string $name): object
@@ -260,8 +300,9 @@ $suffixes = ['inventory','reservations','orders','order_items','cart_items','che
 $tables = array_combine($suffixes, array_map(static fn (string $s): string => $prefix . $s, $suffixes));
 
 try {
+    canonicalGitRegression();
     canonicalGitGuard();
-    canonicalSame('main', canonicalGit('branch --show-current'), 'C03', 'rama main');
+    canonicalSame('main', canonicalGit(['branch', '--show-current']), 'C03', 'rama main');
     canonicalSame('0.28.0', Config::SCHEMA_VERSION, 'C04', 'schema esperado');
     canonicalAssert(strtolower((string) DB_HOST) === 'localhost' && str_contains(strtolower(home_url('/')), 'localhost'), 'C05', 'entorno WordPress localhost');
     foreach (['inventory','reservations','orders','order_items','cart_items','checkouts','checkout_orders','payment_sessions'] as $suffix) {
