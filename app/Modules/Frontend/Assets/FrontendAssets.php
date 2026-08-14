@@ -157,6 +157,8 @@ final class FrontendAssets
             return;
         }
 
+        $this->enqueueDesignSystem();
+
         if ($authenticated) {
             $this->enqueue();
         } else {

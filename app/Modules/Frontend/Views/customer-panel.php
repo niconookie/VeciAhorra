@@ -24,7 +24,7 @@ $titleId = $instanceId . '-title';
         </header>
 
         <?php if ($loggedIn) : ?>
-            <div class="va-customer-panel__status va-loader" role="status" aria-live="polite" data-va-customer-panel-status>
+            <div class="veciahorra-frontend va-design-system va-customer-panel__status va-loader" role="status" aria-live="polite" data-va-customer-panel-status>
                 <span class="va-loader__indicator" aria-hidden="true"></span>
                 <span data-va-customer-panel-status-text><?php esc_html_e('Cargando tus compras…', 'veciahorra'); ?></span>
             </div>

@@ -132,15 +132,25 @@
         state.scrollPosition = window.scrollY;
     }
 
+    function listSurface() {
+        var surface = element('section', 'veciahorra-frontend va-design-system va-customer-panel__list-surface');
+
+        surface.setAttribute('data-va-customer-panel-list-surface', '');
+
+        return surface;
+    }
+
     function restoreListSnapshot(state) {
         var heading;
 
         if (state.listSnapshot) {
             state.root.content.replaceChildren.apply(state.root.content, state.listSnapshot);
         } else {
+            var surface = listSurface();
             heading = element('h2', 'va-customer-panel__list-title', 'Tus compras');
             heading.tabIndex = -1;
-            state.root.content.replaceChildren(heading);
+            surface.append(heading);
+            state.root.content.replaceChildren(surface);
         }
 
         state.root.content.setAttribute('aria-busy', 'false');
@@ -792,16 +802,19 @@
     }
 
     function renderEmpty(root) {
+        var surface = listSurface();
         var empty = element('div', 'va-empty-state');
 
         empty.append(element('p', 'va-empty-state__message', 'Aún no tienes compras para mostrar.'));
-        root.content.replaceChildren(empty);
+        surface.append(empty);
+        root.content.replaceChildren(surface);
         root.content.setAttribute('aria-busy', 'false');
         root.status.hidden = true;
         root.announcer.textContent = 'Aún no tienes compras para mostrar.';
     }
 
     function renderList(root, purchases, config) {
+        var surface = listSurface();
         var heading = element('h2', 'va-customer-panel__list-title', 'Tus compras');
         var list = element('ol', 'va-customer-panel__list');
 
@@ -809,7 +822,8 @@
         purchases.forEach(function (purchase) {
             list.append(renderPurchase(purchase, config));
         });
-        root.content.replaceChildren(heading, list);
+        surface.append(heading, list);
+        root.content.replaceChildren(surface);
         root.content.setAttribute('aria-busy', 'false');
         root.status.hidden = true;
         root.announcer.textContent = 'Tus compras se cargaron correctamente.';
@@ -817,11 +831,14 @@
     }
 
     function renderError(root) {
-        root.content.replaceChildren(element(
+        var surface = listSurface();
+
+        surface.append(element(
             'p',
             'va-alert va-alert--error',
             'No pudimos cargar tus compras. Inténtalo nuevamente.'
         ));
+        root.content.replaceChildren(surface);
         root.content.setAttribute('aria-busy', 'false');
         root.status.hidden = true;
         root.announcer.textContent = 'No pudimos cargar tus compras. Inténtalo nuevamente.';
