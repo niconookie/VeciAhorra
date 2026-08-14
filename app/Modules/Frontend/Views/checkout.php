@@ -4,9 +4,9 @@
 $titleId = $instanceId . '-title';
 $deliveryLegendId = $instanceId . '-delivery-legend';
 ?>
-<section class="va-checkout" data-va-checkout aria-labelledby="<?php echo esc_attr($titleId); ?>">
-    <header>
-        <p class="va-product-detail__eyebrow"><?php esc_html_e('Compra', 'veciahorra'); ?></p>
+<section class="veciahorra-frontend va-design-system va-checkout" data-va-checkout aria-labelledby="<?php echo esc_attr($titleId); ?>">
+    <header class="va-section-heading">
+        <p class="va-product-detail__eyebrow va-eyebrow"><?php esc_html_e('Compra', 'veciahorra'); ?></p>
         <h1 id="<?php echo esc_attr($titleId); ?>"><?php esc_html_e('Finalizar compra', 'veciahorra'); ?></h1>
     </header>
 
@@ -16,7 +16,7 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
     </div>
     <div class="va-alert va-alert--error" role="alert" data-va-checkout-error hidden>
         <p data-va-checkout-error-message></p>
-        <button class="va-button" type="button" data-va-checkout-retry><?php esc_html_e('Reintentar', 'veciahorra'); ?></button>
+        <button class="va-button va-button--primary" type="button" data-va-checkout-retry><?php esc_html_e('Reintentar', 'veciahorra'); ?></button>
     </div>
     <div class="va-empty-state" data-va-checkout-empty hidden>
         <h2 class="va-empty-state__title"><?php esc_html_e('Tu carrito está vacío', 'veciahorra'); ?></h2>
@@ -26,12 +26,12 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
     <section class="va-alert va-alert--info" tabindex="-1" aria-live="polite" data-va-payment-status-panel hidden>
         <h2><?php esc_html_e('Estado de tu pago', 'veciahorra'); ?></h2>
         <p data-va-payment-status-message></p>
-        <a class="va-button" data-va-payment-status-action hidden></a>
-        <button class="va-button" type="button" data-va-payment-status-refresh hidden><?php esc_html_e('Actualizar estado', 'veciahorra'); ?></button>
+        <a class="va-button va-button--primary" data-va-payment-status-action hidden></a>
+        <button class="va-button va-button--secondary" type="button" data-va-payment-status-refresh hidden><?php esc_html_e('Actualizar estado', 'veciahorra'); ?></button>
     </section>
 
     <div class="va-checkout__content" data-va-checkout-content hidden>
-        <section class="va-checkout__summary" aria-labelledby="<?php echo esc_attr($instanceId . '-summary-title'); ?>">
+        <section class="va-checkout__summary va-card" aria-labelledby="<?php echo esc_attr($instanceId . '-summary-title'); ?>">
             <h2 id="<?php echo esc_attr($instanceId . '-summary-title'); ?>"><?php esc_html_e('Resumen', 'veciahorra'); ?></h2>
             <div data-va-checkout-groups></div>
             <p class="va-checkout__total"><strong><?php esc_html_e('Total checkout', 'veciahorra'); ?></strong> <strong data-va-checkout-total></strong></p>
@@ -48,7 +48,7 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
             <div data-va-checkout-result-details></div>
         </section>
 
-        <form class="va-checkout-form" data-va-checkout-form novalidate>
+        <form class="va-checkout-form va-card va-field-group" data-va-checkout-form novalidate>
             <section aria-labelledby="<?php echo esc_attr($instanceId . '-customer-title'); ?>">
                 <h2 id="<?php echo esc_attr($instanceId . '-customer-title'); ?>"><?php esc_html_e('Comprador', 'veciahorra'); ?></h2>
                 <p class="va-checkout-buyer" data-va-checkout-buyer-name><?php echo esc_html($buyerName); ?></p>
@@ -76,7 +76,7 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
                 </div>
             </section>
 
-            <button class="va-button va-checkout-form__submit" type="submit" data-va-checkout-submit disabled><?php esc_html_e('Crear pedido', 'veciahorra'); ?></button>
+            <button class="va-button va-button--primary va-checkout-form__submit" type="submit" data-va-checkout-submit disabled><?php esc_html_e('Crear pedido', 'veciahorra'); ?></button>
             <p class="va-alert va-alert--info" role="status" aria-live="polite" data-va-checkout-status hidden></p>
         </form>
     </div>

@@ -445,6 +445,9 @@
                     : (data.payment_status === 'failed' || data.payment_status === 'manual_review'
                         ? 'va-alert--error' : 'va-alert--info')
             );
+            paymentAction.className = action === 'view_order'
+                ? 'va-button va-button--secondary'
+                : 'va-button va-button--primary';
             paymentMessage.textContent = data.message;
             paymentAction.hidden = true;
             paymentAction.removeAttribute('data-va-start-payment');
@@ -588,7 +591,7 @@
         function renderGroups(summary) {
             groupsRoot.replaceChildren();
             summary.groups.forEach(function (group) {
-                var section = element('section', 'va-checkout-group');
+                var section = element('section', 'va-checkout-group va-card');
                 var title = element('h3', '', group.name);
                 var lines = element('div', 'va-checkout-group__items');
                 group.items.forEach(function (entry) { lines.append(renderLine(entry)); });
