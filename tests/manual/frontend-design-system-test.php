@@ -15,7 +15,42 @@ function assertDesignSystem(bool $condition, string $message): void
     }
 }
 
-/** @return array<string, array{body: string, visibility: string, static: bool}> */
+/** @return list<array{0: int|null, 1: string}> */
+function designSystemExecutableTokens(array $tokens): array
+{
+    $result = [];
+    $heredoc = false;
+    $doubleQuoted = false;
+    foreach ($tokens as $token) {
+        $id = is_array($token) ? $token[0] : null;
+        $text = is_array($token) ? $token[1] : $token;
+        if ($id === T_START_HEREDOC) {
+            $heredoc = true;
+            continue;
+        }
+        if ($heredoc) {
+            if ($id === T_END_HEREDOC) {
+                $heredoc = false;
+            }
+            continue;
+        }
+        if ($id === null && $text === '"') {
+            $doubleQuoted = ! $doubleQuoted;
+            continue;
+        }
+        if ($doubleQuoted) {
+            continue;
+        }
+        if (in_array($id, [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE], true)) {
+            continue;
+        }
+        $result[] = [$id, $text];
+    }
+    assertDesignSystem(! $heredoc && ! $doubleQuoted, 'PHP_TOKEN_STRING: literal no delimitable.');
+    return $result;
+}
+
+/** @return array<string, array{tokens: list<array{0: int|null, 1: string}>, visibility: string, static: bool}> */
 function designSystemClassMethods(string $source): array
 {
     $tokens = token_get_all($source);
@@ -73,7 +108,7 @@ function designSystemClassMethods(string $source): array
         }
         assertDesignSystem($name !== null && $tokens[$cursor] === '{', 'No fue posible delimitar un metodo de FrontendAssets.');
         $methodDepth = 1;
-        $body = '';
+        $bodyTokens = [];
         for ($cursor++; $cursor < $count && $methodDepth > 0; $cursor++) {
             $token = $tokens[$cursor];
             if ($token === '{') {
@@ -81,47 +116,74 @@ function designSystemClassMethods(string $source): array
             } elseif ($token === '}') {
                 $methodDepth--;
             }
-            $ignored = [
-                T_COMMENT,
-                T_DOC_COMMENT,
-                T_CONSTANT_ENCAPSED_STRING,
-                T_ENCAPSED_AND_WHITESPACE,
-                T_START_HEREDOC,
-                T_END_HEREDOC,
-            ];
-            if ($methodDepth > 0 && (! is_array($token) || ! in_array($token[0], $ignored, true))) {
-                $body .= is_array($token) ? $token[1] : $token;
+            if ($methodDepth > 0) {
+                $bodyTokens[] = $token;
             }
         }
-        assertDesignSystem($methodDepth === 0, "Metodo desbalanceado: {$name}.");
-        assertDesignSystem(! isset($methods[$name]), "Metodo duplicado: {$name}.");
-        $methods[$name] = ['body' => $body, 'visibility' => $visibility, 'static' => $static];
+        assertDesignSystem($methodDepth === 0, "PHP_METHOD_BALANCE: {$name}.");
+        assertDesignSystem(! isset($methods[$name]), "PHP_HELPER_COUNT: metodo duplicado {$name}.");
+        $methods[$name] = ['tokens' => designSystemExecutableTokens($bodyTokens), 'visibility' => $visibility, 'static' => $static];
         $index = $cursor - 1;
     }
     assertDesignSystem($classDepth !== null && $classBraceDepth === 0, 'No fue posible delimitar FrontendAssets.');
     return $methods;
 }
 
+/** @param list<array{0: int|null, 1: string}> $tokens */
+function designSystemCountThisCalls(array $tokens, string $method): int
+{
+    $count = 0;
+    for ($index = 0, $length = count($tokens); $index + 3 < $length; $index++) {
+        if (
+            $tokens[$index] === [T_VARIABLE, '$this']
+            && $tokens[$index + 1][0] === T_OBJECT_OPERATOR
+            && $tokens[$index + 2] === [T_STRING, $method]
+            && $tokens[$index + 3][1] === '('
+        ) {
+            $count++;
+        }
+    }
+    return $count;
+}
+
+/** @param list<array{0: int|null, 1: string}> $tokens */
+function designSystemCountHandleCalls(array $tokens, string $function): int
+{
+    $count = 0;
+    for ($index = 0, $length = count($tokens); $index + 4 < $length; $index++) {
+        if (
+            $tokens[$index] === [T_STRING, $function]
+            && $tokens[$index + 1][1] === '('
+            && strtolower($tokens[$index + 2][1]) === 'self'
+            && $tokens[$index + 3][0] === T_DOUBLE_COLON
+            && $tokens[$index + 4] === [T_STRING, 'DESIGN_SYSTEM_STYLE_HANDLE']
+        ) {
+            $count++;
+        }
+    }
+    return $count;
+}
+
 function designSystemValidateAssetsSource(string $source): void
 {
     $methods = designSystemClassMethods($source);
     $approved = ['enqueueCatalog', 'enqueueProductOffers', 'enqueueCart', 'enqueueCheckout'];
-    assertDesignSystem(isset($methods['enqueueDesignSystem']), 'Helper enqueueDesignSystem ausente.');
+    assertDesignSystem(isset($methods['enqueueDesignSystem']), 'PHP_HELPER_COUNT: helper ausente.');
     $helper = $methods['enqueueDesignSystem'];
-    assertDesignSystem($helper['visibility'] === 'private' && ! $helper['static'], 'Helper debe ser private y no static.');
-    assertDesignSystem(substr_count($helper['body'], '$this->registerAssets();') === 1, 'Helper sin registro previo unico.');
-    assertDesignSystem(substr_count($helper['body'], 'wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE)') === 1, 'Enqueue privado invalido.');
+    assertDesignSystem($helper['visibility'] === 'private' && ! $helper['static'], 'PHP_HELPER_VISIBILITY: debe ser private y no static.');
+    assertDesignSystem(designSystemCountThisCalls($helper['tokens'], 'registerAssets') === 1, 'PHP_HELPER_REGISTER: registro previo invalido.');
+    assertDesignSystem(designSystemCountHandleCalls($helper['tokens'], 'wp_enqueue_style') === 1, 'PHP_HELPER_ENQUEUE: enqueue privado invalido.');
     assertDesignSystem(
         isset($methods['registerAssets'])
-            && substr_count($methods['registerAssets']['body'], 'self::DESIGN_SYSTEM_STYLE_HANDLE') === 1,
-        'Registro productivo del stylesheet invalido.'
+            && designSystemCountHandleCalls($methods['registerAssets']['tokens'], 'wp_register_style') === 1,
+        'PHP_STYLESHEET_REGISTER: registro productivo invalido.'
     );
     foreach ($methods as $name => $method) {
         $expected = in_array($name, $approved, true) ? 1 : 0;
-        assertDesignSystem(substr_count($method['body'], '$this->enqueueDesignSystem();') === $expected, "Autoridad inesperada en {$name}.");
+        assertDesignSystem(designSystemCountThisCalls($method['tokens'], 'enqueueDesignSystem') === $expected, "PHP_CALLER_AUTHORITY: {$name}.");
         assertDesignSystem(
-            substr_count($method['body'], 'wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE)') === ($name === 'enqueueDesignSystem' ? 1 : 0),
-            "Enqueue directo inesperado en {$name}."
+            designSystemCountHandleCalls($method['tokens'], 'wp_enqueue_style') === ($name === 'enqueueDesignSystem' ? 1 : 0),
+            "PHP_DIRECT_ENQUEUE: {$name}."
         );
     }
 }
@@ -193,10 +255,144 @@ function designSystemContrast(string $one, string $two): float
     return (max($one, $two) + 0.05) / (min($one, $two) + 0.05);
 }
 
+function designSystemCssWithoutComments(string $css): string
+{
+    $result = '';
+    $quote = null;
+    for ($index = 0, $length = strlen($css); $index < $length; $index++) {
+        $character = $css[$index];
+        if ($quote !== null) {
+            $result .= $character;
+            if ($character === '\\' && $index + 1 < $length) {
+                $result .= $css[++$index];
+            } elseif ($character === $quote) {
+                $quote = null;
+            }
+            continue;
+        }
+        if ($character === '"' || $character === "'") {
+            $quote = $character;
+            $result .= $character;
+            continue;
+        }
+        if ($character === '/' && ($css[$index + 1] ?? '') === '*') {
+            $end = strpos($css, '*/', $index + 2);
+            assertDesignSystem($end !== false, 'CSS_COMMENT: comentario no delimitable.');
+            $result .= ' ';
+            $index = $end + 1;
+            continue;
+        }
+        $result .= $character;
+    }
+    assertDesignSystem($quote === null, 'CSS_STRING: string no delimitable.');
+    return $result;
+}
+
+/** @return list<string> */
+function designSystemCssSelectorBranches(string $selectorList): array
+{
+    $branches = [];
+    $start = 0;
+    $parentheses = 0;
+    $brackets = 0;
+    $quote = null;
+    for ($index = 0, $length = strlen($selectorList); $index < $length; $index++) {
+        $character = $selectorList[$index];
+        if ($quote !== null) {
+            if ($character === '\\') {
+                $index++;
+            } elseif ($character === $quote) {
+                $quote = null;
+            }
+            continue;
+        }
+        if ($character === '"' || $character === "'") {
+            $quote = $character;
+        } elseif ($character === '(') {
+            $parentheses++;
+        } elseif ($character === ')') {
+            $parentheses--;
+        } elseif ($character === '[') {
+            $brackets++;
+        } elseif ($character === ']') {
+            $brackets--;
+        } elseif ($character === ',' && $parentheses === 0 && $brackets === 0) {
+            $branches[] = trim(substr($selectorList, $start, $index - $start));
+            $start = $index + 1;
+        }
+        assertDesignSystem($parentheses >= 0 && $brackets >= 0, 'CSS_SELECTOR_BALANCE: selector desbalanceado.');
+    }
+    assertDesignSystem($quote === null && $parentheses === 0 && $brackets === 0, 'CSS_SELECTOR_BALANCE: selector desbalanceado.');
+    $branches[] = trim(substr($selectorList, $start));
+    return $branches;
+}
+
+function designSystemValidateCssSelector(string $selector): void
+{
+    $root = '.veciahorra-frontend.va-design-system';
+    assertDesignSystem($selector !== '', 'CSS_SCOPE: selector vacio.');
+    assertDesignSystem(str_starts_with($selector, $root), "CSS_SCOPE: {$selector}.");
+    $remainder = substr($selector, strlen($root));
+    if ($remainder === '') {
+        return;
+    }
+    assertDesignSystem(preg_match('/^(?:\s|>|:)/', $remainder) === 1, "CSS_SCOPE: frontera invalida {$selector}.");
+    $trimmed = ltrim($remainder);
+    assertDesignSystem(! str_starts_with($trimmed, '+'), "CSS_SIBLING_COMBINATOR: {$selector}.");
+    assertDesignSystem(! str_starts_with($trimmed, '~'), "CSS_SIBLING_COMBINATOR: {$selector}.");
+    $parentheses = 0;
+    $brackets = 0;
+    $quote = null;
+    for ($index = 0, $length = strlen($remainder); $index < $length; $index++) {
+        $character = $remainder[$index];
+        if ($quote !== null) {
+            if ($character === '\\') {
+                $index++;
+            } elseif ($character === $quote) {
+                $quote = null;
+            }
+            continue;
+        }
+        if ($character === '"' || $character === "'") {
+            $quote = $character;
+        } elseif ($character === '(') {
+            $parentheses++;
+        } elseif ($character === ')') {
+            $parentheses--;
+        } elseif ($character === '[') {
+            $brackets++;
+        } elseif ($character === ']') {
+            $brackets--;
+        } elseif (($character === '+' || $character === '~') && $parentheses === 0 && $brackets === 0) {
+            throw new RuntimeException("CSS_SIBLING_COMBINATOR: {$selector}.");
+        }
+    }
+    assertDesignSystem(! preg_match('/\.(?:ct-|woocommerce)/i', $selector), "CSS_EXTERNAL_CLASS: {$selector}.");
+}
+
+function designSystemCssHasStructuralBrace(string $css): bool
+{
+    $quote = null;
+    for ($index = 0, $length = strlen($css); $index < $length; $index++) {
+        $character = $css[$index];
+        if ($quote !== null) {
+            if ($character === '\\') {
+                $index++;
+            } elseif ($character === $quote) {
+                $quote = null;
+            }
+        } elseif ($character === '"' || $character === "'") {
+            $quote = $character;
+        } elseif ($character === '{' || $character === '}') {
+            return true;
+        }
+    }
+    return false;
+}
+
 function designSystemValidateCssScope(string $css): void
 {
-    $css = preg_replace('~/\*.*?\*/~s', '', $css);
-    assertDesignSystem(is_string($css), 'No fue posible normalizar CSS.');
+    $css = designSystemCssWithoutComments($css);
     $validate = static function (string $block) use (&$validate): void {
         $length = strlen($block);
         $offset = 0;
@@ -207,50 +403,66 @@ function designSystemValidateCssScope(string $css): void
             if ($offset === $length) {
                 return;
             }
-            $open = strpos($block, '{', $offset);
-            assertDesignSystem($open !== false, 'Regla CSS no delimitable.');
+            $open = null;
+            $quote = null;
+            $parentheses = 0;
+            for ($scan = $offset; $scan < $length; $scan++) {
+                $character = $block[$scan];
+                if ($quote !== null) {
+                    if ($character === '\\') {
+                        $scan++;
+                    } elseif ($character === $quote) {
+                        $quote = null;
+                    }
+                    continue;
+                }
+                if ($character === '"' || $character === "'") {
+                    $quote = $character;
+                } elseif ($character === '(') {
+                    $parentheses++;
+                } elseif ($character === ')') {
+                    $parentheses--;
+                } elseif ($character === '{' && $parentheses === 0) {
+                    $open = $scan;
+                    break;
+                } elseif ($character === ';' && $parentheses === 0) {
+                    throw new RuntimeException('CSS_AT_RULE: sentencia superior no autorizada.');
+                }
+            }
+            assertDesignSystem($open !== null, 'CSS_RULE_DELIMITATION: regla no delimitable.');
             $prelude = trim(substr($block, $offset, $open - $offset));
-            assertDesignSystem($prelude !== '', 'Selector CSS vacio.');
+            assertDesignSystem($prelude !== '', 'CSS_SCOPE: selector vacio.');
             $depth = 1;
+            $quote = null;
             for ($close = $open + 1; $close < $length && $depth > 0; $close++) {
-                if ($block[$close] === '{') {
+                $character = $block[$close];
+                if ($quote !== null) {
+                    if ($character === '\\') {
+                        $close++;
+                    } elseif ($character === $quote) {
+                        $quote = null;
+                    }
+                } elseif ($character === '"' || $character === "'") {
+                    $quote = $character;
+                } elseif ($character === '{') {
                     $depth++;
-                } elseif ($block[$close] === '}') {
+                } elseif ($character === '}') {
                     $depth--;
                 }
             }
-            assertDesignSystem($depth === 0, "Bloque CSS desbalanceado: {$prelude}.");
+            assertDesignSystem($depth === 0 && $quote === null, "CSS_BLOCK_BALANCE: {$prelude}.");
             $contents = substr($block, $open + 1, $close - $open - 2);
             if (str_starts_with($prelude, '@')) {
                 assertDesignSystem(
-                    preg_match('/^@(media|supports)\b/i', $prelude) === 1,
-                    "At-rule de bloque no autorizada: {$prelude}."
+                    preg_match('/^@(media|supports|layer|container|scope)\b/i', $prelude) === 1,
+                    "CSS_AT_RULE: {$prelude}."
                 );
                 $validate($contents);
             } else {
-                $selectors = [];
-                $selectorStart = 0;
-                $parentheses = 0;
-                for ($selectorOffset = 0, $selectorLength = strlen($prelude); $selectorOffset < $selectorLength; $selectorOffset++) {
-                    $parentheses += $prelude[$selectorOffset] === '(' ? 1 : ($prelude[$selectorOffset] === ')' ? -1 : 0);
-                    assertDesignSystem($parentheses >= 0, "Selector desbalanceado: {$prelude}.");
-                    if ($prelude[$selectorOffset] === ',' && $parentheses === 0) {
-                        $selectors[] = substr($prelude, $selectorStart, $selectorOffset - $selectorStart);
-                        $selectorStart = $selectorOffset + 1;
-                    }
+                foreach (designSystemCssSelectorBranches($prelude) as $selector) {
+                    designSystemValidateCssSelector($selector);
                 }
-                assertDesignSystem($parentheses === 0, "Selector desbalanceado: {$prelude}.");
-                $selectors[] = substr($prelude, $selectorStart);
-                foreach ($selectors as $selector) {
-                    $selector = trim($selector);
-                    assertDesignSystem(
-                        $selector === '.veciahorra-frontend.va-design-system'
-                            || str_starts_with($selector, '.veciahorra-frontend.va-design-system '),
-                        "Selector fuera de scope: {$selector}."
-                    );
-                    assertDesignSystem(! preg_match('/\.(?:ct-|woocommerce)/i', $selector), "Selector externo: {$selector}.");
-                }
-                assertDesignSystem(! str_contains($contents, '{') && ! str_contains($contents, '}'), "Regla ordinaria anidada invalida: {$prelude}.");
+                assertDesignSystem(! designSystemCssHasStructuralBrace($contents), "CSS_RULE_NESTING: {$prelude}.");
             }
             $offset = $close;
         }
@@ -260,7 +472,11 @@ function designSystemValidateCssScope(string $css): void
 
 function designSystemValidateCss(string $css): array
 {
-    assertDesignSystem(! preg_match('/!important|@import|url\s*\(|https?:\/\/|@font-face/i', $css), 'CSS contiene dependencia o escape prohibido.');
+    assertDesignSystem(! preg_match('/!important/i', $css), 'CSS_IMPORTANT: declaracion prohibida.');
+    assertDesignSystem(! preg_match('/@import/i', $css), 'CSS_IMPORT: dependencia prohibida.');
+    assertDesignSystem(! preg_match('/url\s*\(/i', $css), 'CSS_URL: recurso externo prohibido.');
+    assertDesignSystem(! preg_match('/https?:\/\//i', $css), 'CSS_EXTERNAL_URL: URL externa prohibida.');
+    assertDesignSystem(! preg_match('/@font-face/i', $css), 'CSS_FONT_FACE: fuente prohibida.');
     designSystemValidateCssScope($css);
     foreach (['.va-container', '.va-section', '.va-section-heading', '.va-eyebrow', '.va-button', '.va-button--primary', '.va-button--secondary', '.va-button--text', '.va-card', '.va-badge', '.va-field-group', '.va-field', '.va-alert', '.va-empty-state'] as $component) {
         assertDesignSystem(str_contains($css, $component), "Componente ausente: {$component}.");
@@ -294,8 +510,6 @@ function designSystemValidateCss(string $css): array
         }
     }
     $tokens = designSystemContractTokens($css);
-    assertDesignSystem(designSystemColor($tokens, '--va-color-primary') === '#3f7f16', 'Color primario contractual alterado.');
-    assertDesignSystem(designSystemColor($tokens, '--va-color-primary-hover') === '#326612', 'Color hover contractual alterado.');
     $white = designSystemColor($tokens, '--va-color-surface');
     $ratios = [];
     foreach (['primary' => 4.5, 'primary-hover' => 4.5, 'navy-700' => 4.5, 'secondary' => 3.0, 'success' => 4.5, 'warning' => 4.5, 'error' => 4.5] as $name => $minimum) {
@@ -304,6 +518,8 @@ function designSystemValidateCss(string $css): array
     }
     $ratios['focus'] = designSystemContrast(designSystemColor($tokens, '--va-color-secondary'), $white);
     assertDesignSystem($ratios['focus'] >= 3.0, 'Contraste de foco insuficiente.');
+    assertDesignSystem(designSystemColor($tokens, '--va-color-primary') === '#3f7f16', 'Color primario contractual alterado.');
+    assertDesignSystem(designSystemColor($tokens, '--va-color-primary-hover') === '#326612', 'Color hover contractual alterado.');
     return $ratios;
 }
 
@@ -323,35 +539,47 @@ function designSystemValidateHandleReferences(array $references): void
     );
 }
 
-function designSystemExpectRejection(callable $validator, mixed $candidate, string $label): void
+function designSystemExpectRejection(callable $validator, mixed $candidate, string $expectedDiagnostic, string $label): void
 {
-    $rejected = false;
     try {
         $validator($candidate);
     } catch (RuntimeException $exception) {
-        $rejected = $exception->getMessage() !== '';
+        assertDesignSystem(
+            $exception->getMessage() !== '' && str_contains($exception->getMessage(), $expectedDiagnostic),
+            "ADVERSARIAL_WRONG_CAUSE: {$label}; esperado={$expectedDiagnostic}; obtenido={$exception->getMessage()}."
+        );
+        $GLOBALS['designSystemAdversarialResults'][] = [$label, $expectedDiagnostic, $exception->getMessage()];
+        return;
+    } catch (Throwable $exception) {
+        throw new RuntimeException("ADVERSARIAL_UNEXPECTED_EXCEPTION: {$label}; " . $exception::class . ': ' . $exception->getMessage(), 0, $exception);
     }
-    assertDesignSystem($rejected, "Adversarial aceptado: {$label}.");
+    throw new RuntimeException("ADVERSARIAL_ACCEPTED: {$label}; esperado={$expectedDiagnostic}.");
 }
 
-/** @param list<string> $expectedEnvironmental */
-function designSystemValidateEnvironmentalInventory(string $root, array $untracked, array $expectedEnvironmental): void
+function designSystemExpectAcceptance(callable $validator, mixed $candidate, string $label): void
 {
-    $phaseFiles = ['assets/frontend/css/veciahorra-design-system.css', 'tests/manual/frontend-design-system-test.php'];
-    sort($phaseFiles);
-    $actualPhase = array_values(array_intersect($untracked, $phaseFiles));
-    sort($actualPhase);
-    assertDesignSystem(count($untracked) === 521 && $actualPhase === $phaseFiles, 'Inventario no rastreado de fase invalido.');
-    $environmental = array_values(array_diff($untracked, $phaseFiles));
-    sort($environmental);
-    sort($expectedEnvironmental);
-    assertDesignSystem($environmental === $expectedEnvironmental && count($environmental) === 519, 'Allowlist ambiental exacta alterada.');
+    try {
+        $validator($candidate);
+    } catch (Throwable $exception) {
+        throw new RuntimeException("ADVERSARIAL_POSITIVE_REJECTED: {$label}; " . $exception->getMessage(), 0, $exception);
+    }
+    $GLOBALS['designSystemAdversarialResults'][] = [$label, 'ACCEPT', 'ACCEPT'];
+}
 
-    $artifactPaths = array_values(array_filter($environmental, static fn (string $path): bool => str_starts_with($path, 'artifacts/')));
-    $pycPaths = array_values(array_filter($environmental, static fn (string $path): bool => str_ends_with($path, '.pyc')));
-    $jsonPaths = array_values(array_filter($environmental, static fn (string $path): bool => str_starts_with($path, 'tests/manual/') && str_ends_with($path, '-result.json')));
-    $other = array_values(array_diff($environmental, $artifactPaths, $pycPaths, $jsonPaths));
-    assertDesignSystem(count($artifactPaths) === 513 && count($pycPaths) === 3 && count($jsonPaths) === 3 && $other === [], 'Categorias ambientales invalidas.');
+function designSystemValidateEnvironmentalInventory(string $root, array $untracked): void
+{
+    sort($untracked, SORT_STRING);
+    assertDesignSystem(count($untracked) === 519, 'ENV_COUNT: se esperaban 519 ambientales.');
+    assertDesignSystem(
+        hash('sha256', implode("\n", $untracked)) === '15a45f3aa19cacb8be80b0963476671e388e75501ff5088f839c385bf1d1433d',
+        'ENV_FINGERPRINT: rutas ambientales alteradas.'
+    );
+
+    $artifactPaths = array_values(array_filter($untracked, static fn (string $path): bool => str_starts_with($path, 'artifacts/')));
+    $pycPaths = array_values(array_filter($untracked, static fn (string $path): bool => str_ends_with($path, '.pyc')));
+    $jsonPaths = array_values(array_filter($untracked, static fn (string $path): bool => str_starts_with($path, 'tests/manual/') && str_ends_with($path, '-result.json')));
+    $other = array_values(array_diff($untracked, $artifactPaths, $pycPaths, $jsonPaths));
+    assertDesignSystem(count($artifactPaths) === 513 && count($pycPaths) === 3 && count($jsonPaths) === 3 && $other === [], 'ENV_CATEGORIES: categorias ambientales invalidas.');
 
     $measure = static function (string $directory): array {
         $files = [];
@@ -368,15 +596,16 @@ function designSystemValidateEnvironmentalInventory(string $root, array $untrack
     };
     [$artifactFileCount, $artifactDirectoryCount, $artifactBytes] = $measure($root . '/artifacts');
     [$visualFileCount, $visualDirectoryCount, $visualBytes] = $measure($root . '/artifacts/service-providers-visual');
-    assertDesignSystem([$artifactFileCount, $artifactDirectoryCount, $artifactBytes] === [513, 309, 28537157], 'Metricas de artifacts alteradas.');
-    assertDesignSystem([$visualFileCount, $visualBytes] === [9, 928002], 'Metricas service-providers-visual alteradas.');
+    assertDesignSystem([$artifactFileCount, $artifactDirectoryCount, $artifactBytes] === [513, 309, 28537157], 'ENV_ARTIFACT_METRICS: artifacts alterado.');
+    assertDesignSystem([$visualFileCount, $visualBytes] === [9, 928002], 'ENV_VISUAL_METRICS: service-providers-visual alterado.');
     assertDesignSystem(
         [$artifactFileCount - $visualFileCount, $artifactDirectoryCount - $visualDirectoryCount - 1, $artifactBytes - $visualBytes] === [504, 308, 27609155],
-        'Metricas historicas alteradas.'
+        'ENV_HISTORIC_METRICS: historico alterado.'
     );
 }
 
 $root = dirname(__DIR__, 2);
+$GLOBALS['designSystemAdversarialResults'] = [];
 $assetsPath = $root . '/app/Modules/Frontend/Assets/FrontendAssets.php';
 $cssPath = $root . '/assets/frontend/css/veciahorra-design-system.css';
 $assetsSource = (string) file_get_contents($assetsPath);
@@ -414,16 +643,20 @@ $originalDone = $wp_styles->done;
 $originalToDo = $wp_styles->to_do;
 foreach ($approved as $method) {
     unset($wp_styles->registered[FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE]);
-    $wp_styles->queue = array_values(array_diff($wp_styles->queue, [FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE]));
-    $wp_styles->done = array_values(array_diff($wp_styles->done, [FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE]));
-    $wp_styles->to_do = array_values(array_diff($wp_styles->to_do, [FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE]));
+    $caseHandles = [FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE, FrontendAssets::STYLE_HANDLE];
+    $wp_styles->queue = array_values(array_diff($originalQueue, $caseHandles));
+    $wp_styles->done = array_values(array_diff($originalDone, $caseHandles));
+    $wp_styles->to_do = array_values(array_diff($originalToDo, $caseHandles));
     $assets = new FrontendAssets();
     $assets->{$method}();
     $registered = $wp_styles->registered[FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE] ?? null;
     assertDesignSystem($registered instanceof _WP_Dependency, "Handle no registrado: {$method}.");
     assertDesignSystem($registered->src === VA_PLUGIN_URL . 'assets/frontend/css/veciahorra-design-system.css', "Ruta runtime invalida: {$method}.");
-    assertDesignSystem($registered->ver === Config::PLUGIN_VERSION && $registered->deps === [], "Contrato runtime invalido: {$method}.");
+    assertDesignSystem($registered->ver === Config::PLUGIN_VERSION && $registered->deps === [] && $registered->args === 'all', "Contrato runtime invalido: {$method}.");
     assertDesignSystem(count(array_filter($wp_styles->queue, static fn (string $handle): bool => $handle === FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE)) === 1, "Handle no encolado exactamente una vez: {$method}.");
+    $designPosition = array_search(FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE, $wp_styles->queue, true);
+    $legacyPosition = array_search(FrontendAssets::STYLE_HANDLE, $wp_styles->queue, true);
+    assertDesignSystem(is_int($designPosition) && is_int($legacyPosition) && $designPosition < $legacyPosition, "Orden de styles invalido: {$method}.");
     $assets->{$method}();
     assertDesignSystem(count(array_filter($wp_styles->queue, static fn (string $handle): bool => $handle === FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE)) === 1, "Enqueue no idempotente: {$method}.");
 }
@@ -434,64 +667,89 @@ $wp_styles->to_do = $originalToDo;
 $ratios = designSystemValidateCss($css);
 
 $mutations = [
-    ['--va-color-green-700: #3f7f16;', '--va-color-green-700: #4d9818;'],
-    ['--va-color-green-700: #3f7f16;', "--va-color-green-700: #3f7f16;\n    --va-color-green-700: #ffffff;"],
-    ['--va-color-primary: var(--va-color-green-700);', '--va-color-primary: var(--va-color-missing);'],
-    ["--va-color-primary: var(--va-color-green-700);\n    --va-color-primary-hover: var(--va-color-green-800);", "--va-color-primary: var(--va-color-primary-hover);\n    --va-color-primary-hover: var(--va-color-primary);"],
-    ["    background: var(--va-color-surface-soft, #f4f8f2);\n    color: var(--va-color-secondary, #0b4778);\n    transform: translateY(-1px);", "    background: var(--va-color-primary);\n    color: var(--va-color-secondary, #0b4778);\n    transform: translateY(-1px);"],
-    ['background: rgb(11 71 120 / 8%);', 'background: var(--va-color-primary);'],
-    ["\n@media (max-width: 40rem) {", "\nbody { color: red; }\n\n@media (max-width: 40rem) {"],
-    ['transition: none;', 'transition: none !important;'],
-    ['.veciahorra-frontend.va-design-system {', "@import 'unsafe.css';\n\n.veciahorra-frontend.va-design-system {"],
-    ['background: transparent;', "background: url('x');"],
-    ["    min-width: 2.75rem;\n    min-height: 2.75rem;\n    border: 1px solid transparent;", "    min-width: 0;\n    min-height: 2.75rem;\n    border: 1px solid transparent;"],
-    ["\n@media (max-width: 40rem) {", "\n.otra-clase { color: red; }\n\n@media (max-width: 40rem) {"],
-    ["\n@media (max-width: 40rem) {", "\n* { color: red; }\n\n@media (max-width: 40rem) {"],
-    ["\n@media (max-width: 40rem) {", "\n[data-x] { color: red; }\n\n@media (max-width: 40rem) {"],
-    ['.veciahorra-frontend.va-design-system .va-container,', ".veciahorra-frontend.va-design-system .va-container,\n.otra-clase,"],
-    ["@media (max-width: 40rem) {\n    .veciahorra-frontend.va-design-system .va-container {", "@media (max-width: 40rem) {\n    .otra-clase {"],
+    ['--va-color-green-700: #3f7f16;', '--va-color-green-700: #4d9818;', 'Contraste insuficiente: primary', 'primario insuficiente'],
+    ['--va-color-green-700: #3f7f16;', "--va-color-green-700: #3f7f16;\n    --va-color-green-700: #ffffff;", 'ausente o duplicado', 'token duplicado'],
+    ['--va-color-primary: var(--va-color-green-700);', '--va-color-primary: var(--va-color-missing);', 'Token no resoluble', 'referencia rota'],
+    ["--va-color-primary: var(--va-color-green-700);\n    --va-color-primary-hover: var(--va-color-green-800);", "--va-color-primary: var(--va-color-primary-hover);\n    --va-color-primary-hover: var(--va-color-primary);", 'Token no resoluble', 'ciclo de tokens'],
+    ["    background: var(--va-color-surface-soft, #f4f8f2);\n    color: var(--va-color-secondary, #0b4778);\n    transform: translateY(-1px);", "    background: var(--va-color-primary);\n    color: var(--va-color-secondary, #0b4778);\n    transform: translateY(-1px);", 'Declaracion invalida', 'secondary hover verde'],
+    ['background: rgb(11 71 120 / 8%);', 'background: var(--va-color-primary);', 'Declaracion invalida', 'text hover verde'],
+    ["\n@media (max-width: 40rem) {", "\nbody { color: red; }\n\n@media (max-width: 40rem) {", 'CSS_SCOPE', 'selector body'],
+    ['transition: none;', 'transition: none !important;', 'CSS_IMPORTANT', '!important'],
+    ['.veciahorra-frontend.va-design-system {', "@import 'unsafe.css';\n\n.veciahorra-frontend.va-design-system {", 'CSS_IMPORT', '@import'],
+    ['background: transparent;', "background: url('x');", 'CSS_URL', 'url'],
+    ["    min-width: 2.75rem;\n    min-height: 2.75rem;\n    border: 1px solid transparent;", "    min-width: 0;\n    min-height: 2.75rem;\n    border: 1px solid transparent;", 'Contrato CSS ausente', 'ancho tactil'],
+    ["\n@media (max-width: 40rem) {", "\n.otra-clase { color: red; }\n\n@media (max-width: 40rem) {", 'CSS_SCOPE', 'otra clase'],
+    ["\n@media (max-width: 40rem) {", "\n* { color: red; }\n\n@media (max-width: 40rem) {", 'CSS_SCOPE', 'selector universal'],
+    ["\n@media (max-width: 40rem) {", "\n[data-x] { color: red; }\n\n@media (max-width: 40rem) {", 'CSS_SCOPE', 'selector de atributo'],
+    ['.veciahorra-frontend.va-design-system .va-container,', ".veciahorra-frontend.va-design-system .va-container,\n.otra-clase,", 'CSS_SCOPE', 'lista mixta'],
+    ["@media (max-width: 40rem) {\n    .veciahorra-frontend.va-design-system .va-container {", "@media (max-width: 40rem) {\n    .otra-clase {", 'CSS_SCOPE', 'media sin scope'],
+    ["\n@media (max-width: 40rem) {", "\n.veciahorra-frontend.va-design-system + body { color: red; }\n\n@media (max-width: 40rem) {", 'CSS_SIBLING_COMBINATOR', 'hermano adyacente'],
+    ["\n@media (max-width: 40rem) {", "\n.veciahorra-frontend.va-design-system ~ .otra-clase { color: red; }\n\n@media (max-width: 40rem) {", 'CSS_SIBLING_COMBINATOR', 'hermano general'],
+    ["\n@media (max-width: 40rem) {", "\n.veciahorra-frontend.va-design-system:is(.activa, body) + body { color: red; }\n\n@media (max-width: 40rem) {", 'CSS_SIBLING_COMBINATOR', 'escape mediante is'],
+    ["\n@media (max-width: 40rem) {", "\n.veciahorra-frontend.va-design-system:where(.activa, body) ~ .otra-clase { color: red; }\n\n@media (max-width: 40rem) {", 'CSS_SIBLING_COMBINATOR', 'escape mediante where'],
+    ["\n@media (max-width: 40rem) {", "\n.veciahorra-frontend.va-design-system:not(.inactiva) + body { color: red; }\n\n@media (max-width: 40rem) {", 'CSS_SIBLING_COMBINATOR', 'escape mediante not'],
+    ["\n@media (max-width: 40rem) {", "\n@supports (display: grid) { body { color: red; } }\n\n@media (max-width: 40rem) {", 'CSS_SCOPE', 'supports sin scope'],
+    ["\n@media (max-width: 40rem) {", "\n@layer probe { body { color: red; } }\n\n@media (max-width: 40rem) {", 'CSS_SCOPE', 'layer sin scope'],
 ];
-foreach ($mutations as [$search, $replace]) {
-    designSystemExpectRejection('designSystemValidateCss', designSystemMutateOnce($css, $search, $replace), 'CSS ' . $search);
+foreach ($mutations as [$search, $replace, $diagnostic, $label]) {
+    designSystemExpectRejection('designSystemValidateCss', designSystemMutateOnce($css, $search, $replace), $diagnostic, 'CSS ' . $label);
+}
+
+$cssStringMutations = [
+    ['--va-color-navy-900: #062c57;', "--va-probe: \"} , body {\";\n    --va-color-navy-900: #062c57;", 'string CSS doble con estructura aparente'],
+    ['--va-color-navy-900: #062c57;', "--va-probe: '} , .otra-clase {';\n    --va-color-navy-900: #062c57;", 'string CSS simple con estructura aparente'],
+];
+foreach ($cssStringMutations as [$search, $replace, $label]) {
+    designSystemExpectAcceptance('designSystemValidateCssScope', designSystemMutateOnce($css, $search, $replace), $label);
 }
 
 $assetMutations = [
-    ["        \$this->registerAssets();\n        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);", '        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);', 'helper sin registro'],
-    ['    private function enqueueDesignSystem(): void', '    public function enqueueDesignSystem(): void', 'helper public'],
-    ['    private function enqueueDesignSystem(): void', '    protected function enqueueDesignSystem(): void', 'helper protected'],
-    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", "        '\$this->enqueueDesignSystem();';\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", 'caller ficticio en string'],
-    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", "        // \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", 'caller ficticio en comentario'],
-    ['        return $this->routes ??= new PublicRouteResolver();', "        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);\n        return \$this->routes ??= new PublicRouteResolver();", 'enqueue productivo adicional'],
+    ["        \$this->registerAssets();\n        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);", '        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);', 'PHP_HELPER_REGISTER', 'helper sin registro'],
+    ['    private function enqueueDesignSystem(): void', '    public function enqueueDesignSystem(): void', 'PHP_HELPER_VISIBILITY', 'helper public'],
+    ['    private function enqueueDesignSystem(): void', '    protected function enqueueDesignSystem(): void', 'PHP_HELPER_VISIBILITY', 'helper protected'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", "        '\$this->enqueueDesignSystem();';\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'caller ficticio en string simple'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", "        \"\$this->enqueueDesignSystem();\";\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'caller ficticio en string doble'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", "        <<<CALLER\n\$this->enqueueDesignSystem();\nCALLER;\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'caller ficticio en heredoc'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", "        <<<'CALLER'\n\$this->enqueueDesignSystem();\nCALLER;\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'caller ficticio en nowdoc'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", "        // \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'caller ficticio en comentario'],
+    ['        return $this->routes ??= new PublicRouteResolver();', "        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);\n        return \$this->routes ??= new PublicRouteResolver();", 'PHP_DIRECT_ENQUEUE', 'enqueue productivo adicional'],
 ];
-foreach ($assetMutations as [$search, $replace, $label]) {
-    designSystemExpectRejection('designSystemValidateAssetsSource', designSystemMutateOnce($assetsSource, $search, $replace), $label);
+foreach ($assetMutations as [$search, $replace, $diagnostic, $label]) {
+    designSystemExpectRejection('designSystemValidateAssetsSource', designSystemMutateOnce($assetsSource, $search, $replace), $diagnostic, $label);
 }
-$referenceRejected = false;
-try {
-    designSystemValidateHandleReferences(['app/Modules/Frontend/Assets/FrontendAssets.php', 'veciahorra.php']);
-} catch (RuntimeException) {
-    $referenceRejected = true;
-}
-assertDesignSystem($referenceRejected, 'Adversarial de referencia adicional aceptado.');
 
-$tracked = array_values(array_filter(preg_split('/\R/', trim((string) shell_exec('git diff --name-only'))) ?: []));
+$assetPositiveMutations = [
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", "        \$this\n            -> enqueueDesignSystem\n            ();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", 'caller multilinea'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", "        \$this /* intercalado */\n            ->enqueueDesignSystem   (   );\n        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", 'caller con comentario y whitespace'],
+];
+foreach ($assetPositiveMutations as [$search, $replace, $label]) {
+    designSystemExpectAcceptance('designSystemValidateAssetsSource', designSystemMutateOnce($assetsSource, $search, $replace), $label);
+}
+designSystemExpectRejection(
+    'designSystemValidateHandleReferences',
+    ['app/Modules/Frontend/Assets/FrontendAssets.php', 'veciahorra.php'],
+    'Inventario literal del handle invalido',
+    'referencia productiva adicional'
+);
+
 $untracked = array_values(array_filter(preg_split('/\R/', trim((string) shell_exec('git ls-files --others --exclude-standard'))) ?: []));
-$phaseUntracked = ['assets/frontend/css/veciahorra-design-system.css', 'tests/manual/frontend-design-system-test.php'];
-$environmental = array_values(array_diff($untracked, $phaseUntracked));
-designSystemValidateEnvironmentalInventory($root, $untracked, $environmental);
+designSystemValidateEnvironmentalInventory($root, $untracked);
 $simulatedUntracked = $untracked;
 $simulatedUntracked[] = 'artifacts/adversarial-extra.txt';
 designSystemExpectRejection(
-    static function (array $candidate) use ($root, $environmental): void {
-        designSystemValidateEnvironmentalInventory($root, $candidate, $environmental);
+    static function (array $candidate) use ($root): void {
+        designSystemValidateEnvironmentalInventory($root, $candidate);
     },
     $simulatedUntracked,
+    'ENV_COUNT',
     'archivo adicional dentro de artifacts'
 );
-$work = array_values(array_diff(array_unique(array_merge($tracked, $untracked)), $environmental));
-sort($work);
-$allowed = ['app/Modules/Frontend/Assets/FrontendAssets.php', 'assets/frontend/css/veciahorra-design-system.css', 'tests/manual/frontend-design-system-test.php'];
-sort($allowed);
-assertDesignSystem($work === $allowed, 'Alcance Git inesperado: ' . implode(', ', $work));
+$phaseDiff = array_values(array_filter(preg_split('/\R/', trim((string) shell_exec('git diff --name-only e875e87e46d8880306e13f6b24e24e70dd672385'))) ?: []));
+sort($phaseDiff, SORT_STRING);
+assertDesignSystem($phaseDiff === ['tests/manual/frontend-design-system-test.php'], 'Alcance Git inesperado: ' . implode(', ', $phaseDiff));
 
-printf("PASS frontend-design-system-test primary=%.2f hover=%.2f navy=%.2f focus=%.2f adversarials=%d browser_evidence=external\n", $ratios['primary'], $ratios['primary-hover'], $ratios['navy-700'], $ratios['focus'], count($mutations) + count($assetMutations) + 2);
+$adversarialCount = count($GLOBALS['designSystemAdversarialResults']);
+foreach ($GLOBALS['designSystemAdversarialResults'] as [$label, $expected, $obtained]) {
+    printf("ADVERSARIAL label=%s expected=%s obtained=%s\n", $label, $expected, $obtained);
+}
+printf("PASS frontend-design-system-test primary=%.2f hover=%.2f navy=%.2f focus=%.2f adversarials=%d browser_evidence=external\n", $ratios['primary'], $ratios['primary-hover'], $ratios['navy-700'], $ratios['focus'], $adversarialCount);
