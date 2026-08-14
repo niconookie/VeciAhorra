@@ -16,6 +16,7 @@ use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 final class FrontendAssets
 {
     public const STYLE_HANDLE = 'veciahorra-frontend';
+    public const DESIGN_SYSTEM_STYLE_HANDLE = 'veciahorra-design-system';
     public const SCRIPT_HANDLE = 'veciahorra-frontend';
     public const OFFER_SCRIPT_HANDLE = 'veciahorra-product-offers';
     public const CATALOG_SCRIPT_HANDLE = 'veciahorra-catalog';
@@ -44,6 +45,12 @@ final class FrontendAssets
         $this->registered = true;
         $baseUrl = VA_PLUGIN_URL . 'assets/frontend/';
 
+        wp_register_style(
+            self::DESIGN_SYSTEM_STYLE_HANDLE,
+            $baseUrl . 'css/veciahorra-design-system.css',
+            [],
+            Config::PLUGIN_VERSION
+        );
         wp_register_style(
             self::STYLE_HANDLE,
             $baseUrl . 'css/veciahorra-frontend.css',
@@ -106,6 +113,7 @@ final class FrontendAssets
             return;
         }
 
+        $this->enqueueDesignSystem();
         $this->enqueue();
         wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);
     }
@@ -116,6 +124,7 @@ final class FrontendAssets
             return;
         }
 
+        $this->enqueueDesignSystem();
         $this->enqueue();
         wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);
     }
@@ -126,6 +135,7 @@ final class FrontendAssets
             return;
         }
 
+        $this->enqueueDesignSystem();
         $this->enqueue();
         wp_enqueue_script(self::CART_SCRIPT_HANDLE);
     }
@@ -136,6 +146,7 @@ final class FrontendAssets
             return;
         }
 
+        $this->enqueueDesignSystem();
         $this->enqueue();
         wp_enqueue_script(self::CHECKOUT_SCRIPT_HANDLE);
     }
@@ -241,6 +252,12 @@ final class FrontendAssets
     private function routeResolver(): PublicRouteResolver
     {
         return $this->routes ??= new PublicRouteResolver();
+    }
+
+    private function enqueueDesignSystem(): void
+    {
+        $this->registerAssets();
+        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);
     }
 
 }

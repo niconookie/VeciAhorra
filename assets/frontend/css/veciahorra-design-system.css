@@ -1,0 +1,216 @@
+.veciahorra-frontend.va-design-system {
+    --va-color-navy-900: #062c57;
+    --va-color-navy-700: #0b4778;
+    --va-color-green-800: #326612;
+    --va-color-green-700: #3f7f16;
+    --va-color-green-600: #4d9818;
+    --va-color-green-500: #63b626;
+    --va-color-primary: var(--va-color-green-700);
+    --va-color-primary-hover: var(--va-color-green-800);
+    --va-color-secondary: var(--va-color-navy-700);
+    --va-color-text: #10233a;
+    --va-color-text-muted: #5b6878;
+    --va-color-surface: #ffffff;
+    --va-color-surface-soft: #f4f8f2;
+    --va-color-border: #cbd6df;
+    --va-color-success: #287a3f;
+    --va-color-warning: #8a5700;
+    --va-color-error: #a12b2b;
+    --va-space-1: 0.25rem;
+    --va-space-2: 0.5rem;
+    --va-space-3: 0.75rem;
+    --va-space-4: 1rem;
+    --va-space-5: 1.5rem;
+    --va-space-6: 2rem;
+    --va-space-7: 3rem;
+    --va-radius-sm: 0.375rem;
+    --va-radius-md: 0.625rem;
+    --va-radius-lg: 1rem;
+    --va-radius-pill: 999px;
+    --va-shadow-sm: 0 0.25rem 0.75rem rgb(6 44 87 / 8%);
+    --va-shadow-md: 0 1rem 2.5rem rgb(6 44 87 / 12%);
+    --va-container-content: 45rem;
+    --va-container-wide: 80rem;
+    --va-transition-fast: 160ms ease;
+    --va-transition-medium: 220ms ease;
+    --va-focus-ring: 0 0 0 3px rgb(99 182 38 / 30%);
+}
+
+.veciahorra-frontend.va-design-system .va-container,
+.veciahorra-frontend.va-design-system .va-section,
+.veciahorra-frontend.va-design-system .va-section-heading,
+.veciahorra-frontend.va-design-system .va-card,
+.veciahorra-frontend.va-design-system .va-field-group,
+.veciahorra-frontend.va-design-system .va-field,
+.veciahorra-frontend.va-design-system .va-alert,
+.veciahorra-frontend.va-design-system .va-empty-state {
+    box-sizing: border-box;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.veciahorra-frontend.va-design-system .va-container {
+    width: min(calc(100% - 2rem), var(--va-container-wide, 80rem));
+    margin-inline: auto;
+}
+
+.veciahorra-frontend.va-design-system .va-section {
+    padding-block: clamp(var(--va-space-6, 2rem), 5vw, var(--va-space-7, 3rem));
+}
+
+.veciahorra-frontend.va-design-system .va-section-heading {
+    display: grid;
+    gap: var(--va-space-2, 0.5rem);
+    margin-bottom: var(--va-space-5, 1.5rem);
+}
+
+.veciahorra-frontend.va-design-system .va-eyebrow {
+    color: var(--va-color-primary, #4d9818);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.veciahorra-frontend.va-design-system .va-button {
+    box-sizing: border-box;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    border: 1px solid transparent;
+    border-radius: var(--va-radius-md, 0.625rem);
+    transition: background-color var(--va-transition-fast, 160ms ease), border-color var(--va-transition-fast, 160ms ease), color var(--va-transition-fast, 160ms ease), box-shadow var(--va-transition-fast, 160ms ease), transform var(--va-transition-fast, 160ms ease);
+}
+
+.veciahorra-frontend.va-design-system .va-button,
+.veciahorra-frontend.va-design-system .va-button--primary {
+    background: var(--va-color-primary, #3f7f16);
+    color: #ffffff;
+}
+
+.veciahorra-frontend.va-design-system .va-button--secondary {
+    border-color: var(--va-color-secondary, #0b4778);
+    background: var(--va-color-surface, #ffffff);
+    color: var(--va-color-secondary, #0b4778);
+}
+
+.veciahorra-frontend.va-design-system .va-button--text {
+    border-color: transparent;
+    background: transparent;
+    color: var(--va-color-secondary, #0b4778);
+}
+
+.veciahorra-frontend.va-design-system .va-button:not(.va-button--secondary, .va-button--text):hover:not(:disabled),
+.veciahorra-frontend.va-design-system .va-button--primary:hover:not(:disabled) {
+    background: var(--va-color-primary-hover, #326612);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.veciahorra-frontend.va-design-system .va-button--secondary:hover:not(:disabled) {
+    border-color: var(--va-color-secondary, #0b4778);
+    background: var(--va-color-surface-soft, #f4f8f2);
+    color: var(--va-color-secondary, #0b4778);
+    transform: translateY(-1px);
+}
+
+.veciahorra-frontend.va-design-system .va-button--text:hover:not(:disabled) {
+    background: rgb(11 71 120 / 8%);
+    color: var(--va-color-secondary, #0b4778);
+    text-decoration: underline;
+    transform: translateY(-1px);
+}
+
+.veciahorra-frontend.va-design-system .va-button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.veciahorra-frontend.va-design-system .va-button:focus-visible,
+.veciahorra-frontend.va-design-system .va-field :is(input, select, textarea):focus-visible {
+    outline: 3px solid var(--va-color-secondary, #0b4778);
+    outline-offset: 3px;
+    box-shadow: var(--va-focus-ring, 0 0 0 3px rgb(99 182 38 / 30%));
+}
+
+.veciahorra-frontend.va-design-system .va-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+    transform: none;
+}
+
+.veciahorra-frontend.va-design-system .va-card {
+    border: 1px solid var(--va-color-border, #cbd6df);
+    border-radius: var(--va-radius-lg, 1rem);
+    background: var(--va-color-surface, #ffffff);
+    box-shadow: var(--va-shadow-sm, 0 0.25rem 0.75rem rgb(6 44 87 / 8%));
+    padding: var(--va-space-5, 1.5rem);
+}
+
+.veciahorra-frontend.va-design-system .va-badge {
+    box-sizing: border-box;
+    display: inline-flex;
+    min-width: 0;
+    min-height: 1.75rem;
+    align-items: center;
+    border-radius: var(--va-radius-pill, 999px);
+    background: var(--va-color-surface-soft, #f4f8f2);
+    color: var(--va-color-text, #10233a);
+    font-size: 0.75rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+    padding: var(--va-space-1, 0.25rem) var(--va-space-3, 0.75rem);
+}
+
+.veciahorra-frontend.va-design-system .va-field-group {
+    display: grid;
+    gap: var(--va-space-4, 1rem);
+}
+
+.veciahorra-frontend.va-design-system .va-field {
+    display: grid;
+    gap: var(--va-space-2, 0.5rem);
+}
+
+.veciahorra-frontend.va-design-system .va-field :is(input, select, textarea) {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 2.75rem;
+    border: 1px solid var(--va-color-border, #cbd6df);
+    border-radius: var(--va-radius-md, 0.625rem);
+    background: var(--va-color-surface, #ffffff);
+    color: var(--va-color-text, #10233a);
+}
+
+.veciahorra-frontend.va-design-system .va-alert {
+    border: 1px solid currentcolor;
+    border-radius: var(--va-radius-md, 0.625rem);
+    padding: var(--va-space-4, 1rem);
+}
+
+.veciahorra-frontend.va-design-system .va-alert--success { color: var(--va-color-success, #287a3f); }
+.veciahorra-frontend.va-design-system .va-alert--warning { color: var(--va-color-warning, #8a5700); }
+.veciahorra-frontend.va-design-system .va-alert--error { color: var(--va-color-error, #a12b2b); }
+
+.veciahorra-frontend.va-design-system .va-empty-state {
+    border: 1px dashed var(--va-color-border, #cbd6df);
+    border-radius: var(--va-radius-lg, 1rem);
+    background: var(--va-color-surface-soft, #f4f8f2);
+    padding: clamp(var(--va-space-5, 1.5rem), 4vw, var(--va-space-7, 3rem));
+    text-align: center;
+}
+
+@media (max-width: 40rem) {
+    .veciahorra-frontend.va-design-system .va-container {
+        width: min(calc(100% - 1rem), var(--va-container-wide, 80rem));
+    }
+
+    .veciahorra-frontend.va-design-system .va-section {
+        padding-block: var(--va-space-6, 2rem);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .veciahorra-frontend.va-design-system .va-button {
+        transition: none;
+    }
+}
