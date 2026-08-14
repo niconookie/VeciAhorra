@@ -188,6 +188,39 @@
 
 @media (max-width: 39.99rem) { .veciahorra-frontend .va-product-detail__header { grid-template-columns: minmax(0, 1fr); } .veciahorra-frontend .va-product-detail__media { margin-inline: auto; max-width: 14rem; width: 100%; } }
 
+/* Phase 2 public catalog design-system bridge. */
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters .va-button--secondary {
+    border-color: var(--va-color-secondary);
+    background: var(--va-color-surface);
+    color: var(--va-color-secondary);
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card {
+    border-color: var(--va-color-border);
+    border-radius: var(--va-radius-lg);
+    background: var(--va-color-surface);
+    box-shadow: var(--va-shadow-sm);
+    padding: 0;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card:hover {
+    border-color: var(--va-color-border);
+    box-shadow: var(--va-shadow-md);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog-card,
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__image {
+        transition: none;
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog-card:hover,
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog-card:hover .va-catalog-card__image {
+        transform: none;
+    }
+}
+/* End Phase 2 public catalog design-system bridge. */
+
 /* Canonical catalog branding: Blocksy remains the sole logo/menu renderer. */
 body:has(.veciahorra-frontend .va-product-detail) .entry-header { display: none; }
 body.page-id-702 .entry-header { display: none; }

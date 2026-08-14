@@ -60,7 +60,7 @@
     }
 
     function card(product, urls, catalogUrl) {
-        var article = el('article', 'va-catalog-card');
+        var article = el('article', 'va-card va-catalog-card');
         var media = el('div', 'va-catalog-card__media');
         var body = el('div', 'va-catalog-card__body');
         var url = productUrl(product, urls, catalogUrl);
@@ -98,7 +98,7 @@
         }
 
         if (url) {
-            link = el('a', 'va-button va-catalog-card__action', 'Ver producto');
+            link = el('a', 'va-button va-button--primary va-catalog-card__action', 'Ver producto');
             link.href = url;
         } else {
             link = el('span', 'va-catalog-card__unavailable', 'Ficha no disponible');
