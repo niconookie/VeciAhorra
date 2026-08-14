@@ -4,10 +4,10 @@
 /** @var string $catalogUrl */
 $titleId = $instanceId . '-title';
 ?>
-<section class="va-public-cart" data-va-cart aria-labelledby="<?php echo esc_attr($titleId); ?>">
+<section class="veciahorra-frontend va-design-system va-public-cart" data-va-cart aria-labelledby="<?php echo esc_attr($titleId); ?>">
     <header class="va-public-cart__header">
-        <div>
-            <p class="va-product-detail__eyebrow"><?php esc_html_e('Compra', 'veciahorra'); ?></p>
+        <div class="va-section-heading">
+            <p class="va-product-detail__eyebrow va-eyebrow"><?php esc_html_e('Compra', 'veciahorra'); ?></p>
             <h1 id="<?php echo esc_attr($titleId); ?>"><?php esc_html_e('Tu carrito', 'veciahorra'); ?></h1>
         </div>
         <button class="va-button va-button--secondary" type="button" data-va-cart-clear hidden>
@@ -22,7 +22,7 @@ $titleId = $instanceId . '-title';
 
     <div class="va-alert va-alert--error" role="alert" data-va-cart-error hidden>
         <p data-va-cart-error-message></p>
-        <button class="va-button" type="button" data-va-cart-retry><?php esc_html_e('Reintentar', 'veciahorra'); ?></button>
+        <button class="va-button va-button--primary" type="button" data-va-cart-retry><?php esc_html_e('Reintentar', 'veciahorra'); ?></button>
     </div>
 
     <div class="va-empty-state" data-va-cart-empty hidden>
@@ -30,7 +30,7 @@ $titleId = $instanceId . '-title';
         <p class="va-empty-state__message"><?php esc_html_e('Agrega productos desde sus fichas públicas.', 'veciahorra'); ?></p>
     </div>
 
-    <div class="va-public-cart__content" data-va-cart-content hidden>
+    <div class="va-public-cart__content va-card" data-va-cart-content hidden>
         <div class="va-cart-table-wrap">
             <table class="va-cart-table">
                 <thead><tr>
@@ -51,7 +51,7 @@ $titleId = $instanceId . '-title';
         <div class="va-public-cart__checkout">
             <a class="va-button va-button--secondary" href="<?php echo esc_url($catalogUrl); ?>" data-va-cart-continue-shopping><?php esc_html_e('Seguir comprando', 'veciahorra'); ?></a>
             <?php if ($checkoutUrl !== '') : ?>
-                <a class="va-button" href="<?php echo esc_url($checkoutUrl); ?>" data-va-cart-checkout><?php esc_html_e('Continuar al checkout', 'veciahorra'); ?></a>
+                <a class="va-button va-button--primary" href="<?php echo esc_url($checkoutUrl); ?>" data-va-cart-checkout><?php esc_html_e('Continuar al checkout', 'veciahorra'); ?></a>
             <?php else : ?>
                 <span class="va-help-text" role="status" data-va-cart-checkout-unavailable><?php esc_html_e('Checkout no disponible temporalmente.', 'veciahorra'); ?></span>
             <?php endif; ?>

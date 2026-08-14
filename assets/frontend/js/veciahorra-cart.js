@@ -138,9 +138,9 @@
 
         function quantityControl(item) {
             var control = document.createElement('div');
-            var decrease = textNode('button', 'va-cart-quantity__button', '−');
+            var decrease = textNode('button', 'va-button va-button--secondary va-cart-quantity__button', '−');
             var value = textNode('span', 'va-cart-quantity__value', String(item.quantity));
-            var increase = textNode('button', 'va-cart-quantity__button', '+');
+            var increase = textNode('button', 'va-button va-button--secondary va-cart-quantity__button', '+');
             var label = item.product_name || 'producto';
 
             control.className = 'va-cart-quantity';
