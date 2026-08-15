@@ -603,9 +603,13 @@
     }
 
     function renderDetailItem(item, currency, config) {
-        var listItem = element('li', 'va-customer-panel__detail-item');
+        var listItem = element(
+            'li',
+            'veciahorra-frontend va-design-system va-customer-panel__detail-item'
+        );
         var content = element('div', 'va-customer-panel__detail-item-content');
         var values = element('dl', 'va-customer-panel__detail-values');
+        listItem.setAttribute('data-va-customer-panel-detail-item', '');
         content.append(renderProductImage(item));
 
         values.append(
