@@ -688,7 +688,11 @@
         var summary = element('dl', 'va-customer-panel__detail-values');
         var ordersSection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-orders-section');
         var orders = element('ol', 'va-customer-panel__detail-orders');
-        var paymentSection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-payment');
+        var paymentSection = element(
+            'section',
+            'veciahorra-frontend va-design-system va-customer-panel__detail-section va-customer-panel__detail-payment'
+        );
+        paymentSection.setAttribute('data-va-customer-panel-detail-payment', '');
         var paymentValues;
         var deliverySection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-delivery');
         var services = element('div', 'va-customer-panel__detail-services');
