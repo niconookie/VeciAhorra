@@ -659,7 +659,11 @@
 
     function renderDetailOrder(order, currency, config) {
         var listItem = element('li', 'va-customer-panel__detail-order va-card');
-        var orderHeader = element('div', 'va-customer-panel__detail-order-header');
+        var orderHeader = element(
+            'div',
+            'veciahorra-frontend va-design-system va-customer-panel__detail-order-header'
+        );
+        orderHeader.setAttribute('data-va-customer-panel-detail-order-header', '');
         var heading = visualHeading('h4', order.minimarket.name, 'store');
         var subtotal = element('p', 'va-customer-panel__detail-order-subtotal', 'Subtotal: ' + formatTotal({amount: order.subtotal, currency: currency}, config));
         var productsHeading = visualHeading('h5', 'Productos', 'products');
