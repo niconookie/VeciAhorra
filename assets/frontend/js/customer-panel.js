@@ -673,7 +673,7 @@
         var heading = visualHeading('h2', 'Detalle de compra', 'purchase');
         var back = element('a', 'va-customer-panel__back-link', 'Volver a mis compras');
         var headingRow = element('div', 'va-customer-panel__detail-heading-row');
-        var overview = element('div', 'va-customer-panel__detail-overview va-customer-panel__detail-primary-card');
+        var overview = element('div', 'veciahorra-frontend va-design-system va-customer-panel__detail-overview va-customer-panel__detail-primary-card');
         var header = element('section', 'va-customer-panel__detail-header');
         var headerValues = element('dl', 'va-customer-panel__detail-values');
         var summarySection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-summary');
@@ -689,6 +689,7 @@
         heading.tabIndex = -1;
         heading.classList.add('va-customer-panel__detail-title');
         back.href = canonicalListUrl(state.config).href;
+        overview.setAttribute('data-va-customer-panel-detail-overview', '');
         headerValues.append(
             detailValue('Identificador', detail.checkout_public_id, 'identifier'),
             detailValue('Fecha', formatDate(detail.created_at, state.config), 'date'),
