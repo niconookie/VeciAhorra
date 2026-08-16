@@ -694,7 +694,11 @@
         );
         paymentSection.setAttribute('data-va-customer-panel-detail-payment', '');
         var paymentValues;
-        var deliverySection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-delivery');
+        var deliverySection = element(
+            'section',
+            'veciahorra-frontend va-design-system va-customer-panel__detail-section va-customer-panel__detail-delivery'
+        );
+        deliverySection.setAttribute('data-va-customer-panel-detail-delivery', '');
         var services = element('div', 'va-customer-panel__detail-services');
         var timelineSection;
 
