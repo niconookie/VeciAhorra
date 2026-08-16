@@ -684,7 +684,11 @@
     function renderDetail(state, detail) {
         var heading = visualHeading('h2', 'Detalle de compra', 'purchase');
         var back = element('a', 'va-customer-panel__back-link', 'Volver a mis compras');
-        var headingRow = element('div', 'va-customer-panel__detail-heading-row');
+        var headingRow = element(
+            'div',
+            'veciahorra-frontend va-design-system va-customer-panel__detail-heading-row'
+        );
+        headingRow.setAttribute('data-va-customer-panel-detail-heading', '');
         var overview = element('div', 'veciahorra-frontend va-design-system va-customer-panel__detail-overview va-customer-panel__detail-primary-card');
         var header = element('section', 'va-customer-panel__detail-header');
         var headerValues = element('dl', 'va-customer-panel__detail-values');
