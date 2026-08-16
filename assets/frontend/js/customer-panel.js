@@ -641,9 +641,13 @@
     }
 
     function renderTimeline(entries, config) {
-        var section = element('section', 'va-customer-panel__detail-section va-customer-panel__timeline');
+        var section = element(
+            'section',
+            'veciahorra-frontend va-design-system va-customer-panel__detail-section va-customer-panel__timeline'
+        );
         var list = element('ol', 'va-customer-panel__timeline-list');
 
+        section.setAttribute('data-va-customer-panel-detail-timeline', '');
         section.append(visualHeading('h3', 'Timeline', 'timeline'));
         if (entries.length === 0) {
             section.append(element('p', '', 'No hay eventos para mostrar.'));
