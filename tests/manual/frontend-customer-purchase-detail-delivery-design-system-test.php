@@ -52,6 +52,38 @@ function p12gitExit(array $arguments): int
     return $exitCode;
 }
 
+/** @return list<string> */
+function p12effectiveDelta(): array
+{
+    $lines = array_values(array_filter(
+        preg_split('/\R/', p12git(['diff', '--name-status', VA_PHASE12_BASELINE, '--'], false)) ?: [],
+        static fn (string $line): bool => $line !== ''
+    ));
+    sort($lines, SORT_STRING);
+    return $lines;
+}
+
+/** @return array{files:int,directories:int,bytes:int} */
+function p12artifactMetrics(string $root): array
+{
+    $files = 0;
+    $directories = 0;
+    $bytes = 0;
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($root . '/artifacts', FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
+    foreach ($iterator as $entry) {
+        if ($entry->isDir()) {
+            $directories++;
+        } elseif ($entry->isFile()) {
+            $files++;
+            $bytes += $entry->getSize();
+        }
+    }
+    return ['files' => $files, 'directories' => $directories, 'bytes' => $bytes];
+}
+
 function p12hasDeliveryAllowlist(string $validator, string $property): bool
 {
     $field = 'detail\\.delivery\\.' . preg_quote($property, '/');
@@ -460,24 +492,22 @@ function p12validate(array $s, bool $repository = true): array
     $need(str_contains($render, "visualHeading('h3', 'Entrega', 'delivery')") && str_contains($s['view'], 'aria-live="polite"'), 'P35_ACCESSIBILITY_LOST');
     $need($s['assets'] === $s['baseAssets'], 'P36_ASSETS_CHANGED');
     $need($s['css'] === $s['baseCss'], 'P37_UNAUTHORIZED_CSS');
-    if ($repository) {
-        $changed = array_values(array_filter(preg_split('/\R/', p12git(['status', '--porcelain=v1', '--untracked-files=all'], false)) ?: [], static fn (string $line): bool => $line !== '' && ! str_contains($line, 'artifacts/') && ! str_contains($line, 'training-')));
-        $paths = array_map(static fn (string $line): string => substr($line, 3), $changed);
-        $allowed = ['assets/frontend/js/customer-panel.js', 'tests/manual/frontend-customer-purchase-detail-delivery-design-system-test.php', 'tests/manual/customer-purchase-detail-delivery-design-system-browser-test.py'];
-        sort($paths); sort($allowed);
-        $viewPath = 'app/Modules/Frontend/Views/customer-panel.php';
-        $expectedView = p12git(['rev-parse', VA_PHASE12_BASELINE . ':' . $viewPath]);
-        $actualView = p12git(['hash-object', '--path=' . $viewPath, $viewPath]);
-        $viewUnchanged = p12gitExit(['diff', '--quiet', VA_PHASE12_BASELINE, '--', $viewPath]) === 0;
-        $need(
-            $paths === $allowed
-            && p12git(['merge-base', '--is-ancestor', VA_PHASE12_BASELINE, 'HEAD']) === ''
-            && $actualView === $expectedView
-            && $viewUnchanged,
-            'P38_BASELINE_OR_ALLOWLIST_CHANGED'
-        );
-    }
-    $need($s['view'] === $s['protectedView'], 'P38_BASELINE_OR_ALLOWLIST_CHANGED');
+    $expectedDelta = [
+        "A\ttests/manual/customer-purchase-detail-delivery-design-system-browser-test.py",
+        "A\ttests/manual/frontend-customer-purchase-detail-delivery-design-system-test.php",
+        "M\tassets/frontend/js/customer-panel.js",
+    ];
+    sort($expectedDelta, SORT_STRING);
+    $need(
+        $s['effectiveDelta'] === $expectedDelta
+        && $s['baselineAncestor'] === true
+        && $s['protectedViewOid'] === $s['expectedViewOid']
+        && $s['protectedViewUnchanged'] === true
+        && $s['view'] === $s['protectedView']
+        && str_contains($s['schema'], "SCHEMA_VERSION = '0.28.0'")
+        && $s['artifactMetrics'] === ['files' => 513, 'directories' => 309, 'bytes' => 28537157],
+        'P38_BASELINE_OR_ALLOWLIST_CHANGED'
+    );
     return array_values(array_unique($errors));
 }
 
@@ -492,9 +522,16 @@ $s = [
     'routes' => $read('app/Modules/CustomerPanel/Routes/CustomerPanelRoutes.php'),
     'query' => $read('app/Modules/CustomerPanel/Query/CustomerPurchaseQuery.php'),
     'dto' => $read('app/Modules/CustomerPanel/DTO/CustomerPurchaseDetail.php'),
+    'schema' => $read('app/Core/Config.php'),
     'baseCss' => p12git(['show', VA_PHASE12_BASELINE . ':assets/frontend/css/customer-panel.css'], false),
     'baseAssets' => p12git(['show', VA_PHASE12_BASELINE . ':app/Modules/Frontend/Assets/FrontendAssets.php'], false),
     'protectedView' => $read('app/Modules/Frontend/Views/customer-panel.php'),
+    'effectiveDelta' => p12effectiveDelta(),
+    'baselineAncestor' => p12gitExit(['merge-base', '--is-ancestor', VA_PHASE12_BASELINE, 'HEAD']) === 0,
+    'expectedViewOid' => p12git(['rev-parse', VA_PHASE12_BASELINE . ':app/Modules/Frontend/Views/customer-panel.php']),
+    'protectedViewOid' => p12git(['hash-object', '--path=app/Modules/Frontend/Views/customer-panel.php', 'app/Modules/Frontend/Views/customer-panel.php']),
+    'protectedViewUnchanged' => p12gitExit(['diff', '--quiet', VA_PHASE12_BASELINE, '--', 'app/Modules/Frontend/Views/customer-panel.php']) === 0,
+    'artifactMetrics' => p12artifactMetrics($root),
 ];
 
 p12assert(p12git(['merge-base', '--is-ancestor', VA_PHASE12_BASELINE, 'HEAD']) === '', 'Baseline no es ancestro.');
@@ -538,7 +575,7 @@ $mutations = [
     ['js', "visualHeading('h3', 'Entrega', 'delivery')", "element('div', '', 'Entrega')"],
     ['assets', 'final class FrontendAssets', 'final class FrontendAssets /* phase12 */'],
     ['css', '.veciahorra-frontend.va-customer-panel {', '.veciahorra-frontend.va-customer-panel { color:red;'],
-    ['view', '<main ', '<main data-phase12-outside-allowlist '],
+    ['effectiveDelta', '__P38_EFFECTIVE_SNAPSHOT_VARIANTS__', ''],
 ];
 
 $codes = [
@@ -557,6 +594,36 @@ foreach ($mutations as $index => [$key, $from, $to]) {
         $mutated['query'] = p12mutateOwnedCheckoutQuery($mutated['query']);
     } elseif ($codes[$index] === 'P32_IDENTITY_OVERRIDE') {
         $mutated['routes'] = p12mutatePurchaseIdentity($mutated['routes']);
+    } elseif ($codes[$index] === 'P38_BASELINE_OR_ALLOWLIST_CHANGED') {
+        $variants = [
+            'fourth_route' => static function (array $candidate): array {
+                $candidate['effectiveDelta'][] = "M\tapp/Probe.php";
+                sort($candidate['effectiveDelta'], SORT_STRING);
+                return $candidate;
+            },
+            'protected_oid' => static function (array $candidate): array {
+                $candidate['protectedViewOid'] = str_repeat('0', 40);
+                return $candidate;
+            },
+            'incorrect_baseline' => static function (array $candidate): array {
+                $candidate['baselineAncestor'] = false;
+                return $candidate;
+            },
+            'schema' => static function (array $candidate): array {
+                $candidate['schema'] = str_replace("0.28.0", "0.29.0", $candidate['schema']);
+                return $candidate;
+            },
+            'artifacts' => static function (array $candidate): array {
+                $candidate['artifactMetrics']['files']++;
+                return $candidate;
+            },
+        ];
+        foreach ($variants as $variant => $mutate) {
+            $obtained = p12validate($mutate($mutated), false);
+            p12assert($obtained === [$codes[$index]], "Esperado exacto {$codes[$index]} variante={$variant}; obtenido " . implode(',', $obtained));
+            echo "PASS ADVERSARIAL variant={$variant} expected={$codes[$index]} obtained={$codes[$index]}\n";
+        }
+        continue;
     } else {
         $matches = substr_count($mutated[$key], $from);
         p12assert($matches >= 1, "Fixture {$codes[$index]} ausente.");
