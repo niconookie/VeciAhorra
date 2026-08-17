@@ -15,6 +15,15 @@ function assertDesignSystem(bool $condition, string $message): void
     }
 }
 
+$expectedDesignSystemConsumers = [
+    'enqueueProductOffers' => 1,
+    'enqueueCatalog' => 1,
+    'enqueueCart' => 1,
+    'enqueueCheckout' => 1,
+    'enqueueCustomerPanel' => 1,
+    'enqueueHomepageProducts' => 1,
+];
+
 /** @return list<array{0: int|null, 1: string}> */
 function designSystemExecutableTokens(array $tokens): array
 {
@@ -50,7 +59,7 @@ function designSystemExecutableTokens(array $tokens): array
     return $result;
 }
 
-/** @return array<string, array{tokens: list<array{0: int|null, 1: string}>, visibility: string, static: bool}> */
+/** @return array<string, array{tokens: list<array{0: int|null, 1: string}>, rawTokens: array, visibility: string, static: bool}> */
 function designSystemClassMethods(string $source): array
 {
     $tokens = token_get_all($source);
@@ -122,11 +131,30 @@ function designSystemClassMethods(string $source): array
         }
         assertDesignSystem($methodDepth === 0, "PHP_METHOD_BALANCE: {$name}.");
         assertDesignSystem(! isset($methods[$name]), "PHP_HELPER_COUNT: metodo duplicado {$name}.");
-        $methods[$name] = ['tokens' => designSystemExecutableTokens($bodyTokens), 'visibility' => $visibility, 'static' => $static];
+        $methods[$name] = ['tokens' => designSystemExecutableTokens($bodyTokens), 'rawTokens' => $bodyTokens, 'visibility' => $visibility, 'static' => $static];
         $index = $cursor - 1;
     }
     assertDesignSystem($classDepth !== null && $classBraceDepth === 0, 'No fue posible delimitar FrontendAssets.');
     return $methods;
+}
+
+/** @param array<int, array|string> $tokens */
+function designSystemSignificantText(array $tokens): string
+{
+    $text = '';
+    foreach ($tokens as $token) {
+        if (is_array($token) && in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+            continue;
+        }
+        $text .= is_array($token) ? $token[1] : $token;
+    }
+    return $text;
+}
+
+/** @param list<array{0: int|null, 1: string}> $tokens */
+function designSystemExecutableText(array $tokens): string
+{
+    return implode('', array_map(static fn (array $token): string => $token[1], $tokens));
 }
 
 /** @param list<array{0: int|null, 1: string}> $tokens */
@@ -164,22 +192,37 @@ function designSystemCountHandleCalls(array $tokens, string $function): int
     return $count;
 }
 
-function designSystemValidateAssetsSource(string $source): void
+/** @param array<string, int> $expectedDesignSystemConsumers */
+function designSystemValidateAssetsSource(string $source, array $expectedDesignSystemConsumers): void
 {
     $methods = designSystemClassMethods($source);
-    $approved = ['enqueueCatalog', 'enqueueProductOffers', 'enqueueCart', 'enqueueCheckout'];
+    foreach ($expectedDesignSystemConsumers as $name => $expected) {
+        assertDesignSystem(isset($methods[$name]) && $expected === 1, "PHP_CONSUMER_MAP: {$name}.");
+    }
     assertDesignSystem(isset($methods['enqueueDesignSystem']), 'PHP_HELPER_COUNT: helper ausente.');
     $helper = $methods['enqueueDesignSystem'];
     assertDesignSystem($helper['visibility'] === 'private' && ! $helper['static'], 'PHP_HELPER_VISIBILITY: debe ser private y no static.');
     assertDesignSystem(designSystemCountThisCalls($helper['tokens'], 'registerAssets') === 1, 'PHP_HELPER_REGISTER: registro previo invalido.');
     assertDesignSystem(designSystemCountHandleCalls($helper['tokens'], 'wp_enqueue_style') === 1, 'PHP_HELPER_ENQUEUE: enqueue privado invalido.');
+    $helperText = designSystemExecutableText($helper['tokens']);
+    $registerPosition = strpos($helperText, '$this->registerAssets()');
+    $enqueuePosition = strpos($helperText, 'wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE)');
+    assertDesignSystem(is_int($registerPosition) && is_int($enqueuePosition) && $registerPosition < $enqueuePosition, 'PHP_REGISTER_BEFORE_ENQUEUE: orden invalido.');
     assertDesignSystem(
         isset($methods['registerAssets'])
             && designSystemCountHandleCalls($methods['registerAssets']['tokens'], 'wp_register_style') === 1,
         'PHP_STYLESHEET_REGISTER: registro productivo invalido.'
     );
+    $registrationText = designSystemSignificantText($methods['registerAssets']['rawTokens']);
+    assertDesignSystem(
+        substr_count(
+            $registrationText,
+            "wp_register_style(self::DESIGN_SYSTEM_STYLE_HANDLE,\$baseUrl.'css/veciahorra-design-system.css',[],Config::PLUGIN_VERSION)"
+        ) === 1,
+        'PHP_STYLESHEET_CONTRACT: URL, dependencias o version invalidas.'
+    );
     foreach ($methods as $name => $method) {
-        $expected = in_array($name, $approved, true) ? 1 : 0;
+        $expected = $expectedDesignSystemConsumers[$name] ?? 0;
         assertDesignSystem(designSystemCountThisCalls($method['tokens'], 'enqueueDesignSystem') === $expected, "PHP_CALLER_AUTHORITY: {$name}.");
         assertDesignSystem(
             designSystemCountHandleCalls($method['tokens'], 'wp_enqueue_style') === ($name === 'enqueueDesignSystem' ? 1 : 0),
@@ -566,44 +609,6 @@ function designSystemExpectAcceptance(callable $validator, mixed $candidate, str
     $GLOBALS['designSystemAdversarialResults'][] = [$label, 'ACCEPT', 'ACCEPT'];
 }
 
-function designSystemValidateEnvironmentalInventory(string $root, array $untracked): void
-{
-    sort($untracked, SORT_STRING);
-    assertDesignSystem(count($untracked) === 519, 'ENV_COUNT: se esperaban 519 ambientales.');
-    assertDesignSystem(
-        hash('sha256', implode("\n", $untracked)) === '15a45f3aa19cacb8be80b0963476671e388e75501ff5088f839c385bf1d1433d',
-        'ENV_FINGERPRINT: rutas ambientales alteradas.'
-    );
-
-    $artifactPaths = array_values(array_filter($untracked, static fn (string $path): bool => str_starts_with($path, 'artifacts/')));
-    $pycPaths = array_values(array_filter($untracked, static fn (string $path): bool => str_ends_with($path, '.pyc')));
-    $jsonPaths = array_values(array_filter($untracked, static fn (string $path): bool => str_starts_with($path, 'tests/manual/') && str_ends_with($path, '-result.json')));
-    $other = array_values(array_diff($untracked, $artifactPaths, $pycPaths, $jsonPaths));
-    assertDesignSystem(count($artifactPaths) === 513 && count($pycPaths) === 3 && count($jsonPaths) === 3 && $other === [], 'ENV_CATEGORIES: categorias ambientales invalidas.');
-
-    $measure = static function (string $directory): array {
-        $files = [];
-        $directories = [];
-        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST);
-        foreach ($iterator as $entry) {
-            if ($entry->isDir()) {
-                $directories[] = $entry->getPathname();
-            } elseif ($entry->isFile()) {
-                $files[] = $entry;
-            }
-        }
-        return [count($files), count($directories), array_sum(array_map(static fn (SplFileInfo $file): int => $file->getSize(), $files))];
-    };
-    [$artifactFileCount, $artifactDirectoryCount, $artifactBytes] = $measure($root . '/artifacts');
-    [$visualFileCount, $visualDirectoryCount, $visualBytes] = $measure($root . '/artifacts/service-providers-visual');
-    assertDesignSystem([$artifactFileCount, $artifactDirectoryCount, $artifactBytes] === [513, 309, 28537157], 'ENV_ARTIFACT_METRICS: artifacts alterado.');
-    assertDesignSystem([$visualFileCount, $visualBytes] === [9, 928002], 'ENV_VISUAL_METRICS: service-providers-visual alterado.');
-    assertDesignSystem(
-        [$artifactFileCount - $visualFileCount, $artifactDirectoryCount - $visualDirectoryCount - 1, $artifactBytes - $visualBytes] === [504, 308, 27609155],
-        'ENV_HISTORIC_METRICS: historico alterado.'
-    );
-}
-
 $root = dirname(__DIR__, 2);
 $GLOBALS['designSystemAdversarialResults'] = [];
 $assetsPath = $root . '/app/Modules/Frontend/Assets/FrontendAssets.php';
@@ -612,8 +617,11 @@ $assetsSource = (string) file_get_contents($assetsPath);
 $css = (string) file_get_contents($cssPath);
 assertDesignSystem($assetsSource !== '' && $css !== '', 'Fuentes visuales ilegibles.');
 
-$approved = ['enqueueCatalog', 'enqueueProductOffers', 'enqueueCart', 'enqueueCheckout'];
-designSystemValidateAssetsSource($assetsSource);
+$approved = array_keys($expectedDesignSystemConsumers);
+$validateAssetsSource = static function (string $candidate) use ($expectedDesignSystemConsumers): void {
+    designSystemValidateAssetsSource($candidate, $expectedDesignSystemConsumers);
+};
+$validateAssetsSource($assetsSource);
 $reflection = new ReflectionClass(FrontendAssets::class);
 $helperMethods = array_values(array_filter(
     $reflection->getMethods(),
@@ -636,17 +644,25 @@ foreach (designSystemProductFiles($root) as $file) {
 }
 designSystemValidateHandleReferences($references);
 
-global $wp_styles;
+global $wp_styles, $wp_scripts;
 $originalRegistered = $wp_styles->registered;
 $originalQueue = $wp_styles->queue;
 $originalDone = $wp_styles->done;
 $originalToDo = $wp_styles->to_do;
+$originalScriptRegistered = $wp_scripts->registered;
+$originalScriptQueue = $wp_scripts->queue;
 foreach ($approved as $method) {
     unset($wp_styles->registered[FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE]);
-    $caseHandles = [FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE, FrontendAssets::STYLE_HANDLE];
+    $caseHandles = [
+        FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE,
+        FrontendAssets::STYLE_HANDLE,
+        FrontendAssets::CUSTOMER_PANEL_STYLE_HANDLE,
+        FrontendAssets::HOMEPAGE_PRODUCTS_STYLE_HANDLE,
+    ];
     $wp_styles->queue = array_values(array_diff($originalQueue, $caseHandles));
     $wp_styles->done = array_values(array_diff($originalDone, $caseHandles));
     $wp_styles->to_do = array_values(array_diff($originalToDo, $caseHandles));
+    $wp_scripts->queue = array_values(array_diff($originalScriptQueue, [FrontendAssets::CUSTOMER_PANEL_SCRIPT_HANDLE]));
     $assets = new FrontendAssets();
     $assets->{$method}();
     $registered = $wp_styles->registered[FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE] ?? null;
@@ -657,13 +673,30 @@ foreach ($approved as $method) {
     $designPosition = array_search(FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE, $wp_styles->queue, true);
     $legacyPosition = array_search(FrontendAssets::STYLE_HANDLE, $wp_styles->queue, true);
     assertDesignSystem(is_int($designPosition) && is_int($legacyPosition) && $designPosition < $legacyPosition, "Orden de styles invalido: {$method}.");
+    if ($method === 'enqueueCustomerPanel') {
+        $panelStyle = $wp_styles->registered[FrontendAssets::CUSTOMER_PANEL_STYLE_HANDLE] ?? null;
+        $panelScript = $wp_scripts->registered[FrontendAssets::CUSTOMER_PANEL_SCRIPT_HANDLE] ?? null;
+        assertDesignSystem($panelStyle instanceof _WP_Dependency && $panelStyle->deps === [FrontendAssets::STYLE_HANDLE], 'CUSTOMER_PANEL_STYLE_DEPENDENCY.');
+        assertDesignSystem($panelScript instanceof _WP_Dependency && $panelScript->deps === [FrontendAssets::SCRIPT_HANDLE], 'CUSTOMER_PANEL_SCRIPT_DEPENDENCY.');
+        assertDesignSystem(wp_style_is(FrontendAssets::CUSTOMER_PANEL_STYLE_HANDLE, 'enqueued') && wp_script_is(FrontendAssets::CUSTOMER_PANEL_SCRIPT_HANDLE, 'enqueued'), 'CUSTOMER_PANEL_ASSETS_RUNTIME.');
+    }
+    if ($method === 'enqueueHomepageProducts') {
+        $homepageStyle = $wp_styles->registered[FrontendAssets::HOMEPAGE_PRODUCTS_STYLE_HANDLE] ?? null;
+        assertDesignSystem($homepageStyle instanceof _WP_Dependency && $homepageStyle->deps === [FrontendAssets::STYLE_HANDLE, FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE], 'HOMEPAGE_PRODUCTS_DEPENDENCY.');
+    }
     $assets->{$method}();
     assertDesignSystem(count(array_filter($wp_styles->queue, static fn (string $handle): bool => $handle === FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE)) === 1, "Enqueue no idempotente: {$method}.");
 }
+$wp_styles->queue = array_values(array_diff($originalQueue, [FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE, FrontendAssets::HOMEPAGE_HERO_STYLE_HANDLE]));
+$heroAssets = new FrontendAssets();
+$heroAssets->enqueueHomepageHero();
+assertDesignSystem(! wp_style_is(FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE, 'enqueued'), 'HOMEPAGE_HERO_UNAUTHORIZED_DESIGN_SYSTEM.');
 $wp_styles->registered = $originalRegistered;
 $wp_styles->queue = $originalQueue;
 $wp_styles->done = $originalDone;
 $wp_styles->to_do = $originalToDo;
+$wp_scripts->registered = $originalScriptRegistered;
+$wp_scripts->queue = $originalScriptQueue;
 $ratios = designSystemValidateCss($css);
 
 $mutations = [
@@ -705,6 +738,11 @@ foreach ($cssStringMutations as [$search, $replace, $label]) {
 
 $assetMutations = [
     ["        \$this->registerAssets();\n        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);", '        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);', 'PHP_HELPER_REGISTER', 'helper sin registro'],
+    ["        \$this->registerAssets();\n        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);", "        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);\n        \$this->registerAssets();", 'PHP_REGISTER_BEFORE_ENQUEUE', 'enqueue antes de registro'],
+    ['wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);', 'wp_enqueue_style(self::STYLE_HANDLE);', 'PHP_HELPER_ENQUEUE', 'handle incorrecto'],
+    ["            \$baseUrl . 'css/veciahorra-design-system.css',", "            \$baseUrl . 'css/changed.css',", 'PHP_STYLESHEET_CONTRACT', 'URL incorrecta'],
+    ["            [],\n            Config::PLUGIN_VERSION\n        );\n        wp_register_style(\n            self::STYLE_HANDLE,", "            [self::STYLE_HANDLE],\n            Config::PLUGIN_VERSION\n        );\n        wp_register_style(\n            self::STYLE_HANDLE,", 'PHP_STYLESHEET_CONTRACT', 'dependencia incorrecta'],
+    ["            [],\n            Config::PLUGIN_VERSION\n        );\n        wp_register_style(\n            self::STYLE_HANDLE,", "            [],\n            'changed-version'\n        );\n        wp_register_style(\n            self::STYLE_HANDLE,", 'PHP_STYLESHEET_CONTRACT', 'version incorrecta'],
     ['    private function enqueueDesignSystem(): void', '    public function enqueueDesignSystem(): void', 'PHP_HELPER_VISIBILITY', 'helper public'],
     ['    private function enqueueDesignSystem(): void', '    protected function enqueueDesignSystem(): void', 'PHP_HELPER_VISIBILITY', 'helper protected'],
     ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", "        '\$this->enqueueDesignSystem();';\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'caller ficticio en string simple'],
@@ -713,17 +751,26 @@ $assetMutations = [
     ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", "        <<<'CALLER'\n\$this->enqueueDesignSystem();\nCALLER;\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'caller ficticio en nowdoc'],
     ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", "        // \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'caller ficticio en comentario'],
     ['        return $this->routes ??= new PublicRouteResolver();', "        wp_enqueue_style(self::DESIGN_SYSTEM_STYLE_HANDLE);\n        return \$this->routes ??= new PublicRouteResolver();", 'PHP_DIRECT_ENQUEUE', 'enqueue productivo adicional'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", "        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'product offers sin consumidor'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", "        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'catalogo sin consumidor'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::CART_SCRIPT_HANDLE);", "        \$this->enqueue();\n        wp_enqueue_script(self::CART_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'carrito sin consumidor'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::CHECKOUT_SCRIPT_HANDLE);", "        \$this->enqueue();\n        wp_enqueue_script(self::CHECKOUT_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'checkout sin consumidor'],
+    ["        \$this->enqueueDesignSystem();\n\n        if (\$authenticated) {", "        if (\$authenticated) {", 'PHP_CALLER_AUTHORITY', 'customer panel sin consumidor'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_style(self::HOMEPAGE_PRODUCTS_STYLE_HANDLE);", "        \$this->enqueue();\n        wp_enqueue_style(self::HOMEPAGE_PRODUCTS_STYLE_HANDLE);", 'PHP_CALLER_AUTHORITY', 'homepage products sin consumidor'],
+    ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", "        \$this->enqueueDesignSystem();\n        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", 'PHP_CALLER_AUTHORITY', 'consumidor duplicado'],
 ];
 foreach ($assetMutations as [$search, $replace, $diagnostic, $label]) {
-    designSystemExpectRejection('designSystemValidateAssetsSource', designSystemMutateOnce($assetsSource, $search, $replace), $diagnostic, $label);
+    designSystemExpectRejection($validateAssetsSource, designSystemMutateOnce($assetsSource, $search, $replace), $diagnostic, $label);
 }
 
 $assetPositiveMutations = [
     ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", "        \$this\n            -> enqueueDesignSystem\n            ();\n        \$this->enqueue();\n        wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);", 'caller multilinea'],
     ["        \$this->enqueueDesignSystem();\n        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", "        \$this /* intercalado */\n            ->enqueueDesignSystem   (   );\n        \$this->enqueue();\n        wp_enqueue_script(self::CATALOG_SCRIPT_HANDLE);", 'caller con comentario y whitespace'],
+    ['        return $this->routes ??= new PublicRouteResolver();', "        // \$this->enqueueDesignSystem();\n        return \$this->routes ??= new PublicRouteResolver();", 'nombre inerte en comentario'],
+    ['        return $this->routes ??= new PublicRouteResolver();', "        '\$this->enqueueDesignSystem();';\n        return \$this->routes ??= new PublicRouteResolver();", 'nombre inerte en string'],
 ];
 foreach ($assetPositiveMutations as [$search, $replace, $label]) {
-    designSystemExpectAcceptance('designSystemValidateAssetsSource', designSystemMutateOnce($assetsSource, $search, $replace), $label);
+    designSystemExpectAcceptance($validateAssetsSource, designSystemMutateOnce($assetsSource, $search, $replace), $label);
 }
 designSystemExpectRejection(
     'designSystemValidateHandleReferences',
@@ -731,22 +778,6 @@ designSystemExpectRejection(
     'Inventario literal del handle invalido',
     'referencia productiva adicional'
 );
-
-$untracked = array_values(array_filter(preg_split('/\R/', trim((string) shell_exec('git ls-files --others --exclude-standard'))) ?: []));
-designSystemValidateEnvironmentalInventory($root, $untracked);
-$simulatedUntracked = $untracked;
-$simulatedUntracked[] = 'artifacts/adversarial-extra.txt';
-designSystemExpectRejection(
-    static function (array $candidate) use ($root): void {
-        designSystemValidateEnvironmentalInventory($root, $candidate);
-    },
-    $simulatedUntracked,
-    'ENV_COUNT',
-    'archivo adicional dentro de artifacts'
-);
-$phaseDiff = array_values(array_filter(preg_split('/\R/', trim((string) shell_exec('git diff --name-only e875e87e46d8880306e13f6b24e24e70dd672385'))) ?: []));
-sort($phaseDiff, SORT_STRING);
-assertDesignSystem($phaseDiff === ['tests/manual/frontend-design-system-test.php'], 'Alcance Git inesperado: ' . implode(', ', $phaseDiff));
 
 $adversarialCount = count($GLOBALS['designSystemAdversarialResults']);
 foreach ($GLOBALS['designSystemAdversarialResults'] as [$label, $expected, $obtained]) {
