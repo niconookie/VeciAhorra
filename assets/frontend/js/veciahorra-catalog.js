@@ -2,12 +2,6 @@
     'use strict';
 
     var config = window.VeciAhorra || {};
-    var money = new Intl.NumberFormat(config.locale || 'es-CL', {
-        style: 'currency',
-        currency: config.currency || 'CLP',
-        maximumFractionDigits: 0
-    });
-
     function el(tag, className, text) {
         var node = document.createElement(tag);
         if (className) { node.className = className; }
@@ -57,57 +51,6 @@
         } catch (ignore) {
             return '';
         }
-    }
-
-    function card(product, urls, catalogUrl) {
-        var article = el('article', 'va-card va-catalog-card');
-        var media = el('div', 'va-catalog-card__media');
-        var body = el('div', 'va-catalog-card__body');
-        var url = productUrl(product, urls, catalogUrl);
-        var name = String(product.name || 'Producto');
-        var price = product.min_price;
-        var minimarkets = Number(product.available_minimarkets);
-        var priceLine;
-        var image;
-        var link;
-
-        if (product.image) {
-            image = el('img', 'va-catalog-card__image');
-            image.src = String(product.image);
-            image.alt = name;
-            image.loading = 'lazy';
-            image.decoding = 'async';
-            media.appendChild(image);
-        } else {
-            media.appendChild(el('span', 'va-catalog-card__image-missing', 'Imagen no disponible'));
-        }
-
-        body.appendChild(el('h2', 'va-catalog-card__title', name));
-        if (price !== null && price !== undefined && price !== '' && isFinite(Number(price))) {
-            priceLine = el('p', 'va-catalog-card__price');
-            priceLine.appendChild(el('span', 'va-catalog-card__price-prefix', 'Desde'));
-            priceLine.appendChild(el('strong', 'va-catalog-card__price-value', money.format(Number(price))));
-            body.appendChild(priceLine);
-        }
-        if (Number.isInteger(minimarkets) && minimarkets > 0) {
-            body.appendChild(el(
-                'p',
-                'va-catalog-card__availability',
-                'Disponible en ' + minimarkets + (minimarkets === 1 ? ' minimarket' : ' minimarkets')
-            ));
-        }
-
-        if (url) {
-            link = el('a', 'va-button va-button--primary va-catalog-card__action', 'Ver producto');
-            link.href = url;
-        } else {
-            link = el('span', 'va-catalog-card__unavailable', 'Ficha no disponible');
-        }
-
-        body.appendChild(link);
-        article.appendChild(media);
-        article.appendChild(body);
-        return article;
     }
 
     function mount(root) {
@@ -173,6 +116,9 @@
 
                 return items;
             }).then(function (products) {
+                var fragment;
+                var renderer;
+
                 if (sequence !== requestSequence) { return; }
                 loading.hidden = true;
                 if (! products.length) {
@@ -180,7 +126,17 @@
                     status.textContent = '0 productos encontrados';
                     return;
                 }
-                products.forEach(function (product) { grid.appendChild(card(product, urls, catalogUrl)); });
+                renderer = window.VeciAhorraProductCard;
+                if (!renderer || typeof renderer.render !== 'function') {
+                    throw new Error('No fue posible mostrar los productos.');
+                }
+                fragment = document.createDocumentFragment();
+                products.forEach(function (product) {
+                    fragment.appendChild(renderer.render(product, {
+                        url: productUrl(product, urls, catalogUrl)
+                    }));
+                });
+                grid.appendChild(fragment);
                 grid.hidden = false;
                 status.textContent = products.length + (products.length === 1 ? ' producto encontrado' : ' productos encontrados');
             }).catch(function (reason) {

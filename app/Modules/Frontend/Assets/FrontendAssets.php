@@ -20,6 +20,7 @@ final class FrontendAssets
     public const DESIGN_SYSTEM_STYLE_HANDLE = 'veciahorra-design-system';
     public const SCRIPT_HANDLE = 'veciahorra-frontend';
     public const OFFER_SCRIPT_HANDLE = 'veciahorra-product-offers';
+    public const PRODUCT_CARD_SCRIPT_HANDLE = 'veciahorra-product-card';
     public const CATALOG_SCRIPT_HANDLE = 'veciahorra-catalog';
     public const CART_SCRIPT_HANDLE = 'veciahorra-cart';
     public const CHECKOUT_SCRIPT_HANDLE = 'veciahorra-checkout';
@@ -72,9 +73,16 @@ final class FrontendAssets
             true
         );
         wp_register_script(
+            self::PRODUCT_CARD_SCRIPT_HANDLE,
+            $baseUrl . 'js/veciahorra-product-card.js',
+            [self::SCRIPT_HANDLE],
+            Config::PLUGIN_VERSION,
+            true
+        );
+        wp_register_script(
             self::CATALOG_SCRIPT_HANDLE,
             $baseUrl . 'js/veciahorra-catalog.js',
-            [self::SCRIPT_HANDLE],
+            [self::SCRIPT_HANDLE, self::PRODUCT_CARD_SCRIPT_HANDLE],
             Config::PLUGIN_VERSION,
             true
         );
