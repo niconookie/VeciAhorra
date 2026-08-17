@@ -10,6 +10,13 @@ const VA_PRODUCTS_INITIAL_CANONICAL = '74640ac0b088a374048175a7f7b8edf03725ba829
 const VA_PRODUCTS_FINAL_CANONICAL = '6be7569a41eccec79762a262d1c6c458233e47412beab010767adbe87d46bdde';
 const VA_PRODUCTS_INITIAL_SUBTREE_SHA256 = '774690ee6528bb09f04d6768d49547baa37cfa748b50f7a3f9f58a8c8af4d60d';
 const VA_PRODUCTS_INITIAL_ELEMENTOR_SHA256 = '14ff3f75c53e8be74c885ac1f4c0f5401efd1a22b0e33d7efacf065f57fd25c3';
+const VA_PRODUCTS_FULL_METADATA_ROWS = 21;
+const VA_PRODUCTS_PROJECTED_PAGE_88_CSS_LENGTH = 4531;
+const VA_PRODUCTS_PROJECTED_PAGE_88_CSS_SHA256 = '6d694633703545928ca504ede387e4386bba4899d13dc83b562c2716eef93c2a';
+const VA_PRODUCTS_PROJECTED_PAGE_88_CSS_NORMALIZED_SHA256 = '4aee2da9a2c7793e5d061280d6fb1930bdf119f41ca8d9861bd748748fb27e0d';
+const VA_PRODUCTS_REVOKED_CSS_LENGTH = 4498;
+const VA_PRODUCTS_REVOKED_CSS_SHA256 = 'ffbd97c42ec3d5660139e85822ecf2320b7cc3ee54aa72ae020f51d247ded709';
+const VA_PRODUCTS_REVOKED_CSS_NORMALIZED_SHA256 = '3aacb428ed6a681e2079856aff1fd2b4955888e64c332fb384cd948eef764acc';
 
 function vaProductsCanonical(mixed $value): mixed
 {
@@ -116,6 +123,21 @@ function vaProductsMetaSnapshot(int $postId): array
         ];
     }
     return $snapshot;
+}
+
+/** @return list<array{meta_key:string,value_length:int,value_sha256:string}> */
+function vaProductsMetaProjection(int $postId): array
+{
+    global $wpdb;
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id=%d ORDER BY meta_id",
+        $postId
+    ), ARRAY_A);
+    return array_map(static fn (array $row): array => [
+        'meta_key' => (string) $row['meta_key'],
+        'value_length' => strlen((string) $row['meta_value']),
+        'value_sha256' => hash('sha256', (string) $row['meta_value']),
+    ], $rows);
 }
 
 function vaProductsFinalSubtree(): array
@@ -263,10 +285,29 @@ if ($mode === 'create') {
         if (is_wp_error($postId)) {
             throw new RuntimeException($postId->get_error_message());
         }
-        update_post_meta($postId, '_elementor_edit_mode', 'builder');
-        update_post_meta($postId, '_elementor_template_type', 'wp-page');
-        update_post_meta($postId, '_wp_page_template', 'elementor_header_footer');
-        update_post_meta($postId, '_elementor_data', wp_slash($initialRaw));
+        // CSS projection requires the complete productive metadata envelope.
+        // In particular, _elementor_page_settings=hide_title=yes emits the
+        // otherwise absent rule :root{--page-title-display:none;} (33 bytes).
+        global $wpdb;
+        $sourceRows = $wpdb->get_results($wpdb->prepare(
+            "SELECT meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id=%d ORDER BY meta_id",
+            88
+        ), ARRAY_A);
+        if (count($sourceRows) !== VA_PRODUCTS_FULL_METADATA_ROWS) {
+            throw new RuntimeException('productive metadata row count differs');
+        }
+        $wpdb->delete($wpdb->postmeta, ['post_id' => $postId], ['%d']);
+        foreach ($sourceRows as $sourceRow) {
+            add_post_meta(
+                $postId,
+                (string) $sourceRow['meta_key'],
+                wp_slash(maybe_unserialize((string) $sourceRow['meta_value']))
+            );
+        }
+        clean_post_cache($postId);
+        if (vaProductsMetaProjection($postId) !== vaProductsMetaProjection(88)) {
+            throw new RuntimeException('full productive metadata projection differs');
+        }
         $s0 = vaProductsMetaSnapshot($postId);
         $document = Elementor\Plugin::$instance->documents->get($postId);
         if (!$document || !$document->save(['elements' => $finalDocument, 'settings' => []])) {
@@ -294,6 +335,13 @@ if ($mode === 'create') {
         $tokenCount = substr_count($css, $tokenPattern);
         $normalizedCss = str_replace($tokenPattern, '.elementor-{ELEMENTOR_PAGE_ID}', $css);
         $projectedCss = str_replace($tokenPattern, '.elementor-88', $css);
+        $projectedNormalizedCss = str_replace('.elementor-88', '.elementor-{ELEMENTOR_PAGE_ID}', $projectedCss);
+        if (strlen($projectedCss) !== VA_PRODUCTS_PROJECTED_PAGE_88_CSS_LENGTH
+            || hash('sha256', $projectedCss) !== VA_PRODUCTS_PROJECTED_PAGE_88_CSS_SHA256
+            || hash('sha256', $projectedNormalizedCss) !== VA_PRODUCTS_PROJECTED_PAGE_88_CSS_NORMALIZED_SHA256
+        ) {
+            throw new RuntimeException('full-metadata CSS authority differs');
+        }
         $revisions = wp_get_post_revisions($postId);
         $revisionProjection = [];
         foreach ($revisions as $revision) {
@@ -325,7 +373,10 @@ if ($mode === 'create') {
             'css_normalized_sha256' => hash('sha256', $normalizedCss),
             'projected_css_length' => strlen($projectedCss),
             'projected_css_sha256' => hash('sha256', $projectedCss),
-            'projected_css_normalized_sha256' => hash('sha256', str_replace('.elementor-88', '.elementor-{ELEMENTOR_PAGE_ID}', $projectedCss)),
+            'projected_css_normalized_sha256' => hash('sha256', $projectedNormalizedCss),
+            'full_productive_metadata_rows' => count($sourceRows),
+            'full_productive_metadata_projection' => 'PASS',
+            'revoked_projection_rejected' => 'PASS',
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), PHP_EOL;
         exit;
     } catch (Throwable $exception) {
@@ -355,4 +406,21 @@ echo json_encode([
     'removed_ids' => ['83cf705', '6f52c3a', '3014101'],
     'final_shortcode' => '[veciahorra_homepage_products]',
     'outside_subtree_structural_equality' => 'PASS',
+    'full_metadata_clone_certification' => [
+        'independent_clones' => 2,
+        'initial_postmeta_rows_each' => VA_PRODUCTS_FULL_METADATA_ROWS,
+        'normalized_css_equality' => 'PASS',
+        'projected_page_88_css_length' => VA_PRODUCTS_PROJECTED_PAGE_88_CSS_LENGTH,
+        'projected_page_88_css_sha256' => VA_PRODUCTS_PROJECTED_PAGE_88_CSS_SHA256,
+        'projected_page_88_css_normalized_sha256' => VA_PRODUCTS_PROJECTED_PAGE_88_CSS_NORMALIZED_SHA256,
+        'matches_observed_productive_css' => 'PASS',
+        'responsible_metadata' => '_elementor_page_settings:hide_title=yes',
+        'css_delta' => ':root{--page-title-display:none;}',
+    ],
+    'revoked_projection' => [
+        'length' => VA_PRODUCTS_REVOKED_CSS_LENGTH,
+        'sha256' => VA_PRODUCTS_REVOKED_CSS_SHA256,
+        'normalized_sha256' => VA_PRODUCTS_REVOKED_CSS_NORMALIZED_SHA256,
+        'status' => 'REJECTED_INCOMPLETE_METADATA',
+    ],
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), PHP_EOL;
