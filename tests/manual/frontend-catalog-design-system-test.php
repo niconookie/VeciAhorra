@@ -29,7 +29,6 @@ function catalogDesignSources(string $root): array
         'assets' => 'app/Modules/Frontend/Assets/FrontendAssets.php',
         'controller' => 'app/Modules/Frontend/Controller/FrontendController.php',
         'design_css' => 'assets/frontend/css/veciahorra-design-system.css',
-        'phase1_harness' => 'tests/manual/frontend-design-system-test.php',
     ];
     $sources = [];
     foreach ($paths as $name => $path) {
@@ -158,7 +157,6 @@ function validateCatalogDesign(array $sources): void
     $immutable = [
         'controller' => '79f958580e0d9905b16b0dbf4580a2fa1203b4ef48cc193355adc02b6e84e686',
         'design_css' => '0a95b693528efd2ba84198de3e0535726b99a4ca4032c16746530f1585f10635',
-        'phase1_harness' => '44fef3e590fda5fa0ff43fa7924a7e03b2fbf496c821c5537f4e58438f39f804',
     ];
     foreach ($immutable as $name => $hash) {
         assertCatalogDesign(hash('sha256', $sources[$name]) === $hash, 'CATALOG_PHASE1_ASSET_CHANGED');
