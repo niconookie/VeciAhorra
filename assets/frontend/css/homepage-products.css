@@ -1,0 +1,77 @@
+.va-home-products {
+    box-sizing: border-box;
+    color: var(--va-color-text, #10233a);
+    padding-block: clamp(2.5rem, 6vw, 5rem);
+    width: 100%;
+}
+
+.va-home-products *,
+.va-home-products *::before,
+.va-home-products *::after { box-sizing: border-box; }
+
+.va-home-products__inner {
+    margin-inline: auto;
+    max-width: var(--va-container-wide, 80rem);
+    padding-inline: clamp(1rem, 4vw, 2rem);
+}
+
+.va-home-products__heading { margin-bottom: var(--va-space-5, 1.5rem); }
+.va-home-products__heading h2 { margin: 0; }
+.va-home-products__intro { color: var(--va-color-text-muted, #5b6878); margin: 0.5rem 0 0; }
+
+.va-home-products__status {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--va-space-4, 1rem);
+    margin-block: var(--va-space-4, 1rem);
+    min-height: 2.75rem;
+}
+
+.va-home-products__status--error { color: var(--va-color-error, #a12b2b); }
+.va-home-products__status--loading { color: var(--va-color-text-muted, #5b6878); }
+
+.va-home-products__grid {
+    align-items: stretch;
+    display: grid;
+    gap: clamp(1rem, 2vw, 1.5rem);
+    grid-template-columns: minmax(0, 1fr);
+    margin-block: var(--va-space-5, 1.5rem);
+    min-width: 0;
+    overflow: visible;
+}
+
+.va-home-products .va-catalog-card--homepage { height: 100%; }
+
+.va-home-products__catalog-link {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.va-home-products :is(a, button):focus-visible {
+    outline: 2px solid var(--va-color-secondary, #0b4778);
+    outline-offset: 2px;
+}
+
+.va-home-products__catalog-link:hover,
+.va-home-products__sector-link:hover,
+.va-home-products__retry:hover { transform: translateY(-1px); }
+
+@media (min-width: 768px) {
+    .va-home-products__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 992px) {
+    .va-home-products__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .va-home-products *,
+    .va-home-products *::before,
+    .va-home-products *::after {
+        scroll-behavior: auto;
+        transition-duration: 0.01ms;
+    }
+}

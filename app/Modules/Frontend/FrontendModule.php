@@ -6,6 +6,7 @@ namespace VeciAhorra\Modules\Frontend;
 
 use VeciAhorra\Modules\Frontend\Assets\FrontendAssets;
 use VeciAhorra\Modules\Frontend\Components\PublicRouteLink;
+use VeciAhorra\Modules\Frontend\Components\HomepageProducts;
 use VeciAhorra\Modules\Frontend\Controller\FrontendController;
 use VeciAhorra\Modules\Frontend\Search\PublicSearchIsolation;
 use VeciAhorra\Modules\Frontend\Search\PublicSearchIsolationPolicy;
@@ -25,7 +26,8 @@ final class FrontendModule
         private FrontendController $controller,
         private ?CartSession $cartSession = null,
         private ?PublicRouteLink $publicRouteLink = null,
-        private ?PublicSearchIsolation $publicSearchIsolation = null
+        private ?PublicSearchIsolation $publicSearchIsolation = null,
+        private ?HomepageProducts $homepageProducts = null
     ) {
     }
 
@@ -66,6 +68,13 @@ final class FrontendModule
             PublicRouteLink::SHORTCODE,
             [
                 $this->publicRouteLink ?? new PublicRouteLink(new PublicRouteResolver()),
+                'render',
+            ]
+        );
+        add_shortcode(
+            HomepageProducts::SHORTCODE,
+            [
+                $this->homepageProducts ?? new HomepageProducts($this->assets),
                 'render',
             ]
         );

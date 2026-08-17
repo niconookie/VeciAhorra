@@ -17,10 +17,12 @@ final class FrontendAssets
 {
     public const STYLE_HANDLE = 'veciahorra-frontend';
     public const HOMEPAGE_HERO_STYLE_HANDLE = 'veciahorra-homepage-hero';
+    public const HOMEPAGE_PRODUCTS_STYLE_HANDLE = 'veciahorra-homepage-products';
     public const DESIGN_SYSTEM_STYLE_HANDLE = 'veciahorra-design-system';
     public const SCRIPT_HANDLE = 'veciahorra-frontend';
     public const OFFER_SCRIPT_HANDLE = 'veciahorra-product-offers';
     public const PRODUCT_CARD_SCRIPT_HANDLE = 'veciahorra-product-card';
+    public const HOMEPAGE_PRODUCTS_SCRIPT_HANDLE = 'veciahorra-homepage-products';
     public const CATALOG_SCRIPT_HANDLE = 'veciahorra-catalog';
     public const CART_SCRIPT_HANDLE = 'veciahorra-cart';
     public const CHECKOUT_SCRIPT_HANDLE = 'veciahorra-checkout';
@@ -65,6 +67,12 @@ final class FrontendAssets
             [],
             Config::PLUGIN_VERSION
         );
+        wp_register_style(
+            self::HOMEPAGE_PRODUCTS_STYLE_HANDLE,
+            $baseUrl . 'css/homepage-products.css',
+            [self::STYLE_HANDLE, self::DESIGN_SYSTEM_STYLE_HANDLE],
+            Config::PLUGIN_VERSION
+        );
         wp_register_script(
             self::SCRIPT_HANDLE,
             $baseUrl . 'js/veciahorra-frontend.js',
@@ -76,6 +84,13 @@ final class FrontendAssets
             self::PRODUCT_CARD_SCRIPT_HANDLE,
             $baseUrl . 'js/veciahorra-product-card.js',
             [self::SCRIPT_HANDLE],
+            Config::PLUGIN_VERSION,
+            true
+        );
+        wp_register_script(
+            self::HOMEPAGE_PRODUCTS_SCRIPT_HANDLE,
+            $baseUrl . 'js/veciahorra-homepage-products.js',
+            [self::SCRIPT_HANDLE, self::PRODUCT_CARD_SCRIPT_HANDLE],
             Config::PLUGIN_VERSION,
             true
         );
@@ -238,6 +253,18 @@ final class FrontendAssets
 
         $this->registerAssets();
         wp_enqueue_style(self::HOMEPAGE_HERO_STYLE_HANDLE);
+    }
+
+    public function enqueueHomepageProducts(): void
+    {
+        if (is_admin()) {
+            return;
+        }
+
+        $this->enqueueDesignSystem();
+        $this->enqueue();
+        wp_enqueue_style(self::HOMEPAGE_PRODUCTS_STYLE_HANDLE);
+        wp_enqueue_script(self::HOMEPAGE_PRODUCTS_SCRIPT_HANDLE);
     }
 
     /** @return array<string, mixed> */
