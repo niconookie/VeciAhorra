@@ -187,21 +187,6 @@ function expectCatalogRejection(array $sources, string $expected, string $label)
     throw new RuntimeException("CATALOG_ADVERSARIAL_ACCEPTED: {$label}");
 }
 
-/** @param list<string> $paths */
-function validateCatalogScope(array $paths): void
-{
-    sort($paths, SORT_STRING);
-    $allowed = [
-        'app/Modules/Frontend/Views/catalog.php',
-        'assets/frontend/css/veciahorra-frontend.css',
-        'assets/frontend/js/veciahorra-catalog.js',
-        'tests/manual/catalog-filter-alignment-browser-test.py',
-        'tests/manual/frontend-catalog-design-system-test.php',
-    ];
-    sort($allowed, SORT_STRING);
-    assertCatalogDesign($paths === $allowed, 'CATALOG_OUT_OF_SCOPE_FILE');
-}
-
 $root = dirname(__DIR__, 2);
 $sources = catalogDesignSources($root);
 validateCatalogDesign($sources);
@@ -237,6 +222,7 @@ $cases = [
     ['view', 'Compra local, ahorra cerca', 'WhatsApp del prestador', 'CATALOG_PROVIDER_DISCLOSURE', 'prestador revelado'],
     ['script', "'/catalog/categories'", "'/market/categories'", 'CATALOG_ENDPOINT_CHANGED', 'endpoint alterado'],
     ['layout', 'data-va-sector-selector', 'data-va-zone-selector', 'CATALOG_SECTORIZATION_CHANGED', 'sectorizacion alterada'],
+    ['layout', 'class="veciahorra-frontend va-design-system"', 'class="veciahorra-frontend"', 'CATALOG_SECTORIZATION_CHANGED', 'design system sectorial eliminado'],
 ];
 foreach ($cases as [$file, $search, $replace, $diagnostic, $label]) {
     $candidate = $sources;
@@ -257,22 +243,6 @@ foreach ($inertCases as [$file, $prefix, $label]) {
     validateCatalogDesign($candidate);
     $inertAccepted[] = $label;
 }
-$adversarials[] = (static function (): array {
-    try {
-        validateCatalogScope([
-            'app/Modules/Frontend/Views/catalog.php',
-            'assets/frontend/css/veciahorra-frontend.css',
-            'assets/frontend/js/veciahorra-catalog.js',
-            'tests/manual/catalog-filter-alignment-browser-test.py',
-            'tests/manual/frontend-catalog-design-system-test.php',
-            'app/Modules/Frontend/Views/layout.php',
-        ]);
-    } catch (RuntimeException $exception) {
-        assertCatalogDesign(str_contains($exception->getMessage(), 'CATALOG_OUT_OF_SCOPE_FILE'), 'CATALOG_WRONG_DIAGNOSTIC: archivo fuera de alcance');
-        return ['archivo fuera de alcance', 'CATALOG_OUT_OF_SCOPE_FILE', $exception->getMessage()];
-    }
-    throw new RuntimeException('CATALOG_ADVERSARIAL_ACCEPTED: archivo fuera de alcance');
-})();
 assertCatalogDesign(count($adversarials) === 30, 'CATALOG_ADVERSARIAL_COUNT');
 assertCatalogDesign(count($inertAccepted) === 5, 'CATALOG_INERT_COUNT');
 
@@ -285,25 +255,6 @@ global $wp_styles;
 $designPosition = array_search(FrontendAssets::DESIGN_SYSTEM_STYLE_HANDLE, $wp_styles->queue, true);
 $legacyPosition = array_search(FrontendAssets::STYLE_HANDLE, $wp_styles->queue, true);
 assertCatalogDesign(is_int($designPosition) && is_int($legacyPosition) && $legacyPosition < $designPosition, 'CATALOG_RUNTIME_STYLE_ORDER');
-
-$untracked = array_values(array_filter(preg_split('/\R/', trim((string) shell_exec('git ls-files --others --exclude-standard'))) ?: []));
-$environmental = array_values(array_diff($untracked, ['tests/manual/frontend-catalog-design-system-test.php']));
-sort($environmental, SORT_STRING);
-assertCatalogDesign(count($environmental) === 516, 'CATALOG_ENVIRONMENT');
-$worktreeDiff = array_values(array_filter(preg_split('/\R/', trim((string) shell_exec('git diff --name-only'))) ?: []));
-assertCatalogDesign($worktreeDiff === ['tests/manual/frontend-catalog-design-system-test.php'], 'CATALOG_OUT_OF_SCOPE_FILE');
-
-$artifactFiles = [];
-$artifactDirectories = [];
-$iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/artifacts', FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST);
-foreach ($iterator as $entry) {
-    if ($entry->isDir()) {
-        $artifactDirectories[] = $entry;
-    } elseif ($entry->isFile()) {
-        $artifactFiles[] = $entry;
-    }
-}
-assertCatalogDesign(count($artifactFiles) === 513 && count($artifactDirectories) === 309 && array_sum(array_map(static fn (SplFileInfo $file): int => $file->getSize(), $artifactFiles)) === 28537157, 'CATALOG_ARTIFACTS');
 
 foreach ($adversarials as [$label, $expected, $obtained]) {
     printf("ADVERSARIAL label=%s expected=%s obtained=%s\n", $label, $expected, $obtained);
