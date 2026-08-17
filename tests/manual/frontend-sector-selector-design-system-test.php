@@ -4,13 +4,6 @@ declare(strict_types=1);
 
 ob_start();
 
-const VA_PHASE6_BASELINE = '846fe4ddf71a15bb5df1c36c6bda9ff6959e5f1b';
-const VA_PHASE6_PATHS = [
-    'app/Modules/Frontend/Views/layout.php',
-    'tests/manual/frontend-sector-selector-design-system-test.php',
-    'tests/manual/sector-selector-design-system-browser-test.py',
-];
-
 function phase6Assert(bool $condition, string $message): void
 {
     if (! $condition) {
@@ -18,70 +11,15 @@ function phase6Assert(bool $condition, string $message): void
     }
 }
 
-/** @param list<string> $arguments */
-function phase6Git(array $arguments): string
-{
-    $pipes = [];
-    $process = proc_open(
-        ['git', '-C', dirname(__DIR__, 2), ...$arguments],
-        [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-        $pipes,
-        null,
-        null,
-        ['bypass_shell' => true]
-    );
-    phase6Assert(is_resource($process), 'Git no pudo iniciarse.');
-    $stdout = stream_get_contents($pipes[1]);
-    $stderr = stream_get_contents($pipes[2]);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
-    $exit = proc_close($process);
-    phase6Assert($exit === 0, 'Git fallo (' . $exit . '): ' . substr(trim((string) $stderr), 0, 300));
-
-    return rtrim(str_replace(["\r\n", "\r"], "\n", (string) $stdout), "\n");
-}
-
-/** @return list<string> */
-function phase6Lines(string $value): array
-{
-    return $value === '' ? [] : array_values(array_filter(explode("\n", $value), static fn (string $line): bool => $line !== ''));
-}
-
-function phase6GitGuard(): void
-{
-    $head = phase6Git(['rev-parse', 'HEAD']);
-    $staged = phase6Lines(phase6Git(['diff', '--cached', '--name-only']));
-    sort($staged);
-    $tracked = phase6Lines(phase6Git(['status', '--short', '--untracked-files=no']));
-    $expected = VA_PHASE6_PATHS;
-    sort($expected);
-
-    if ($head === VA_PHASE6_BASELINE) {
-        $paths = array_map(static fn (string $line): string => substr($line, 3), $tracked);
-        sort($paths);
-        phase6Assert($paths === $expected, 'S24_ALLOWLIST_EXACT: ' . json_encode($paths));
-        phase6Assert($staged === [
-            'tests/manual/frontend-sector-selector-design-system-test.php',
-            'tests/manual/sector-selector-design-system-browser-test.py',
-        ], 'Staging precommit incorrecto.');
-        return;
-    }
-
-    phase6Assert(phase6Git(['rev-parse', 'HEAD^']) === VA_PHASE6_BASELINE, 'Parent postcommit incorrecto.');
-    phase6Assert($tracked === [] && $staged === [], 'Postcommit no esta limpio.');
-    $commitPaths = phase6Lines(phase6Git(['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD']));
-    sort($commitPaths);
-    phase6Assert($commitPaths === $expected, 'S24_ALLOWLIST_EXACT postcommit.');
-}
-
 /** @param array<string, string> $sources @return list<string> */
-function phase6Validate(array $sources, bool $scopeOk = true): array
+function phase6Validate(array $sources): array
 {
     $layout = $sources['layout'];
     $script = $sources['script'];
     $assets = $sources['assets'];
     $controller = $sources['controller'];
     $sector = $sources['sector'];
+    $sectorModule = $sources['sectorModule'];
     $config = $sources['config'];
     $closed = $sources['closed'];
     $errors = [];
@@ -105,6 +43,7 @@ function phase6Validate(array $sources, bool $scopeOk = true): array
         </div>
     </section>
 HTML;
+    $exact = str_replace(["\r\n", "\r"], "\n", $exact);
 
     $require(str_contains($layout, $exact), 'S01_ROOT_EXACT');
     $require(substr_count($layout, 'va-design-system') === 1, 'S02_OPT_IN_ONCE');
@@ -129,17 +68,28 @@ HTML;
     $require(str_contains($script, 'window.location.reload()'), 'S16_POST_RELOAD_UNCHANGED');
     $require(str_contains($sector, "private const SESSION='veciahorra_service_zone_id'") && str_contains($sector, 'Session::put(self::SESSION,$id)'), 'S17_SESSION_PERSISTENCE_UNCHANGED');
     $require(str_contains($sector, "private const META='_veciahorra_service_zone_id'") && str_contains($sector, 'update_user_meta(get_current_user_id(),self::META,$id)'), 'S18_USER_META_UNCHANGED');
-    $require(! str_contains($layout, '<style') && $scopeOk, 'S19_NO_PRODUCTION_CSS');
+    $require(! str_contains($layout, '<style'), 'S19_NO_PRODUCTION_CSS');
     $require(! str_contains($layout, '<script') && str_contains($script, 'function mountSectorSelector()'), 'S20_NO_PRODUCTION_JS');
-    $require(substr_count($assets, '$this->enqueueDesignSystem();') === 4, 'S21_DESIGN_ASSET_ALREADY_ENQUEUED');
+    preg_match_all(
+        '/public function enqueue(?:ProductOffers|Catalog|Cart|Checkout)\(\): void\s*\{(?:(?!public function).)*\$this->enqueueDesignSystem\(\);/s',
+        $assets,
+        $sectorSurfaceEnqueues
+    );
+    $require(count($sectorSurfaceEnqueues[0]) === 4, 'S21_DESIGN_ASSET_ALREADY_ENQUEUED');
     $require(substr_count($controller, '$this->views->render(\'layout\'') === 3 && substr_count($layout, 'data-va-sector-selector') === 1, 'S22_SINGLE_SELECTOR_PER_RENDER');
     $require(str_contains($config, "public const SCHEMA_VERSION = '0.28.0'") && preg_match('/\b(?:INSERT|UPDATE|DELETE|REPLACE)\b/i', $layout) !== 1, 'S23_NO_SCHEMA_OR_DATA_WRITE');
-    $require($scopeOk, 'S24_ALLOWLIST_EXACT');
+    $require(str_contains($sector, '$this->zones->findActive($id)??throw new \\InvalidArgumentException'), 'S24_INVALID_OR_INACTIVE_SECTOR_REJECTED');
+    $require(str_contains($sectorModule, "'error'=>['code'=>'invalid_sector'")
+        && str_contains($sectorModule, ']],422)'), 'S25_INVALID_SECTOR_RESPONSE_PRESERVED');
+    $require(str_contains($script, 'select.disabled=true')
+        && str_contains($script, 'select.disabled=false')
+        && str_contains($script, 'No fue posible cambiar el sector.'), 'S26_LOADING_ERROR_STATES_PRESERVED');
+    $require(! str_contains($layout, 'data-va-catalog')
+        && ! str_contains($layout, 'va-design-system va-catalog'), 'S27_CATALOG_INDEPENDENCE');
 
     return array_values(array_unique($errors));
 }
 
-phase6GitGuard();
 $root = dirname(__DIR__, 2);
 $paths = [
     'layout' => 'app/Modules/Frontend/Views/layout.php',
@@ -147,14 +97,15 @@ $paths = [
     'assets' => 'app/Modules/Frontend/Assets/FrontendAssets.php',
     'controller' => 'app/Modules/Frontend/Controller/FrontendController.php',
     'sector' => 'app/Modules/Sectorization/CurrentSector.php',
+    'sectorModule' => 'app/Modules/Sectorization/SectorizationModule.php',
     'config' => 'app/Core/Config.php',
 ];
 $sources = [];
 foreach ($paths as $key => $path) {
-    $sources[$key] = (string) file_get_contents($root . '/' . $path);
+    $sources[$key] = str_replace(["\r\n", "\r"], "\n", (string) file_get_contents($root . '/' . $path));
 }
 $sources['closed'] = implode("\n", array_map(
-    static fn (string $path): string => (string) file_get_contents($root . '/' . $path),
+    static fn (string $path): string => str_replace(["\r\n", "\r"], "\n", (string) file_get_contents($root . '/' . $path)),
     [
         'app/Modules/Frontend/Views/catalog.php',
         'app/Modules/Frontend/Views/product-detail.php',
@@ -188,6 +139,10 @@ $mutants = [
     'S21_DESIGN_ASSET_ALREADY_ENQUEUED' => ['assets', '$this->enqueueDesignSystem();', '$this->enqueue();'],
     'S22_SINGLE_SELECTOR_PER_RENDER' => ['layout', 'data-va-sector-selector', 'data-va-sector-selector data-va-sector-selector-copy'],
     'S23_NO_SCHEMA_OR_DATA_WRITE' => ['config', "SCHEMA_VERSION = '0.28.0'", "SCHEMA_VERSION = '0.29.0'"],
+    'S24_INVALID_OR_INACTIVE_SECTOR_REJECTED' => ['sector', '$this->zones->findActive($id)??throw new \\InvalidArgumentException', '$this->zones->find($id)'],
+    'S25_INVALID_SECTOR_RESPONSE_PRESERVED' => ['sectorModule', "'error'=>['code'=>'invalid_sector'", "'error'=>['code'=>'changed'"],
+    'S26_LOADING_ERROR_STATES_PRESERVED' => ['script', 'select.disabled=true', 'select.disabled=false'],
+    'S27_CATALOG_INDEPENDENCE' => ['layout', 'data-va-sector-selector', 'data-va-sector-selector data-va-catalog'],
 ];
 foreach ($mutants as $expected => [$target, $from, $to]) {
     $mutated = $sources;
@@ -196,9 +151,26 @@ foreach ($mutants as $expected => [$target, $from, $to]) {
     phase6Assert(in_array($expected, $obtained, true), "Adversarial {$expected} no rechazado: " . json_encode($obtained));
     echo "PASS ADVERSARIAL expected={$expected} obtained={$expected}\n";
 }
-$obtained = phase6Validate($sources, false);
-phase6Assert(in_array('S24_ALLOWLIST_EXACT', $obtained, true), 'Adversarial S24_ALLOWLIST_EXACT no rechazado.');
-echo "PASS ADVERSARIAL expected=S24_ALLOWLIST_EXACT obtained=S24_ALLOWLIST_EXACT\n";
+
+$requiredMutants = [
+    'SELECTOR_ABSENT' => ['layout', 'data-va-sector-selector', 'data-va-sector-selector-missing', 'S01_ROOT_EXACT'],
+    'SELECTOR_DUPLICATED' => ['layout', 'data-va-sector-selector', 'data-va-sector-selector data-va-sector-selector', 'S22_SINGLE_SELECTOR_PER_RENDER'],
+    'SELECTOR_ATTRIBUTE_REMOVED' => ['layout', 'data-va-sector-selector', '', 'S01_ROOT_EXACT'],
+    'DESIGN_SYSTEM_REMOVED' => ['layout', 'veciahorra-frontend va-design-system', 'veciahorra-frontend', 'S01_ROOT_EXACT'],
+    'SELECTOR_AS_CATALOG_ROOT' => ['layout', 'veciahorra-frontend va-design-system', 'veciahorra-frontend va-design-system va-catalog', 'S27_CATALOG_INDEPENDENCE'],
+    'SELECTOR_WITH_CATALOG_ATTRIBUTE' => ['layout', 'data-va-sector-selector', 'data-va-sector-selector data-va-catalog', 'S27_CATALOG_INDEPENDENCE'],
+    'LIVE_REGION_REMOVED' => ['layout', ' aria-live="polite"', '', 'S10_LIVE_REGION_PRESERVED'],
+    'ACCESSIBLE_CONTROL_REMOVED' => ['layout', 'data-va-sector-select', 'data-va-sector-control-missing', 'S07_SELECT_HOOK_PRESERVED'],
+    'SECTOR_ENDPOINT_REPLACED' => ['script', "request('POST','sector/current/'", "request('POST','sector/changed/'", 'S15_ENDPOINTS_UNCHANGED'],
+    'INVALID_SECTOR_VALIDATION_REMOVED' => ['sector', '$this->zones->findActive($id)??throw new \\InvalidArgumentException', '$this->zones->find($id)', 'S24_INVALID_OR_INACTIVE_SECTOR_REJECTED'],
+];
+foreach ($requiredMutants as $name => [$target, $from, $to, $expected]) {
+    $mutated = $sources;
+    $mutated[$target] = preg_replace('/' . preg_quote($from, '/') . '/', addcslashes($to, '\\$'), $sources[$target], 1) ?? '';
+    $obtained = phase6Validate($mutated);
+    phase6Assert(in_array($expected, $obtained, true), "Adversarial {$name} no rechazado: " . json_encode($obtained));
+    echo "PASS ADVERSARIAL required={$name} obtained={$expected}\n";
+}
 
 session_save_path(sys_get_temp_dir());
 require_once dirname(__DIR__, 5) . '/wp-load.php';
@@ -217,5 +189,5 @@ try {
     }
 }
 
-echo 'PASS frontend-sector-selector-design-system-test adversarials=24' . PHP_EOL;
+echo 'PASS frontend-sector-selector-design-system-test adversarials=37' . PHP_EOL;
 ob_end_flush();
