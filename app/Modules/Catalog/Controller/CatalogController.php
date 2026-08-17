@@ -52,6 +52,15 @@ final class CatalogController
         }
     }
 
+    public function homepage(): array
+    {
+        try {
+            return $this->service->homepageProducts();
+        } catch (Throwable $exception) {
+            return $this->error($exception);
+        }
+    }
+
     private function error(Throwable $exception): array
     {
         if ($exception instanceof RecordNotFoundException) {

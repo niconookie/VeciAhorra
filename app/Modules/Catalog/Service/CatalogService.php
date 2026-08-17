@@ -7,6 +7,8 @@ namespace VeciAhorra\Modules\Catalog\Service;
 use VeciAhorra\Exceptions\CatalogUnavailableException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
+use VeciAhorra\Modules\Catalog\Repository\HomepageProductReadRepository;
+use VeciAhorra\Modules\Sectorization\CurrentSector;
 use VeciAhorra\Modules\ProductCatalogs\Services\BrandService;
 use VeciAhorra\Modules\ProductCatalogs\Services\CatalogService as ProductCatalogService;
 use VeciAhorra\Modules\ProductCatalogs\Services\CategoryService;
@@ -31,8 +33,21 @@ final class CatalogService
         private CategoryService $categories,
         private BrandService $brands,
         private UnitService $units,
-        private StoreRepository $stores
+        private StoreRepository $stores,
+        private HomepageProductReadRepository $homepageProducts,
+        private CurrentSector $currentSector
     ) {
+    }
+
+    /** @return array{state: string, products: list<array<string, mixed>>} */
+    public function homepageProducts(): array
+    {
+        $sectorId = $this->currentSector->id();
+        if ($sectorId <= 0) {
+            return ['state' => 'no_sector', 'products' => []];
+        }
+        $products = $this->homepageProducts->latestForSector($sectorId);
+        return ['state' => $products === [] ? 'empty' : 'success', 'products' => $products];
     }
 
     /** @param array{category: ?int, brand: ?int, search: ?string, page: int, per_page: int, order_by: string} $filters */

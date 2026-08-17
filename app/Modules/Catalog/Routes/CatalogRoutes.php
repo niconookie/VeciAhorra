@@ -14,6 +14,7 @@ final class CatalogRoutes
     private const NAMESPACE = 'veciahorra/v1';
     private const RESOURCE = '/catalog/products';
     private const CATEGORIES_RESOURCE = '/catalog/categories';
+    private const HOMEPAGE_RESOURCE = '/catalog/homepage-products';
 
     public function __construct(private CatalogController $controller)
     {
@@ -29,6 +30,11 @@ final class CatalogRoutes
         register_rest_route(self::NAMESPACE, self::CATEGORIES_RESOURCE, [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'categories'],
+            'permission_callback' => '__return_true',
+        ]);
+        register_rest_route(self::NAMESPACE, self::HOMEPAGE_RESOURCE, [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'homepage'],
             'permission_callback' => '__return_true',
         ]);
         register_rest_route(
@@ -67,16 +73,23 @@ final class CatalogRoutes
         return $this->response($this->controller->categories());
     }
 
+    public function homepage(WP_REST_Request $request): WP_REST_Response
+    {
+        return $this->response($this->controller->homepage());
+    }
+
     private function response(array $result): WP_REST_Response
     {
-        $status = ($result['success'] ?? false) === true
+        $status = isset($result['state'])
+            ? 200
+            : (($result['success'] ?? false) === true
             ? 200
             : match ($result['error']['code'] ?? '') {
                 'catalog_product_not_found' => 404,
                 'validation_error' => 422,
                 'catalog_unavailable' => 503,
                 default => 500,
-            };
+            });
 
         return new WP_REST_Response($result, $status);
     }
