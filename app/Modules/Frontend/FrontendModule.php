@@ -41,6 +41,11 @@ final class FrontendModule
             'wp_enqueue_scripts',
             [$this->assets, 'registerAssets']
         );
+        add_action(
+            'wp_enqueue_scripts',
+            [$this, 'enqueueHomepageHeroAsset'],
+            20
+        );
         add_shortcode(
             FrontendController::SHORTCODE,
             [$this->controller, 'renderPlaceholder']
@@ -72,5 +77,119 @@ final class FrontendModule
             new PublicSearchIsolationPolicy(),
             new WooCommercePublicPageResolver()
         ))->register();
+    }
+
+    public function enqueueHomepageHeroAsset(): void
+    {
+        if (
+            is_admin()
+            || wp_doing_ajax()
+            || (defined('REST_REQUEST') && REST_REQUEST)
+            || is_feed()
+            || ! is_singular()
+        ) {
+            return;
+        }
+
+        $post = get_queried_object();
+        if (! $post instanceof \WP_Post) {
+            return;
+        }
+
+        $raw = get_post_meta($post->ID, '_elementor_data', true);
+        if (! is_string($raw) || $raw === '') {
+            return;
+        }
+
+        $elements = json_decode($raw, true);
+        if (! is_array($elements) || json_last_error() !== JSON_ERROR_NONE) {
+            return;
+        }
+
+        if ($this->containsHomepageHero($elements)) {
+            $this->assets->enqueueHomepageHero();
+        }
+    }
+
+    /** @param array<mixed> $elements */
+    private function containsHomepageHero(array $elements): bool
+    {
+        return $this->countHomepageHeroRoots($elements) === 1;
+    }
+
+    /** @param array<mixed> $elements */
+    private function countHomepageHeroRoots(array $elements): ?int
+    {
+        $matches = 0;
+
+        foreach ($elements as $element) {
+            if (! is_array($element)) {
+                return null;
+            }
+
+            if ($this->isHomepageHeroRoot($element)) {
+                $matches++;
+            }
+
+            $children = $element['elements'] ?? [];
+            if (! is_array($children)) {
+                return null;
+            }
+
+            $childMatches = $this->countHomepageHeroRoots($children);
+            if ($childMatches === null) {
+                return null;
+            }
+            $matches += $childMatches;
+
+            if ($matches > 1) {
+                return null;
+            }
+        }
+
+        return $matches;
+    }
+
+    /** @param array<string, mixed> $element */
+    private function isHomepageHeroRoot(array $element): bool
+    {
+        $settings = $element['settings'] ?? null;
+        if (! is_array($settings)) {
+            return false;
+        }
+
+        $classes = $settings['classes']['value'] ?? null;
+        if (! is_array($classes) || ! in_array('va-home-hero', $classes, true)) {
+            return false;
+        }
+
+        $children = $element['elements'] ?? null;
+        return is_array($children) && $this->hasExactCatalogShortcode($children);
+    }
+
+    /** @param array<mixed> $elements */
+    private function hasExactCatalogShortcode(array $elements): bool
+    {
+        foreach ($elements as $element) {
+            if (! is_array($element)) {
+                continue;
+            }
+
+            if (
+                ($element['elType'] ?? null) === 'widget'
+                && ($element['widgetType'] ?? null) === 'shortcode'
+                && ($element['settings']['shortcode'] ?? null)
+                    === '[veciahorra_public_route_link route="catalog" label="Explorar catálogo"]'
+            ) {
+                return true;
+            }
+
+            $children = $element['elements'] ?? [];
+            if (is_array($children) && $this->hasExactCatalogShortcode($children)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

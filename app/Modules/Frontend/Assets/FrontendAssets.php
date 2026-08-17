@@ -16,6 +16,7 @@ use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 final class FrontendAssets
 {
     public const STYLE_HANDLE = 'veciahorra-frontend';
+    public const HOMEPAGE_HERO_STYLE_HANDLE = 'veciahorra-homepage-hero';
     public const DESIGN_SYSTEM_STYLE_HANDLE = 'veciahorra-design-system';
     public const SCRIPT_HANDLE = 'veciahorra-frontend';
     public const OFFER_SCRIPT_HANDLE = 'veciahorra-product-offers';
@@ -54,6 +55,12 @@ final class FrontendAssets
         wp_register_style(
             self::STYLE_HANDLE,
             $baseUrl . 'css/veciahorra-frontend.css',
+            [],
+            Config::PLUGIN_VERSION
+        );
+        wp_register_style(
+            self::HOMEPAGE_HERO_STYLE_HANDLE,
+            $baseUrl . 'css/homepage-hero.css',
             [],
             Config::PLUGIN_VERSION
         );
@@ -213,6 +220,16 @@ final class FrontendAssets
                 'before'
             );
         }
+    }
+
+    public function enqueueHomepageHero(): void
+    {
+        if (is_admin()) {
+            return;
+        }
+
+        $this->registerAssets();
+        wp_enqueue_style(self::HOMEPAGE_HERO_STYLE_HANDLE);
     }
 
     /** @return array<string, mixed> */
