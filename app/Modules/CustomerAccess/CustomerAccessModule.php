@@ -32,6 +32,7 @@ final class CustomerAccessModule
         add_action('admin_init', [$this, 'redirectBusinessUsersFromAdmin']);
         add_shortcode(self::SHORTCODE, [$this, 'renderRegistration']);
         add_filter('login_redirect', [$this, 'loginRedirect'], 20, 3);
+        add_filter('woocommerce_prevent_admin_access', [$this, 'allowZonalAdminAccess']);
         add_filter('show_admin_bar', [$this, 'showAdminBar']);
         add_filter('wp_nav_menu_objects', [$this, 'filterRoleMenuItems'], 20, 2);
         add_filter('wp_nav_menu_items', [$this, 'appendAccessLinks'], 20, 2);
@@ -173,6 +174,13 @@ final class CustomerAccessModule
         if (! is_user_logged_in() || current_user_can('manage_options') || wp_doing_ajax()) {
             return;
         }
+        if (current_user_can(\VeciAhorra\Modules\ZonalAdmin\Identity\ZonalAdminRole::CAPABILITY_READ)) {
+            global $pagenow;
+            $page = isset($_GET['page']) ? sanitize_key(wp_unslash((string) $_GET['page'])) : '';
+            if (($pagenow === 'admin.php' && $page === 'veciahorra-zonal-stores') || $pagenow === 'profile.php') {
+                return;
+            }
+        }
         wp_safe_redirect($this->destinationFor(wp_get_current_user()));
         exit;
     }
@@ -207,7 +215,8 @@ final class CustomerAccessModule
         }
 
         $user = wp_get_current_user();
-        $isBusinessUser = array_intersect(
+        $isBusinessUser = user_can($user, \VeciAhorra\Modules\ZonalAdmin\Identity\ZonalAdminRole::CAPABILITY_READ)
+            || array_intersect(
                 ['veciahorra_minimarket', 'veciahorra_courier', 'veciahorra_service_provider'],
                 (array) $user->roles
             ) !== [];
@@ -269,6 +278,13 @@ final class CustomerAccessModule
         );
     }
 
+    public function allowZonalAdminAccess(bool $prevent): bool
+    {
+        return current_user_can(\VeciAhorra\Modules\ZonalAdmin\Identity\ZonalAdminRole::CAPABILITY_READ)
+            ? false
+            : $prevent;
+    }
+
     /** @param list<string> $classes @return list<string> */
     public function bodyClass(array $classes): array
     {
@@ -294,6 +310,7 @@ final class CustomerAccessModule
     public function destinationFor(\WP_User $user): string
     {
         if (user_can($user, 'manage_options')) return admin_url('admin.php?page=veciahorra');
+        if (user_can($user, \VeciAhorra\Modules\ZonalAdmin\Identity\ZonalAdminRole::CAPABILITY_READ)) return admin_url('admin.php?page=veciahorra-zonal-stores');
         if (user_can($user, 'veciahorra_manage_store')) return $this->pageUrlByShortcode('veciahorra_minimarket_panel', '/panel-minimarket/');
         if (user_can($user, 'veciahorra_manage_deliveries')) return $this->pageUrlByShortcode('veciahorra_courier_panel', '/panel-repartidor/');
         if (user_can($user, 'veciahorra_manage_service_profile')) return $this->pageUrlByShortcode('veciahorra_service_provider_panel', '/panel-prestador/');
