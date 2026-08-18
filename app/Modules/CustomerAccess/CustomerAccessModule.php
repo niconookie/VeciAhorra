@@ -34,6 +34,8 @@ final class CustomerAccessModule
         add_filter('login_redirect', [$this, 'loginRedirect'], 20, 3);
         add_filter('woocommerce_prevent_admin_access', [$this, 'allowZonalAdminAccess']);
         add_filter('show_admin_bar', [$this, 'showAdminBar']);
+        add_action('admin_enqueue_scripts', [$this, 'disableZonalCommandPalette'], 1);
+        add_action('admin_bar_menu', [$this, 'simplifyZonalAdminBar'], 999);
         add_filter('wp_nav_menu_objects', [$this, 'filterRoleMenuItems'], 20, 2);
         add_filter('wp_nav_menu_items', [$this, 'appendAccessLinks'], 20, 2);
         add_filter('body_class', [$this, 'bodyClass']);
@@ -188,6 +190,26 @@ final class CustomerAccessModule
     public function showAdminBar(bool $show): bool
     {
         return is_user_logged_in() && ! current_user_can('manage_options') ? false : $show;
+    }
+
+    public function disableZonalCommandPalette(): void
+    {
+        if (! $this->isRestrictedZonalAdmin()) {
+            return;
+        }
+
+        remove_action('admin_enqueue_scripts', 'wp_enqueue_command_palette_assets');
+    }
+
+    public function simplifyZonalAdminBar(\WP_Admin_Bar $adminBar): void
+    {
+        if (! $this->isRestrictedZonalAdmin()) {
+            return;
+        }
+
+        $adminBar->remove_node('wp-logo');
+        $adminBar->remove_node('site-name');
+        $adminBar->remove_node('command-palette');
     }
 
     public function appendAccessLinks(string $items, \stdClass $args): string
@@ -417,5 +439,11 @@ final class CustomerAccessModule
         return in_array($error->get_error_code(), ['registration-error-email-exists', 'existing_user_email'], true)
             ? 'Ya existe una cuenta con ese correo electrónico.'
             : 'No fue posible crear la cuenta. Revisa los datos e inténtalo nuevamente.';
+    }
+
+    private function isRestrictedZonalAdmin(): bool
+    {
+        return current_user_can(\VeciAhorra\Modules\ZonalAdmin\Identity\ZonalAdminRole::CAPABILITY_READ)
+            && ! current_user_can('manage_options');
     }
 }
