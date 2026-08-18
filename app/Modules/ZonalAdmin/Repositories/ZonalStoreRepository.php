@@ -57,13 +57,44 @@ final class ZonalStoreRepository
 
     public function zonesForStore(int $storeId, ?int $userId, bool $global): array
     {
+        return $this->zonesForStores([$storeId], $userId, $global)[$storeId] ?? [];
+    }
+
+    /**
+     * @param list<int> $storeIds
+     * @return array<int, list<array{id:int,name:string}>>
+     */
+    public function zonesForStores(array $storeIds, ?int $userId, bool $global): array
+    {
+        $storeIds = array_values(array_unique(array_filter(
+            array_map('intval', $storeIds),
+            static fn (int $id): bool => $id > 0
+        )));
+        $result = array_fill_keys($storeIds, []);
+        if ($storeIds === []) {
+            return $result;
+        }
         global $wpdb;
         $join = $global ? '' : " INNER JOIN {$this->table('zonal_admin_service_zones')} ua ON ua.service_zone_id = z.id AND ua.user_id = %d";
-        $params = $global ? [$storeId] : [$userId, $storeId];
-        $sql = "SELECT DISTINCT z.id,z.name,z.commune FROM {$this->table('service_zones')} z"
+        $params = $global ? [] : [(int) $userId];
+        $placeholders = implode(',', array_fill(0, count($storeIds), '%d'));
+        array_push($params, ...$storeIds);
+        $sql = "SELECT DISTINCT sz.store_id,z.id,z.name FROM {$this->table('service_zones')} z"
             . " INNER JOIN {$this->table('store_service_zones')} sz ON sz.zone_id = z.id{$join}"
-            . " WHERE z.status = 'active' AND sz.store_id = %d ORDER BY z.id ASC";
-        return $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A) ?: [];
+            . " WHERE z.status = 'active' AND sz.store_id IN ({$placeholders})"
+            . ' ORDER BY z.name ASC,z.id ASC';
+        $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
+        if (! is_array($rows) || $wpdb->last_error !== '') {
+            throw new PersistenceException('No fue posible proyectar las zonas autorizadas.');
+        }
+        foreach ($rows as $row) {
+            $storeId = (int) ($row['store_id'] ?? 0);
+            $zoneId = (int) ($row['id'] ?? 0);
+            if (isset($result[$storeId]) && $zoneId > 0) {
+                $result[$storeId][] = ['id' => $zoneId, 'name' => (string) ($row['name'] ?? '')];
+            }
+        }
+        return $result;
     }
 
     private function scope(int $userId, bool $global, ?string $search, ?string $state): array

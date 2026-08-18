@@ -26,7 +26,13 @@ final class ZonalStoreController
         $global = $this->territory->isGlobal($userId);
         $items = $this->stores->paginate($userId, $global, $query['page'], $query['per_page'], $query['search'], $query['state']);
         $total = $this->stores->count($userId, $global, $query['search'], $query['state']);
-        return ['success'=>true, 'data'=>array_map(fn(array $row): array=>$this->serialize($row, false), $items), 'meta'=>[
+        $zones = $this->stores->zonesForStores(array_map(static fn(array $row): int => (int) $row['id'], $items), $global ? null : $userId, $global);
+        $data = array_map(function (array $row) use ($zones): array {
+            $item = $this->serialize($row, false);
+            $item['service_zones'] = $zones[(int) $row['id']] ?? [];
+            return $item;
+        }, $items);
+        return ['success'=>true, 'data'=>$data, 'meta'=>[
             'page'=>$query['page'], 'per_page'=>$query['per_page'], 'total'=>$total,
             'total_pages'=>$total === 0 ? 0 : (int) ceil($total / $query['per_page']),
         ]];
