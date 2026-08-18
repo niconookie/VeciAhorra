@@ -94,8 +94,13 @@ howAssetAssert(is_array($candidate) && $detect([$candidate]) === true, 'B1 candi
 
 $currentRaw = (string) get_post_meta(88, '_elementor_data', true);
 $currentDocument = json_decode($currentRaw, true, 512, JSON_THROW_ON_ERROR);
-howAssetAssert(is_array($currentDocument) && $detect($currentDocument) === false, 'current page 88 accepted');
-howAssetAssert($detect(array_merge($currentDocument, [$candidate])) === true, 'projected page 88 candidate rejected');
+howAssetAssert(is_array($currentDocument) && $detect($currentDocument) === true, 'current page 88 root rejected');
+$currentIdentityRoots = array_filter($currentDocument, static function (mixed $root): bool {
+    return is_array($root)
+        && ($root['elType'] ?? null) === 'e-flexbox'
+        && ($root['settings']['classes']['value'] ?? null) === [VA_HOW_ASSET_CLASS];
+});
+howAssetAssert(count($currentIdentityRoots) === 1, 'current page 88 identity root count differs');
 
 global $wp_query;
 $originalQuery = $wp_query;
@@ -112,8 +117,23 @@ $setQuery = static function () use (&$wp_query, $mockPost): void {
     $wp_query->queried_object = $mockPost;
     $wp_query->queried_object_id = $mockPost->ID;
 };
+$setActualQuery = static function () use (&$wp_query): void {
+    $wp_query = new WP_Query();
+    $wp_query->is_singular = true;
+    $wp_query->queried_object = get_post(88);
+    $wp_query->queried_object_id = 88;
+};
+$page88AssetEnqueuedOnce = false;
 
 try {
+    howAssetResetQueue();
+    $setActualQuery();
+    $module->enqueueHomepageHowItWorksAsset();
+    $module->enqueueHomepageHowItWorksAsset();
+    $page88AssetEnqueuedOnce = wp_style_is(VA_HOW_ASSET_HANDLE, 'enqueued')
+        && count(array_keys(wp_styles()->queue, VA_HOW_ASSET_HANDLE, true)) === 1;
+    howAssetAssert($page88AssetEnqueuedOnce, 'page 88 asset enqueue count differs');
+
     foreach (['', '{invalid', json_encode([$textOnly], JSON_THROW_ON_ERROR), json_encode([$descendant], JSON_THROW_ON_ERROR), json_encode([howAssetRoot(['va-home-how-it-works-extra'])], JSON_THROW_ON_ERROR)] as $rawCase) {
         howAssetResetQueue();
         $mockRaw = $rawCase;
@@ -192,7 +212,7 @@ echo json_encode([
     'partial_class_match' => 'NOT_ENQUEUED',
     'valid_root_match' => 'ENQUEUED_ONCE',
     'duplicate_enqueue' => 0,
-    'page_88_asset_enqueued' => false,
+    'page_88_asset_enqueued' => $page88AssetEnqueuedOnce,
     'adversarial_mutations' => '14/14',
     'database_writes' => count($writes),
     'wp_options_writes' => count(array_filter($writes, static fn(string $query): bool => stripos($query, 'options') !== false)),

@@ -6,12 +6,17 @@ require_once dirname(__DIR__, 5) . '/wp-load.php';
 
 const VA_HOW_SCHEMA = 'veciahorra.elementor.canonical/2';
 const VA_HOW_PAGE_ID = 88;
-const VA_HOW_ELEMENTOR_LENGTH = 10731;
-const VA_HOW_ELEMENTOR_SHA256 = '1e4b8532f8bf8de54e470a8c213761f655246b498617763180766fa70f81ad5a';
-const VA_HOW_POST_LENGTH = 441;
-const VA_HOW_POST_SHA256 = '0b3681d78fbbd1da62cd57ee549df0a4036f277daa9a8fa49054ed54a4a828af';
+const VA_HOW_PRE_APPLICATION_ELEMENTOR_DATA_SHA256 = '1e4b8532f8bf8de54e470a8c213761f655246b498617763180766fa70f81ad5a';
+const VA_HOW_PRE_APPLICATION_POST_CONTENT_SHA256 = '0b3681d78fbbd1da62cd57ee549df0a4036f277daa9a8fa49054ed54a4a828af';
+const VA_HOW_PRE_APPLICATION_PAGE_CSS_SHA256 = '6d694633703545928ca504ede387e4386bba4899d13dc83b562c2716eef93c2a';
+const VA_HOW_PRE_APPLICATION_OCCURRENCES = 0;
+const VA_HOW_ELEMENTOR_LENGTH = 12060;
+const VA_HOW_ELEMENTOR_SHA256 = 'c80f058668c470c8a28f65287c35cb77ca34d3c3722df585962092cfebde1057';
+const VA_HOW_POST_LENGTH = 859;
+const VA_HOW_POST_SHA256 = 'dcfb94dfa22116fc5d1218af0251a5119f25efd5eec62f376e15067190ecd41a';
 const VA_HOW_CSS_LENGTH = 4531;
 const VA_HOW_CSS_SHA256 = '6d694633703545928ca504ede387e4386bba4899d13dc83b562c2716eef93c2a';
+const VA_HOW_CSS_NORMALIZED_SHA256 = '4aee2da9a2c7793e5d061280d6fb1930bdf119f41ca8d9861bd748748fb27e0d';
 const VA_HOW_HERO_CANONICAL = '0fe96d5057a4e5fb51583c2390c8d5f2f7252784b5b1db8a6874cf8f52e9da04';
 const VA_HOW_PRODUCTS_CANONICAL = '6be7569a41eccec79762a262d1c6c458233e47412beab010767adbe87d46bdde';
 const VA_HOW_ROOT_ID = '7a1c9e4';
@@ -224,11 +229,17 @@ $css = is_file($cssPath) ? (string) file_get_contents($cssPath) : '';
 vaHowAssert(strlen($raw) === VA_HOW_ELEMENTOR_LENGTH && hash('sha256', $raw) === VA_HOW_ELEMENTOR_SHA256, 'page 88 Elementor authority differs');
 vaHowAssert(strlen($postContent) === VA_HOW_POST_LENGTH && hash('sha256', $postContent) === VA_HOW_POST_SHA256, 'page 88 post_content authority differs');
 vaHowAssert(strlen($css) === VA_HOW_CSS_LENGTH && hash('sha256', $css) === VA_HOW_CSS_SHA256, 'page 88 CSS authority differs');
+vaHowAssert(hash('sha256', str_replace('.elementor-88', '.elementor-{ELEMENTOR_PAGE_ID}', $css)) === VA_HOW_CSS_NORMALIZED_SHA256, 'page 88 normalized CSS authority differs');
 $document = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
-vaHowAssert(is_array($document) && count($document) === 2, 'page 88 top-level root count differs');
+vaHowAssert(is_array($document) && count($document) === 3, 'page 88 top-level root count differs');
 vaHowAssert(vaHowOccurrences($document, VA_HOW_HERO_CANONICAL) === 1, 'hero authority differs');
 vaHowAssert(vaHowOccurrences($document, VA_HOW_PRODUCTS_CANONICAL) === 1, 'products authority differs');
-vaHowAssert(substr_count($raw, 'va-home-how-it-works') === 0, 'how-it-works already present');
+vaHowAssert(vaHowOccurrences($document, VA_HOW_EXPECTED_CANONICAL) === 1, 'how-it-works authority differs');
+$postmetaRows = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE post_id = %d", VA_HOW_PAGE_ID));
+$postmetaKeys = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT meta_key) FROM {$wpdb->postmeta} WHERE post_id = %d", VA_HOW_PAGE_ID));
+$revisionTotal = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_parent = %d AND post_type = 'revision'", VA_HOW_PAGE_ID));
+$revisionMetaTotal = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->postmeta} m INNER JOIN {$wpdb->posts} p ON p.ID = m.post_id WHERE p.post_parent = %d AND p.post_type = 'revision'", VA_HOW_PAGE_ID));
+vaHowAssert([$postmetaRows, $postmetaKeys, $revisionTotal, $revisionMetaTotal] === [23, 17, 186, 1960], 'page 88 metadata or revision authority differs');
 
 $candidate = vaHowCandidate();
 $rawCandidate = json_encode($candidate, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR);
@@ -237,13 +248,13 @@ if (VA_HOW_EXPECTED_CANONICAL !== '__CANONICAL__') {
     vaHowAssert($candidateHash === VA_HOW_EXPECTED_CANONICAL, 'candidate canonical differs');
     vaHowAssert(hash('sha256', $rawCandidate) === VA_HOW_EXPECTED_RAW_SHA256, 'candidate raw fingerprint differs');
 }
-$liveIds = vaHowIds($document);
+$liveIds = vaHowIds([$document[0], $document[1]]);
 vaHowValidate($candidate, $liveIds);
 
-$projectedDocument = $document;
-$projectedDocument[] = $candidate;
+$projectedDocument = [$document[0], $document[1], $candidate];
 vaHowAssert(count($projectedDocument) === 3 && $projectedDocument[2] === $candidate, 'candidate insertion position differs');
 vaHowAssert($projectedDocument[0] === $document[0] && $projectedDocument[1] === $document[1], 'outside candidate changed');
+vaHowAssert($projectedDocument === $document, 'stored post-application document differs from candidate projection');
 $projectedPost = Elementor\Plugin::$instance->db->get_plain_text_from_data([$candidate]);
 $projectedFacts = vaHowDomFacts($projectedPost);
 vaHowAssert([$projectedFacts['h2'], $projectedFacts['ol'], $projectedFacts['li'], $projectedFacts['h3'], $projectedFacts['p']] === [1, 1, 3, 3, 3], 'projected post_content differs');
@@ -332,8 +343,14 @@ vaHowAssert($writes === [], 'database writes detected');
 
 echo json_encode([
     'verdict' => 'HOW_IT_WORKS_SUBTREE_B1_MEMORY_PASS',
-    'live_state' => 'PRE_APPLICATION',
-    'publication' => 'DEFERRED_TO_B4',
+    'live_state' => 'POST_APPLICATION',
+    'post_application_authority_status' => 'published',
+    'pre_application_authority' => [
+        'elementor_data_sha256' => VA_HOW_PRE_APPLICATION_ELEMENTOR_DATA_SHA256,
+        'post_content_sha256' => VA_HOW_PRE_APPLICATION_POST_CONTENT_SHA256,
+        'page_css_sha256' => VA_HOW_PRE_APPLICATION_PAGE_CSS_SHA256,
+        'occurrences' => VA_HOW_PRE_APPLICATION_OCCURRENCES,
+    ],
     'canonical_schema' => VA_HOW_SCHEMA,
     'candidate_ids' => [VA_HOW_ROOT_ID, VA_HOW_HEADING_ID, VA_HOW_EDITOR_ID],
     'candidate_raw_length' => strlen($rawCandidate),
@@ -357,4 +374,11 @@ echo json_encode([
     'page_88_elementor_sha256' => hash('sha256', $raw),
     'page_88_post_content_sha256' => hash('sha256', $postContent),
     'page_88_css_sha256' => hash('sha256', $css),
+    'page_88_css_normalized_sha256' => hash('sha256', str_replace('.elementor-88', '.elementor-{ELEMENTOR_PAGE_ID}', $css)),
+    'page_88_postmeta_rows' => $postmetaRows,
+    'page_88_postmeta_distinct_keys' => $postmetaKeys,
+    'page_88_revision_total' => $revisionTotal,
+    'page_88_revision_meta_total' => $revisionMetaTotal,
+    'page_88_top_level_roots' => count($document),
+    'page_88_how_it_works_occurrences' => vaHowOccurrences($document, VA_HOW_EXPECTED_CANONICAL),
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), PHP_EOL;

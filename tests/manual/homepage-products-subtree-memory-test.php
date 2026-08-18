@@ -12,15 +12,18 @@ const VA_PRODUCTS_INITIAL_SUBTREE_SHA256 = '774690ee6528bb09f04d6768d49547baa37c
 const VA_PRODUCTS_PRE_A5_ELEMENTOR_SHA256 = '14ff3f75c53e8be74c885ac1f4c0f5401efd1a22b0e33d7efacf065f57fd25c3';
 const VA_PRODUCTS_PRE_A5_POST_CONTENT_SHA256 = '36871362aca23cdb4b5221a1aa0fd70faae35f738f89ec1abaa1dca2b807477d';
 const VA_PRODUCTS_PRE_A5_PAGE_CSS_SHA256 = 'afa3811f953547d590c1570808a9e679a853d59cd839c49e89323064089435cf';
-const VA_PRODUCTS_CURRENT_ELEMENTOR_LENGTH = 10731;
-const VA_PRODUCTS_CURRENT_ELEMENTOR_SHA256 = '1e4b8532f8bf8de54e470a8c213761f655246b498617763180766fa70f81ad5a';
-const VA_PRODUCTS_CURRENT_POST_CONTENT_LENGTH = 441;
-const VA_PRODUCTS_CURRENT_POST_CONTENT_SHA256 = '0b3681d78fbbd1da62cd57ee549df0a4036f277daa9a8fa49054ed54a4a828af';
+const VA_PRODUCTS_PRE_B4_ELEMENTOR_SHA256 = '1e4b8532f8bf8de54e470a8c213761f655246b498617763180766fa70f81ad5a';
+const VA_PRODUCTS_PRE_B4_POST_CONTENT_SHA256 = '0b3681d78fbbd1da62cd57ee549df0a4036f277daa9a8fa49054ed54a4a828af';
+const VA_PRODUCTS_CURRENT_ELEMENTOR_LENGTH = 12060;
+const VA_PRODUCTS_CURRENT_ELEMENTOR_SHA256 = 'c80f058668c470c8a28f65287c35cb77ca34d3c3722df585962092cfebde1057';
+const VA_PRODUCTS_CURRENT_POST_CONTENT_LENGTH = 859;
+const VA_PRODUCTS_CURRENT_POST_CONTENT_SHA256 = 'dcfb94dfa22116fc5d1218af0251a5119f25efd5eec62f376e15067190ecd41a';
 const VA_PRODUCTS_HERO_CANONICAL = '0fe96d5057a4e5fb51583c2390c8d5f2f7252784b5b1db8a6874cf8f52e9da04';
-const VA_PRODUCTS_FULL_METADATA_ROWS = 21;
+const VA_PRODUCTS_HOW_IT_WORKS_CANONICAL = '52442b82ecb7a1fd301e9ad45534748a49570e694fee158d83b455144e961345';
+const VA_PRODUCTS_FULL_METADATA_ROWS = 23;
 const VA_PRODUCTS_FULL_METADATA_KEYS = 17;
-const VA_PRODUCTS_REVISION_TOTAL = 185;
-const VA_PRODUCTS_REVISION_META_TOTAL = 1946;
+const VA_PRODUCTS_REVISION_TOTAL = 186;
+const VA_PRODUCTS_REVISION_META_TOTAL = 1960;
 const VA_PRODUCTS_PROJECTED_PAGE_88_CSS_LENGTH = 4531;
 const VA_PRODUCTS_PROJECTED_PAGE_88_CSS_SHA256 = '6d694633703545928ca504ede387e4386bba4899d13dc83b562c2716eef93c2a';
 const VA_PRODUCTS_PROJECTED_PAGE_88_CSS_NORMALIZED_SHA256 = '4aee2da9a2c7793e5d061280d6fb1930bdf119f41ca8d9861bd748748fb27e0d';
@@ -257,6 +260,13 @@ $currentSubtree = vaProductsFind($currentDocument, '3ffeef7');
 if (!is_array($currentSubtree) || vaProductsHash($currentSubtree) !== VA_PRODUCTS_FINAL_CANONICAL) {
     throw new RuntimeException('current products subtree differs');
 }
+if (count($currentDocument) !== 3
+    || vaProductsHash($currentDocument[0]) !== VA_PRODUCTS_HERO_CANONICAL
+    || vaProductsHash($currentDocument[1]) !== VA_PRODUCTS_FINAL_CANONICAL
+    || vaProductsHash($currentDocument[2]) !== VA_PRODUCTS_HOW_IT_WORKS_CANONICAL
+) {
+    throw new RuntimeException('post-B4 top-level root authority differs');
+}
 
 $historicalRaw = null;
 foreach (wp_get_post_revisions(88) as $revision) {
@@ -322,6 +332,11 @@ if (vaProductsCanonical(vaProductsWithout($historicalDocument, '3ffeef7'))
     !== vaProductsCanonical(vaProductsWithout($finalDocument, '3ffeef7'))
 ) {
     throw new RuntimeException('outside subtree changed');
+}
+if (vaProductsCanonical($currentDocument[0]) !== vaProductsCanonical($finalDocument[0])
+    || vaProductsCanonical($currentDocument[1]) !== vaProductsCanonical($finalDocument[1])
+) {
+    throw new RuntimeException('hero or products frontier changed after B4');
 }
 
 $postContent = (string) get_post_field('post_content', 88);
@@ -427,6 +442,10 @@ echo json_encode([
         'page_css_sha256' => VA_PRODUCTS_PRE_A5_PAGE_CSS_SHA256,
         'subtree_canonical' => VA_PRODUCTS_INITIAL_CANONICAL,
     ],
+    'historical_pre_b4_page_authority' => [
+        'elementor_data_sha256' => VA_PRODUCTS_PRE_B4_ELEMENTOR_SHA256,
+        'post_content_sha256' => VA_PRODUCTS_PRE_B4_POST_CONTENT_SHA256,
+    ],
     'current_post_application_authority' => [
         'elementor_data_length' => strlen($currentRaw),
         'elementor_data_sha256' => hash('sha256', $currentRaw),
@@ -439,6 +458,8 @@ echo json_encode([
         'subtree_occurrences' => $currentState['current_occurrences'],
         'initial_subtree_occurrences' => $currentState['initial_occurrences'],
         'hero_canonical' => $currentState['hero_canonical'],
+        'how_it_works_canonical' => vaProductsHash($currentDocument[2]),
+        'top_level_roots' => count($currentDocument),
         'postmeta_rows' => count($metaRows),
         'postmeta_distinct_keys' => count($distinctMetaKeys),
         'revision_total' => count($revisions),
