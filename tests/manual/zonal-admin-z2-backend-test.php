@@ -24,7 +24,8 @@ $users=array_map('intval',$wpdb->get_col("SELECT user_id FROM {$wpdb->usermeta} 
 $admin=(int)$wpdb->get_var("SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key='{$wpdb->prefix}capabilities' AND meta_value LIKE '%administrator%' ORDER BY user_id LIMIT 1");
 z2Assert(count($zones)===2&&count($users)===2&&$admin>0,'Fixture base insuficiente.');
 $caps=[]; foreach($users as $id)$caps[$id]=get_user_meta($id,$wpdb->prefix.'capabilities',true);
-$storeIds=[]; $before=['assign'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$assignments}"),'history'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$history}")];
+$inventory=static fn():array=>['assignments'=>$wpdb->get_results("SELECT * FROM {$assignments} ORDER BY id",ARRAY_A),'stores'=>$wpdb->get_results("SELECT * FROM {$stores} ORDER BY id",ARRAY_A),'store_zones'=>$wpdb->get_results("SELECT * FROM {$storeZones} ORDER BY id",ARRAY_A),'history'=>$wpdb->get_results("SELECT * FROM {$history} ORDER BY id",ARRAY_A)];
+$initialInventory=$inventory();$storeIds=[];$fixtureAssignments=[];
 $listQueries=$detailQueries=$transitionQueries=0;
 try {
  foreach($users as $id){$u=new WP_User($id);$u->set_role(ZonalAdminRole::ROLE);}
@@ -35,7 +36,7 @@ try {
  }
  $zoneMap=['A'=>[$zones[0]],'B'=>[$zones[1]],'AB'=>$zones,'APPROVE'=>[$zones[0]],'REJECT'=>[$zones[0]],'ATOMIC'=>[$zones[0]]];
  foreach($zoneMap as $key=>$ids)foreach($ids as $zone)$wpdb->insert($storeZones,['store_id'=>$storeIds[$key],'zone_id'=>$zone,'assigned_by'=>$admin,'assigned_at'=>$now]);
- $assignmentRepo=new ZonalAdminServiceZoneRepository();$assignmentRepo->assign($users[0],$zones[0],$admin,$now);$assignmentRepo->assign($users[1],$zones[1],$admin,$now);
+ $assignmentRepo=new ZonalAdminServiceZoneRepository();foreach([[$users[0],$zones[0]],[$users[1],$zones[1]]] as [$fixtureUser,$fixtureZone]){if(!in_array($fixtureZone,$assignmentRepo->zoneIdsForUser($fixtureUser),true)){$assignmentRepo->assign($fixtureUser,$fixtureZone,$admin,$now);$fixtureAssignments[]=[$fixtureUser,$fixtureZone];}}
  $auth=new StoreTerritoryAuthorizer();
  z2Assert($auth->canList($users[0])&&$auth->canReadStore($users[0],$storeIds['A'])&&!$auth->canReadStore($users[0],$storeIds['B']),'Aislamiento A/B incorrecto.');
  z2Assert($auth->canReadStore($users[0],$storeIds['AB'])&&$auth->canReadStore($users[1],$storeIds['AB']),'Store AB no compartido.');
@@ -71,12 +72,13 @@ try {
  z2Assert($listQueries<=3&&$detailQueries<=7&&$transitionQueries<=12,'Presupuesto SQL excedido.');
 } finally {
  if($storeIds!==[]){$ids=implode(',',array_map('intval',array_values($storeIds)));$wpdb->query("DELETE FROM {$history} WHERE store_id IN ({$ids})");$wpdb->query("DELETE FROM {$storeZones} WHERE store_id IN ({$ids})");$wpdb->query("DELETE FROM {$stores} WHERE id IN ({$ids})");}
- foreach($users as $id){$wpdb->delete($assignments,['user_id'=>$id]);update_user_meta($id,$wpdb->prefix.'capabilities',$caps[$id]);clean_user_cache($id);}
+ foreach($fixtureAssignments as [$fixtureUser,$fixtureZone]){$wpdb->delete($assignments,['user_id'=>$fixtureUser,'service_zone_id'=>$fixtureZone]);}
+ foreach($users as $id){update_user_meta($id,$wpdb->prefix.'capabilities',$caps[$id]);clean_user_cache($id);}
 }
-z2Assert((int)$wpdb->get_var("SELECT COUNT(*) FROM {$assignments}")===$before['assign']&&(int)$wpdb->get_var("SELECT COUNT(*) FROM {$history}")===$before['history'],'Cleanup incompleto.');
+z2Assert($inventory()===$initialInventory,'El cleanup altero el baseline productivo.');
 $root=dirname(__DIR__,2);$sources=['repo'=>(string)file_get_contents($root.'/app/Modules/ZonalAdmin/Repositories/ZonalStoreRepository.php'),'controller'=>(string)file_get_contents($root.'/app/Modules/ZonalAdmin/Controllers/ZonalStoreController.php'),'authorizer'=>(string)file_get_contents($root.'/app/Modules/ZonalAdmin/Authorization/StoreTerritoryAuthorizer.php')];
 $validate=static function(array $s):array{$errors=[];$need=static function(bool $ok,string $code)use(&$errors):void{if(!$ok)$errors[]=$code;};$need(substr_count($s['repo'],'ua.user_id = %d')===3,'Z01_USER_SCOPE_REMOVED');$need(str_contains($s['repo'],'$global ? \'\''),'Z02_GLOBAL_BRANCH_REMOVED');$need(!str_contains($s['controller'],"['zone_id']"),'Z03_REQUEST_ZONE_TRUSTED');$need(str_contains($s['repo'],'SELECT DISTINCT sz.store_id,z.id,z.name'),'Z04_DISTINCT_REMOVED');$need(str_contains($s['controller'],'zonesForStores(')&&!str_contains(substr($s['controller'],strpos($s['controller'],'public function index'),strpos($s['controller'],'public function show')-strpos($s['controller'],'public function index')),'zonesForStore('),'Z05_N_PLUS_ONE_ADDED');$need(str_contains($s['repo'],'ORDER BY z.name ASC,z.id ASC'),'Z06_ORDER_REMOVED');$need(str_contains($s['repo']," WHERE z.status = 'active' AND sz.store_id IN"),'Z07_INACTIVE_INCLUDED');$need(str_contains($s['authorizer'],'user_can($user, \'manage_options\')')&&!str_contains($s['authorizer'],'veciahorra_manage_store'),'Z08_GLOBAL_AUTHORITY_EXPANDED');return $errors;};
 z2Assert($validate($sources)===[],'Contrato estatico Z2.1 invalido.');
 $mutations=[['repo','ua.user_id = %d','ua.user_id > 0','Z01_USER_SCOPE_REMOVED'],['repo','$global ? \'\'','true ? \'\'','Z02_GLOBAL_BRANCH_REMOVED'],['controller','$global = $this->territory->isGlobal($userId);','$global = $this->territory->isGlobal($userId); $ignored = [\'zone_id\'];','Z03_REQUEST_ZONE_TRUSTED'],['repo','SELECT DISTINCT sz.store_id,z.id,z.name','SELECT sz.store_id,z.id,z.name','Z04_DISTINCT_REMOVED'],['controller','zonesForStores(','zonesForStore(','Z05_N_PLUS_ONE_ADDED'],['repo','ORDER BY z.name ASC,z.id ASC','ORDER BY z.id DESC','Z06_ORDER_REMOVED'],['repo'," WHERE z.status = 'active' AND sz.store_id IN"," WHERE z.status <> 'deleted' AND sz.store_id IN",'Z07_INACTIVE_INCLUDED'],['authorizer',"'manage_options'","'veciahorra_manage_store'",'Z08_GLOBAL_AUTHORITY_EXPANDED']];
 foreach($mutations as [$key,$from,$to,$expected]){$mutant=$sources;z2Assert(str_contains($mutant[$key],$from),"Fixture {$expected} ausente.");$mutant[$key]=preg_replace('/'.preg_quote($from,'/').'/',addcslashes($to,'\\$'),$mutant[$key],1)??$mutant[$key];z2Assert(in_array($expected,$validate($mutant),true),"Mutacion {$expected} no rechazada.");}
-echo "ZONAL_ADMIN_Z2_BACKEND=PASS list_queries={$listQueries} detail_queries={$detailQueries} transition_queries={$transitionQueries} territories=PASS list_zones=PASS shape_equal=PASS zone_order=name,id adversarials=8/8 decisions=3/3 global=PASS cas=PASS cleanup=PASS wp_options_writes=0\n";
+echo "ZONAL_ADMIN_Z2_BACKEND=PASS list_queries={$listQueries} detail_queries={$detailQueries} transition_queries={$transitionQueries} territories=PASS list_zones=PASS shape_equal=PASS zone_order=name,id adversarials=8/8 decisions=3/3 global=PASS cas=PASS cleanup=PASS baseline_structural_equality=PASS adversarial_baseline=PASS wp_options_writes=0\n";
