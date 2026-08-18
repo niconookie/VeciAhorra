@@ -45,6 +45,7 @@ use VeciAhorra\Modules\Payments\WooCommerce\WooCommerceWebpayReturnGatewayResolv
 use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Stores\Routes\StoreRoutes;
 use VeciAhorra\Modules\ZonalAdmin\Routes\ZonalStoreRoutes;
+use VeciAhorra\Modules\ZonalAdmin\Admin\ZonalStoresPage;
 use VeciAhorra\Modules\Stores\Contracts\StoreTransitionRepositoryInterface;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 use VeciAhorra\Modules\Stores\Services\StoreTransitionService;
@@ -456,6 +457,7 @@ final class Application
         $inventoryPage->register();
 
         $this->container->make(OrdersPage::class)->register();
+        $this->container->make(ZonalStoresPage::class)->register();
 
         /*
         |--------------------------------------------------------------------------

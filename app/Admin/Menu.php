@@ -7,6 +7,7 @@ namespace VeciAhorra\Admin;
 use VeciAhorra\Core\Config;
 use VeciAhorra\Modules\Stores\Controllers\StoresController;
 use VeciAhorra\Modules\Stores\Requests\StoreAdminPageRequest;
+use VeciAhorra\Modules\ZonalAdmin\Identity\ZonalAdminRole;
 
 /**
  * Menú principal del administrador.
@@ -38,7 +39,7 @@ final class Menu
         $dashboardHook = add_menu_page(
             'VeciAhorra',
             'VeciAhorra',
-            'manage_options',
+            ZonalAdminRole::CAPABILITY_READ,
             'veciahorra',
             [$this, 'dashboard'],
             'dashicons-store',
