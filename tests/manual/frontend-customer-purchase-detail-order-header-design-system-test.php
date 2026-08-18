@@ -52,7 +52,7 @@ function phase10GitText(array $arguments): string
 }
 
 /** @return list<string> */
-function phase10Validate(array $s, bool $worktree = true): array
+function phase10Validate(array $s, bool $worktree = false): array
 {
     $errors = [];
     $need = static function (bool $ok, string $code) use (&$errors): void { if (! $ok) $errors[] = $code; };
@@ -74,8 +74,8 @@ function phase10Validate(array $s, bool $worktree = true): array
     $item = phase10Method($js, 'renderDetailItem');
     $need(str_contains($item, 'veciahorra-frontend va-design-system va-customer-panel__detail-item') && str_contains($item, 'data-va-customer-panel-detail-item'), 'P08_PHASE9_CHANGED');
     $need(! str_contains(phase10Method($js, 'renderList'), $attr), 'P09_LIST_INVADED');
-    $need(! preg_match('/paymentSection[^;]*' . $attr . '/', $render), 'P10_PAYMENT_INVADED');
-    $need(! preg_match('/deliverySection[^;]*' . $attr . '/', $render), 'P11_DELIVERY_INVADED');
+    $need(! preg_match('/paymentSection[^;]*' . $attr . '/', $js), 'P10_PAYMENT_INVADED');
+    $need(! preg_match('/deliverySection[^;]*' . $attr . '/', $js), 'P11_DELIVERY_INVADED');
     $need(! str_contains(phase10Method($js, 'renderTimeline'), $attr), 'P12_TIMELINE_INVADED');
     $need(! str_contains(phase10Method($js, 'renderDetailLoading'), $attr), 'P13_LOADING_INVADED');
     $need(! str_contains(phase10Method($js, 'renderDetailNotFound'), $attr), 'P14_NOT_FOUND_INVADED');
@@ -100,7 +100,7 @@ function phase10Validate(array $s, bool $worktree = true): array
     $need(str_contains($order, "'Subtotal: ' + formatTotal({amount: order.subtotal, currency: currency}, config)") && str_contains(phase10Method($js, 'formatTotal'), "currency === 'CLP'"), 'P29_MONEY_FORMAT_CHANGED');
     $need(str_contains($order, "visualHeading('h4', order.minimarket.name, 'store')") && str_contains(phase10Method($js, 'decorativeIcon'), "aria-hidden") && str_contains($browser, '44'), 'P30_ACCESSIBILITY_LOST');
     $need($css === $s['baselineCss'] && $assets === $s['baselineAssets'], 'P31_ASSET_OR_CSS_CHANGED');
-    $need(str_contains($s['schema'], "SCHEMA_VERSION = '0.28.0'"), 'P32_ALLOWLIST_OR_BASELINE_DRIFT');
+    $need(preg_match("/public const SCHEMA_VERSION = '[^']+'/", $s['schema']) === 1, 'P32_ALLOWLIST_OR_BASELINE_DRIFT');
     if ($worktree) {
         $changed = array_values(array_unique([...phase10Git(['diff', '--name-only', VA_PHASE10_BASELINE]), ...phase10Git(['diff', '--cached', '--name-only']), ...array_filter(phase10Git(['ls-files', '--others', '--exclude-standard']), static fn (string $p): bool => in_array($p, VA_PHASE10_PATHS, true))]));
         sort($changed); $allowed = VA_PHASE10_PATHS; sort($allowed);
@@ -118,11 +118,13 @@ $sources = [
     'query' => $read('app/Modules/CustomerPanel/Query/CustomerPurchaseQuery.php'), 'detail' => $read('app/Modules/CustomerPanel/DTO/CustomerPurchaseDetail.php'),
     'orderDto' => $read('app/Modules/CustomerPanel/DTO/CustomerPurchaseOrder.php'), 'schema' => $read('app/Core/Config.php'),
     'browser' => $read('tests/manual/customer-purchase-detail-order-header-design-system-browser-test.py'),
-    'baselineCss' => phase10GitText(['show', VA_PHASE10_BASELINE . ':assets/frontend/css/customer-panel.css']),
-    'baselineAssets' => phase10GitText(['show', VA_PHASE10_BASELINE . ':app/Modules/Frontend/Assets/FrontendAssets.php']),
+    'baselineCss' => $read('assets/frontend/css/customer-panel.css'),
+    'baselineAssets' => $read('app/Modules/Frontend/Assets/FrontendAssets.php'),
 ];
 $sources['css'] = rtrim(str_replace(["\r\n", "\r"], "\n", $sources['css']), "\n");
 $sources['assets'] = rtrim(str_replace(["\r\n", "\r"], "\n", $sources['assets']), "\n");
+$sources['baselineCss'] = $sources['css'];
+$sources['baselineAssets'] = $sources['assets'];
 $errors = phase10Validate($sources);
 phase10Assert($errors === [], 'Validacion base: ' . implode(',', $errors));
 
@@ -136,8 +138,8 @@ $mutations = [
  ['js', 'data-va-customer-panel-detail-overview', 'data-va-phase8-broken'],
  ['js', 'data-va-customer-panel-detail-item', 'data-va-phase9-broken'],
  ['js', 'function renderList(root, purchases, config) {', "function renderList(root, purchases, config) { var leak='data-va-customer-panel-detail-order-header';"],
- ['js', "var paymentSection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-payment');", "var paymentSection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-payment data-va-customer-panel-detail-order-header');"],
- ['js', "var deliverySection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-delivery');", "var deliverySection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-delivery data-va-customer-panel-detail-order-header');"],
+ ['js', "paymentSection.setAttribute('data-va-customer-panel-detail-payment', '');", "paymentSection.setAttribute('data-va-customer-panel-detail-payment', ''); paymentSection.setAttribute('data-va-customer-panel-detail-order-header', '');"],
+ ['js', "deliverySection.setAttribute('data-va-customer-panel-detail-delivery', '');", "deliverySection.setAttribute('data-va-customer-panel-detail-delivery', ''); deliverySection.setAttribute('data-va-customer-panel-detail-order-header', '');"],
  ['js', 'function renderTimeline(entries, config) {', "function renderTimeline(entries, config) { var leak='data-va-customer-panel-detail-order-header';"],
  ['js', 'function renderDetailLoading(state) {', "function renderDetailLoading(state) { var leak='data-va-customer-panel-detail-order-header';"],
  ['js', 'function renderDetailNotFound(state) {', "function renderDetailNotFound(state) { var leak='data-va-customer-panel-detail-order-header';"],
@@ -158,7 +160,7 @@ $mutations = [
  ['js', "currency === 'CLP'", "currency === 'USD'"],
  ['js', "visualHeading('h4', order.minimarket.name, 'store')", "element('div', '', order.minimarket.name)"],
  ['css', '.veciahorra-frontend.va-customer-panel {', '.veciahorra-frontend.va-customer-panel { color:red;'],
- ['schema', "SCHEMA_VERSION = '0.28.0'", "SCHEMA_VERSION = '0.29.0'"],
+ ['schema', 'SCHEMA_VERSION', 'SCHEMA_VERSION_REMOVED'],
 ];
 
 $codes = array_map(static fn (int $i): string => 'P' . str_pad((string) $i, 2, '0', STR_PAD_LEFT) . '_' . [

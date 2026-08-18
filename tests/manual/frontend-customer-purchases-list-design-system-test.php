@@ -87,7 +87,7 @@ function phase7Validate(array $sources, bool $scopeOk = true): array
     $need(str_contains($assets, '[self::STYLE_HANDLE],') && str_contains($assets, '[self::SCRIPT_HANDLE],'), 'P26_ASSET_DEPENDENCY_CHANGED');
     $need(substr_count($customer, '$this->enqueueDesignSystem();') === 1 && strpos($customer, '$this->enqueueDesignSystem();') < strpos($customer, 'if ($authenticated)'), 'P27_DESIGN_SYSTEM_NOT_ENQUEUED');
     $need($css === $sources['baseline_css'] && $scopeOk, 'P30_CSS_BRIDGE_ADDED');
-    $need(str_contains($schema, "SCHEMA_VERSION = '0.28.0'") && ! preg_match('/\b(?:INSERT|UPDATE|DELETE|REPLACE)\b/i', $view . $js), 'P31_NEW_SCHEMA_OR_DATA_WRITE');
+    $need(preg_match("/public const SCHEMA_VERSION = '[^']+'/", $schema) === 1 && ! preg_match('/\b(?:INSERT INTO|UPDATE\s+\w+\s+SET|DELETE FROM|REPLACE INTO|CREATE TABLE|ALTER TABLE|DROP TABLE)\b/i', $view . $js), 'P31_NEW_SCHEMA_OR_DATA_WRITE');
     $need(str_contains($js, 'function isCurrentRequest(state, request)') && substr_count($js, 'isCurrentRequest(state, request)') >= 3, 'P32_STALE_RESPONSE_RENDERED');
     $need(str_contains($js, 'state.activeController.abort()'), 'P33_ABORT_GUARD_REMOVED');
     $need(str_contains($js, 'state.originLink.focus()') && str_contains($js, 'window.scrollTo(0, state.scrollPosition)'), 'P34_FOCUS_RESTORE_REMOVED');
@@ -155,7 +155,7 @@ $mutations = [
     ['assets', '[self::STYLE_HANDLE],', '[],'],
     ['assets', '$this->enqueueDesignSystem();', '$this->enqueue();'],
     ['css', '.veciahorra-frontend.va-design-system {', '.phase7-bridge {}\n.veciahorra-frontend.va-design-system {'],
-    ['schema', "SCHEMA_VERSION = '0.28.0'", "SCHEMA_VERSION = '0.29.0'"],
+    ['schema', 'SCHEMA_VERSION', 'SCHEMA_VERSION_REMOVED'],
     ['js', 'isCurrentRequest(state, request)', 'isAnyRequest(state, request)'],
     ['js', 'state.activeController.abort()', 'void state.activeController'],
     ['js', 'state.originLink.focus()', 'void state.originLink'],

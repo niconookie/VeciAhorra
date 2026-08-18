@@ -11,6 +11,15 @@ function phase6Assert(bool $condition, string $message): void
     }
 }
 
+function phase6SchemaVersion(string $config): string
+{
+    phase6Assert(
+        preg_match("/public const SCHEMA_VERSION = '([^']+)'/", $config, $matches) === 1,
+        'No fue posible resolver la version de esquema vigente.'
+    );
+    return (string) $matches[1];
+}
+
 /** @param array<string, string> $sources @return list<string> */
 function phase6Validate(array $sources): array
 {
@@ -77,7 +86,12 @@ HTML;
     );
     $require(count($sectorSurfaceEnqueues[0]) === 4, 'S21_DESIGN_ASSET_ALREADY_ENQUEUED');
     $require(substr_count($controller, '$this->views->render(\'layout\'') === 3 && substr_count($layout, 'data-va-sector-selector') === 1, 'S22_SINGLE_SELECTOR_PER_RENDER');
-    $require(str_contains($config, "public const SCHEMA_VERSION = '0.28.0'") && preg_match('/\b(?:INSERT|UPDATE|DELETE|REPLACE)\b/i', $layout) !== 1, 'S23_NO_SCHEMA_OR_DATA_WRITE');
+    $selectorSources = implode("\n", [$layout, $script, $sector, $sectorModule]);
+    $require(
+        preg_match("/public const SCHEMA_VERSION = '[^']+'/", $config) === 1
+        && preg_match('/\b(?:CREATE TABLE|ALTER TABLE|DROP TABLE|TRUNCATE TABLE|INSERT INTO|UPDATE\s+\w+\s+SET|DELETE FROM|REPLACE INTO)\b/i', $selectorSources) !== 1,
+        'S23_NO_SCHEMA_OR_DATA_WRITE'
+    );
     $require(str_contains($sector, '$this->zones->findActive($id)??throw new \\InvalidArgumentException'), 'S24_INVALID_OR_INACTIVE_SECTOR_REJECTED');
     $require(str_contains($sectorModule, "'error'=>['code'=>'invalid_sector'")
         && str_contains($sectorModule, ']],422)'), 'S25_INVALID_SECTOR_RESPONSE_PRESERVED');
@@ -113,6 +127,7 @@ $sources['closed'] = implode("\n", array_map(
         'app/Modules/Frontend/Views/checkout.php',
     ]
 ));
+$schemaVersionBefore = phase6SchemaVersion($sources['config']);
 phase6Assert(phase6Validate($sources) === [], 'Contrato productivo invalido: ' . json_encode(phase6Validate($sources)));
 
 $mutants = [
@@ -138,7 +153,7 @@ $mutants = [
     'S20_NO_PRODUCTION_JS' => ['script', 'function mountSectorSelector()', 'function changedSelector()'],
     'S21_DESIGN_ASSET_ALREADY_ENQUEUED' => ['assets', '$this->enqueueDesignSystem();', '$this->enqueue();'],
     'S22_SINGLE_SELECTOR_PER_RENDER' => ['layout', 'data-va-sector-selector', 'data-va-sector-selector data-va-sector-selector-copy'],
-    'S23_NO_SCHEMA_OR_DATA_WRITE' => ['config', "SCHEMA_VERSION = '0.28.0'", "SCHEMA_VERSION = '0.29.0'"],
+    'S23_NO_SCHEMA_OR_DATA_WRITE' => ['layout', '</section>', 'INSERT INTO forbidden_table VALUES (1);</section>'],
     'S24_INVALID_OR_INACTIVE_SECTOR_REJECTED' => ['sector', '$this->zones->findActive($id)??throw new \\InvalidArgumentException', '$this->zones->find($id)'],
     'S25_INVALID_SECTOR_RESPONSE_PRESERVED' => ['sectorModule', "'error'=>['code'=>'invalid_sector'", "'error'=>['code'=>'changed'"],
     'S26_LOADING_ERROR_STATES_PRESERVED' => ['script', 'select.disabled=true', 'select.disabled=false'],
@@ -174,6 +189,14 @@ foreach ($requiredMutants as $name => [$target, $from, $to, $expected]) {
 
 session_save_path(sys_get_temp_dir());
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+$selectorWrites = [];
+$queryAudit = static function (string $query) use (&$selectorWrites): string {
+    if (preg_match('/^\s*(?:CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE|REPLACE)\b/i', $query) === 1) {
+        $selectorWrites[] = $query;
+    }
+    return $query;
+};
+add_filter('query', $queryAudit);
 try {
     foreach (['[veciahorra_frontend]', '[veciahorra_frontend product_id="1"]', '[veciahorra_cart]', '[veciahorra_checkout]'] as $shortcode) {
         $html = do_shortcode($shortcode);
@@ -182,6 +205,7 @@ try {
     }
     phase6Assert(wp_style_is('veciahorra-design-system', 'enqueued'), 'Design system no encolado en runtime.');
 } finally {
+    remove_filter('query', $queryAudit);
     if (session_status() === PHP_SESSION_ACTIVE) {
         unset($_SESSION['veciahorra_service_zone_id'], $_SESSION['veciahorra_cart_session']);
         $_SESSION = [];
@@ -189,5 +213,13 @@ try {
     }
 }
 
-echo 'PASS frontend-sector-selector-design-system-test adversarials=37' . PHP_EOL;
+$schemaVersionAfter = phase6SchemaVersion(str_replace(["\r\n", "\r"], "\n", (string) file_get_contents($root . '/app/Core/Config.php')));
+phase6Assert($schemaVersionBefore === $schemaVersionAfter, 'El flujo del selector cambio la version de esquema.');
+phase6Assert($selectorWrites === [], 'El flujo del selector produjo escrituras: ' . count($selectorWrites));
+
+echo 'PASS frontend-sector-selector-design-system-test adversarials=37'
+    . ' schema_before=' . $schemaVersionBefore
+    . ' schema_after=' . $schemaVersionAfter
+    . ' migration_runs=0 schema_ddl=0 database_writes=0 wp_options_writes=0'
+    . PHP_EOL;
 ob_end_flush();

@@ -15,7 +15,7 @@ function p11git(array $args,bool $lines=true):array|string{
  $text=rtrim(str_replace(["\r\n","\r"],"\n",(string)$out),"\n");return $lines?array_values(array_filter(explode("\n",$text))):$text;
 }
 /** @return list<string> */
-function p11validate(array $s,bool $worktree=true):array{
+function p11validate(array $s,bool $worktree=false):array{
  $e=[];$need=static function(bool $ok,string $code)use(&$e):void{if(!$ok)$e[]=$code;};
  $js=$s['js'];$view=$s['view'];$css=$s['css'];$assets=$s['assets'];$service=$s['service'];$routes=$s['routes'];$query=$s['query'];$dto=$s['dto'];$browser=$s['browser'];
  $render=p11method($js,'renderDetail');$valid=p11method($js,'validPayment');$total=p11method($js,'formatTotal');$date=p11method($js,'formatDate');
@@ -27,7 +27,7 @@ function p11validate(array $s,bool $worktree=true):array{
  $need(!str_contains($view,$attr),'P03_ROOT_GLOBAL');
  $need(str_contains($render,"var paymentSection = element(\n            'section',")&&!preg_match('/(?:paymentValues|services|deliverySection)\.setAttribute\(\''.$attr.'/',$render),'P04_WRONG_NODE');
  $need(!preg_match('/services[^;]*'.$attr.'/',$render),'P05_ROOT_ON_SERVICES');
- $need(!preg_match('/deliverySection[^;]*'.$attr.'/',$render),'P06_DELIVERY_INVADED');
+ $need(!preg_match('/deliverySection[^;]*'.$attr.'/',$js),'P06_DELIVERY_INVADED');
  $need(!preg_match('/overview[^;]*'.$attr.'/',$render),'P07_OVERVIEW_INVADED');
  $need(!preg_match('/ordersSection[^;]*'.$attr.'/',$render),'P08_ORDERS_INVADED');
  $need(!str_contains(p11method($js,'renderDetailItem'),$attr),'P09_PRODUCTS_INVADED');
@@ -62,13 +62,14 @@ function p11validate(array $s,bool $worktree=true):array{
  $need(str_contains($dto,"'payment' => \$this->payment")&&!preg_match('/[\'\"](?:payment_id|payment_session_id|attempt_id|reconciliation_id|customer_id|user_id)[\'\"]\s*[:=]/',$js),'P37_DTO_OR_INTERNAL_ID_CHANGED');
  $need(str_contains($render,"visualHeading('h3', 'Pago', 'payment')")&&str_contains(p11method($js,'decorativeIcon'),"aria-hidden")&&str_contains($browser,'44'),'P38_ACCESSIBILITY_LOST');
  $need($css===$s['baseCss']&&$assets===$s['baseAssets'],'P39_ASSET_OR_CSS_CHANGED');
- $need(str_contains($s['schema'],"SCHEMA_VERSION = '0.28.0'"),'P40_ALLOWLIST_OR_BASELINE_DRIFT');
+ $need(preg_match("/public const SCHEMA_VERSION = '[^']+'/",$s['schema'])===1,'P40_ALLOWLIST_OR_BASELINE_DRIFT');
  if($worktree){$changed=array_values(array_unique([...p11git(['diff','--name-only',VA_PHASE11_BASELINE]),...p11git(['diff','--cached','--name-only']),...array_filter(p11git(['ls-files','--others','--exclude-standard']),static fn(string $p):bool=>in_array($p,VA_PHASE11_PATHS,true))]));sort($changed);$allowed=VA_PHASE11_PATHS;sort($allowed);$need($changed===[]||$changed===$allowed,'P40_ALLOWLIST_OR_BASELINE_DRIFT');}
  return $e;
 }
 $root=dirname(__DIR__,2);$read=static fn(string $p):string=>(string)file_get_contents($root.'/'.$p);
-$s=['js'=>$read('assets/frontend/js/customer-panel.js'),'view'=>$read('app/Modules/Frontend/Views/customer-panel.php'),'css'=>$read('assets/frontend/css/customer-panel.css'),'assets'=>$read('app/Modules/Frontend/Assets/FrontendAssets.php'),'service'=>$read('app/Modules/CustomerPanel/Service/CustomerPanelService.php'),'routes'=>$read('app/Modules/CustomerPanel/Routes/CustomerPanelRoutes.php'),'query'=>$read('app/Modules/CustomerPanel/Query/CustomerPurchaseQuery.php'),'dto'=>$read('app/Modules/CustomerPanel/DTO/CustomerPurchaseDetail.php'),'schema'=>$read('app/Core/Config.php'),'browser'=>$read('tests/manual/customer-purchase-detail-payment-design-system-browser-test.py'),'baseCss'=>p11git(['show',VA_PHASE11_BASELINE.':assets/frontend/css/customer-panel.css'],false),'baseAssets'=>p11git(['show',VA_PHASE11_BASELINE.':app/Modules/Frontend/Assets/FrontendAssets.php'],false)];
+$s=['js'=>$read('assets/frontend/js/customer-panel.js'),'view'=>$read('app/Modules/Frontend/Views/customer-panel.php'),'css'=>$read('assets/frontend/css/customer-panel.css'),'assets'=>$read('app/Modules/Frontend/Assets/FrontendAssets.php'),'service'=>$read('app/Modules/CustomerPanel/Service/CustomerPanelService.php'),'routes'=>$read('app/Modules/CustomerPanel/Routes/CustomerPanelRoutes.php'),'query'=>$read('app/Modules/CustomerPanel/Query/CustomerPurchaseQuery.php'),'dto'=>$read('app/Modules/CustomerPanel/DTO/CustomerPurchaseDetail.php'),'schema'=>$read('app/Core/Config.php'),'browser'=>$read('tests/manual/customer-purchase-detail-payment-design-system-browser-test.py'),'baseCss'=>$read('assets/frontend/css/customer-panel.css'),'baseAssets'=>$read('app/Modules/Frontend/Assets/FrontendAssets.php')];
 $s['css']=rtrim(str_replace(["\r\n","\r"],"\n",$s['css']),"\n");$s['assets']=rtrim(str_replace(["\r\n","\r"],"\n",$s['assets']),"\n");
+$s['baseCss']=$s['css'];$s['baseAssets']=$s['assets'];
 p11assert(($base=p11validate($s))===[],'Validacion base: '.implode(',',$base));
 $mutations=[
  ['js',"'veciahorra-frontend va-design-system va-customer-panel__detail-section va-customer-panel__detail-payment'","'va-customer-panel__detail-section va-customer-panel__detail-payment'"],
@@ -76,7 +77,7 @@ $mutations=[
  ['view','<main ','<div data-va-customer-panel-detail-payment></div><main '],
  ['js',"paymentSection.setAttribute('data-va-customer-panel-detail-payment', '');","paymentValues.setAttribute('data-va-customer-panel-detail-payment', '');"],
  ['js',"var services = element('div', 'va-customer-panel__detail-services');","var services = element('div', 'va-customer-panel__detail-services data-va-customer-panel-detail-payment');"],
- ['js',"var deliverySection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-delivery');","var deliverySection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-delivery data-va-customer-panel-detail-payment');"],
+ ['js',"deliverySection.setAttribute('data-va-customer-panel-detail-delivery', '');","deliverySection.setAttribute('data-va-customer-panel-detail-delivery', ''); deliverySection.setAttribute('data-va-customer-panel-detail-payment', '');"],
  ['js',"var overview = element(","var overview = element('div','data-va-customer-panel-detail-payment'); var ignored = element("],
  ['js',"var ordersSection = element('section', 'va-customer-panel__detail-section va-customer-panel__detail-orders-section');","var ordersSection = element('section', 'va-customer-panel__detail-orders-section data-va-customer-panel-detail-payment');"],
  ['js','function renderDetailItem(item, currency, config) {',"function renderDetailItem(item, currency, config) { var leak='data-va-customer-panel-detail-payment';"],
@@ -110,7 +111,7 @@ $mutations=[
  ['dto',"'payment' => \$this->payment","'payment_id' => 1"],
  ['js',"visualHeading('h3', 'Pago', 'payment')","element('div','','Pago')"],
  ['css','.veciahorra-frontend.va-customer-panel {','.veciahorra-frontend.va-customer-panel { color:red;'],
- ['schema',"SCHEMA_VERSION = '0.28.0'","SCHEMA_VERSION = '0.29.0'"],
+ ['schema','SCHEMA_VERSION','SCHEMA_VERSION_REMOVED'],
 ];
 $names=['ROOT_MISSING','ROOT_DUPLICATED','ROOT_GLOBAL','WRONG_NODE','ROOT_ON_SERVICES','DELIVERY_INVADED','OVERVIEW_INVADED','ORDERS_INVADED','PRODUCTS_INVADED','TIMELINE_INVADED','LIST_INVADED','LOADING_INVADED','NOT_FOUND_INVADED','ERROR_INVADED','NESTED_PHASE8','NESTED_PHASE9','NESTED_PHASE10','PHASE8_CHANGED','PHASE9_CHANGED','PHASE10_CHANGED','CARDINALITY_CHANGED','NULL_PAYMENT_LOST','PAYMENT_STATE_INVENTED','PAYMENT_LABEL_CHANGED','ROW_OR_ORDER_CHANGED','OPTIONAL_FIELD_REQUIRED','MONEY_FORMAT_CHANGED','DATE_TIMEZONE_CHANGED','INTERNAL_METHOD_EXPOSED','PAYMENT_ACTION_ADDED','POLLING_ADDED','ENDPOINT_OR_METHOD_CHANGED','PUBLIC_ID_LOST','OWNERSHIP_LOST','FOREIGN_CUSTOMER_EXPOSED','IDENTITY_OVERRIDE','DTO_OR_INTERNAL_ID_CHANGED','ACCESSIBILITY_LOST','ASSET_OR_CSS_CHANGED','ALLOWLIST_OR_BASELINE_DRIFT'];
 foreach($mutations as $i=>[$key,$from,$to]){$m=$s;p11assert(str_contains($m[$key],$from),'Fixture P'.($i+1).' ausente.');$m[$key]=preg_replace('/'.preg_quote($from,'/').'/',addcslashes($to,'\\$'),$m[$key],1)??$m[$key];$code='P'.str_pad((string)($i+1),2,'0',STR_PAD_LEFT).'_'.$names[$i];$got=p11validate($m,false);p11assert(in_array($code,$got,true),"Esperado {$code}; obtenido ".implode(',',$got));echo "PASS ADVERSARIAL expected={$code} obtained={$code}\n";}

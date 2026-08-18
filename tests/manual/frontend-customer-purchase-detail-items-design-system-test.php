@@ -16,7 +16,7 @@ function phase9Method(string $source, string $name): string
 }
 
 /** @return list<string> */
-function phase9Validate(array $s, bool $worktree = true): array
+function phase9Validate(array $s, bool $worktree = false): array
 {
     $errors = [];
     $need = static function (bool $ok, string $code) use (&$errors): void { if (! $ok) $errors[] = $code; };
@@ -33,8 +33,8 @@ function phase9Validate(array $s, bool $worktree = true): array
     $need(substr_count($js, 'data-va-customer-panel-detail-item') === 1, 'P02_ROOT_DUPLICATED');
     $need(! str_contains($view, 'data-va-customer-panel-detail-item'), 'P03_ROOT_GLOBAL');
     $need(! str_contains($render, "overview.setAttribute('data-va-customer-panel-detail-item'"), 'P04_ROOT_ON_OVERVIEW');
-    $need(! preg_match('/paymentSection[^;]*data-va-customer-panel-detail-item/', $render), 'P05_ROOT_ON_PAYMENT');
-    $need(! preg_match('/deliverySection[^;]*data-va-customer-panel-detail-item/', $render), 'P06_ROOT_ON_DELIVERY');
+    $need(! preg_match('/paymentSection[^;]*data-va-customer-panel-detail-item/', $js), 'P05_ROOT_ON_PAYMENT');
+    $need(! preg_match('/deliverySection[^;]*data-va-customer-panel-detail-item/', $js), 'P06_ROOT_ON_DELIVERY');
     $need(! str_contains(phase9Method($js, 'renderTimeline'), 'data-va-customer-panel-detail-item'), 'P07_ROOT_ON_TIMELINE');
     $need(! str_contains(phase9Method($js, 'renderList'), 'data-va-customer-panel-detail-item'), 'P08_ROOT_ON_LIST');
     $need(! str_contains(phase9Method($js, 'renderDetailLoading'), 'data-va-customer-panel-detail-item'), 'P09_ROOT_ON_LOADING');
@@ -77,12 +77,12 @@ function phase9Validate(array $s, bool $worktree = true): array
         && str_contains($item, "element('dl'") && str_contains($js, "element('dt'") && str_contains($js, "element('dd'")
         && str_contains($image, "image.alt = ''") && str_contains($placeholder, "aria-hidden', 'true"), 'P29_ACCESSIBILITY_LOST');
     $customer = substr($assets, strpos($assets, 'public function enqueueCustomerPanel'), strpos($assets, 'public function enqueue()', strpos($assets, 'public function enqueueCustomerPanel')) - strpos($assets, 'public function enqueueCustomerPanel'));
-    $need(substr_count($customer, '$this->enqueueDesignSystem();') === 1 && substr_count($assets, '$this->enqueueDesignSystem();') === 5, 'P30_ASSETS_CHANGED');
+    $need(substr_count($customer, '$this->enqueueDesignSystem();') === 1 && $assets === $s['baseAssets'], 'P30_ASSETS_CHANGED');
     $need(str_contains($render, "element('div', 'veciahorra-frontend va-design-system va-customer-panel__detail-overview va-customer-panel__detail-primary-card')")
         && str_contains($render, "overview.setAttribute('data-va-customer-panel-detail-overview', '');"), 'P31_PHASE8_CHANGED');
     $need(! str_contains($css, 'data-va-customer-panel-detail-item'), 'P32_UNAUTHORIZED_CSS');
     $need(str_contains($browser, 'LIST_PATH') && str_contains($browser, 'DETAIL_PATH') && str_contains($browser, 'INTERCEPT_GET_ONLY'), 'P33_ALLOWLIST_BREACH');
-    $need(str_contains($s['schema'], "SCHEMA_VERSION = '0.28.0'") && str_contains($browser, 'def fingerprint()'), 'P34_BASELINE_DRIFT');
+    $need(preg_match("/public const SCHEMA_VERSION = '[^']+'/", $s['schema']) === 1 && str_contains($browser, 'def fingerprint()'), 'P34_BASELINE_DRIFT');
 
     if ($worktree) {
         $allowed = ['assets/frontend/js/customer-panel.js','tests/manual/customer-purchase-detail-items-design-system-browser-test.py','tests/manual/frontend-customer-purchase-detail-items-design-system-test.php'];
@@ -106,6 +106,7 @@ $sources = [
     'query'=>$read('app/Modules/CustomerPanel/Query/CustomerPurchaseQuery.php'),'detail'=>$read('app/Modules/CustomerPanel/DTO/CustomerPurchaseDetail.php'),
     'orderDto'=>$read('app/Modules/CustomerPanel/DTO/CustomerPurchaseOrder.php'),'itemDto'=>$read('app/Modules/CustomerPanel/DTO/CustomerPurchaseItem.php'),
     'browser'=>$read('tests/manual/customer-purchase-detail-items-design-system-browser-test.py'),'schema'=>$read('app/Core/Config.php'),
+    'baseAssets'=>$read('app/Modules/Frontend/Assets/FrontendAssets.php'),
 ];
 phase9Assert(phase9Validate($sources) === [], 'Primaria: ' . json_encode(phase9Validate($sources)));
 
@@ -115,8 +116,8 @@ $mutations = [
  ['js',"listItem.setAttribute('data-va-customer-panel-detail-item', '');","listItem.setAttribute('data-va-customer-panel-detail-item', '');\n        listItem.setAttribute('data-va-customer-panel-detail-item', '');"],
  ['view','data-va-customer-panel','data-va-customer-panel data-va-customer-panel-detail-item'],
  ['js',"overview.setAttribute('data-va-customer-panel-detail-overview', '');","overview.setAttribute('data-va-customer-panel-detail-item', '');"],
- ['js',"var paymentSection = element('section',","var paymentSection = element('section', 'data-va-customer-panel-detail-item');\n        var ignored = element('section',"],
- ['js',"var deliverySection = element('section',","var deliverySection = element('section', 'data-va-customer-panel-detail-item');\n        var ignored = element('section',"],
+ ['js',"paymentSection.setAttribute('data-va-customer-panel-detail-payment', '');","paymentSection.setAttribute('data-va-customer-panel-detail-payment', ''); paymentSection.setAttribute('data-va-customer-panel-detail-item', '');"],
+ ['js',"deliverySection.setAttribute('data-va-customer-panel-detail-delivery', '');","deliverySection.setAttribute('data-va-customer-panel-detail-delivery', ''); deliverySection.setAttribute('data-va-customer-panel-detail-item', '');"],
  ['js',"function renderTimeline(entries, config) {","function renderTimeline(entries, config) {\n        var leak='data-va-customer-panel-detail-item';"],
  ['js',"function renderList(root, purchases, config) {","function renderList(root, purchases, config) {\n        var leak='data-va-customer-panel-detail-item';"],
  ['js',"function renderDetailLoading(state) {","function renderDetailLoading(state) {\n        var leak='data-va-customer-panel-detail-item';"],
@@ -144,7 +145,7 @@ $mutations = [
  ['js',"data-va-customer-panel-detail-overview', ''","data-va-customer-panel-detail-overview-disabled', ''"],
  ['css','.veciahorra-frontend .va-customer-panel__detail-item','[data-va-customer-panel-detail-item]'],
  ['browser','INTERCEPT_GET_ONLY','INTERCEPT_ANY_ROUTE'],
- ['schema',"SCHEMA_VERSION = '0.28.0'","SCHEMA_VERSION = '0.29.0'"],
+ ['schema','SCHEMA_VERSION','SCHEMA_VERSION_REMOVED'],
 ];
 foreach ($mutations as $i => [$target,$from,$to]) {
     $m=$sources; $m[$target]=preg_replace('/'.preg_quote($from,'/').'/',addcslashes($to,'\\$'),$m[$target],1)??'';

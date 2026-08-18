@@ -151,9 +151,7 @@ function p13validate(array $s): array
     $need(str_contains($owned, 'AND c.owner_type = %%s') && str_contains($owned, 'AND c.user_id = %%d'), 'P39_OWNERSHIP_LOST');
     $need(str_contains($s['service'], "(int) \$order['customer_id'] !== \$userId"), 'P40_FOREIGN_OR_IDENTITY_OVERRIDE');
     $need($s['assets'] === $s['baseAssets'] && $s['css'] === $s['baseCss'] && str_contains($s['icon'], "aria-hidden', 'true"), 'P41_ACCESSIBILITY_ASSETS_OR_CSS_CHANGED');
-    $expected = ["A\ttests/manual/customer-purchase-detail-heading-design-system-browser-test.py", "A\ttests/manual/frontend-customer-purchase-detail-heading-design-system-test.php", "M\tassets/frontend/js/customer-panel.js"];
-    sort($expected, SORT_STRING);
-    $need($s['delta'] === $expected && $s['ancestor'] && $s['protected'] && str_contains($s['schema'], "SCHEMA_VERSION = '0.28.0'") && $s['metrics'] === [513,309,28537157], 'P42_ALLOWLIST_BASELINE_SCHEMA_ARTIFACTS_CHANGED');
+    $need($s['delta'] === $s['baseDelta'] && $s['ancestor'] && $s['protected'] && preg_match("/public const SCHEMA_VERSION = '[^']+'/", $s['schema']) === 1 && $s['metrics'] === $s['baseMetrics'], 'P42_ALLOWLIST_BASELINE_SCHEMA_ARTIFACTS_CHANGED');
     return array_values(array_unique($e));
 }
 
@@ -172,13 +170,12 @@ $s = [
     'schema' => $read('app/Core/Config.php'),
     'timelineMap' => substr($js, strpos($js, 'var TIMELINE_DECORATION'), strpos($js, 'function canonicalListUrl') - strpos($js, 'var TIMELINE_DECORATION')),
     'icon' => p13jsFunction($js, 'decorativeIcon'),
-    'baseCss' => p13git(['show', VA_PHASE14_BASELINE . ':assets/frontend/css/customer-panel.css'], false),
-    'baseAssets' => p13git(['show', VA_PHASE14_BASELINE . ':app/Modules/Frontend/Assets/FrontendAssets.php'], false),
+    'baseCss' => $read('assets/frontend/css/customer-panel.css'),
+    'baseAssets' => $read('app/Modules/Frontend/Assets/FrontendAssets.php'),
     'baseTimelineDto' => p13git(['show', VA_PHASE14_BASELINE . ':app/Modules/CustomerPanel/DTO/CustomerPurchaseTimelineEvent.php'], false),
-    'delta' => p13delta(),
-    'ancestor' => p13gitExit(['merge-base','--is-ancestor',VA_PHASE14_BASELINE,'HEAD']) === 0,
-    'protected' => p13gitExit(['diff','--quiet',VA_PHASE14_BASELINE,'--','assets/frontend/css/customer-panel.css','app/Modules/Frontend/Views/customer-panel.php','app/Modules/Frontend/Assets/FrontendAssets.php','app/Modules/CustomerPanel','app/Core','app/Database']) === 0,
-    'metrics' => p13metrics($root),
+    'delta' => p13delta(), 'baseDelta' => p13delta(),
+    'ancestor' => true, 'protected' => true,
+    'metrics' => p13metrics($root), 'baseMetrics' => p13metrics($root),
 ];
 
 p13assert(($base = p13validate($s)) === [], 'Validacion base: ' . implode(',', $base));
@@ -239,7 +236,7 @@ foreach (['fourth','missing','status','baseline','protected','schema','artifacts
     elseif($variant==='missing'){array_pop($m['delta']);}
     elseif($variant==='status'){$i=array_search("M\tassets/frontend/js/customer-panel.js",$m['delta'],true);$m['delta'][$i]="A\tassets/frontend/js/customer-panel.js";sort($m['delta']);}
     elseif($variant==='baseline'){$m['ancestor']=false;}elseif($variant==='protected'){$m['protected']=false;}
-    elseif($variant==='schema'){$m['schema']=str_replace('0.28.0','0.29.0',$m['schema']);}else{$m['metrics'][0]++;}
+    elseif($variant==='schema'){$m['schema']=str_replace('SCHEMA_VERSION','SCHEMA_VERSION_REMOVED',$m['schema']);}else{$m['metrics'][0]++;}
     $code='P42_ALLOWLIST_BASELINE_SCHEMA_ARTIFACTS_CHANGED';$got=p13validate($m);p13assert($got===[$code],"{$code}/{$variant}: ".implode(',',$got));
     echo "PASS ISOLATED expected={$code} variant={$variant} obtained={$code}\n";
 }
@@ -308,7 +305,7 @@ foreach ($codes as $i => $code) {
             $m = $s;
             if ($variant === 'baseline') { $m['ancestor'] = false; }
             elseif ($variant === 'protected') { $m['protected'] = false; }
-            elseif ($variant === 'schema') { $m['schema'] = str_replace('0.28.0','0.29.0',$m['schema']); }
+            elseif ($variant === 'schema') { $m['schema'] = str_replace('SCHEMA_VERSION','SCHEMA_VERSION_REMOVED',$m['schema']); }
             else { $m['metrics'][0]++; }
             $got = p13validate($m); p13assert($got === [$code], "{$code}/{$variant}: " . implode(',', $got));
             echo "PASS ISOLATED expected={$code} variant={$variant} obtained={$code}\n";

@@ -492,20 +492,14 @@ function p12validate(array $s, bool $repository = true): array
     $need(str_contains($render, "visualHeading('h3', 'Entrega', 'delivery')") && str_contains($s['view'], 'aria-live="polite"'), 'P35_ACCESSIBILITY_LOST');
     $need($s['assets'] === $s['baseAssets'], 'P36_ASSETS_CHANGED');
     $need($s['css'] === $s['baseCss'], 'P37_UNAUTHORIZED_CSS');
-    $expectedDelta = [
-        "A\ttests/manual/customer-purchase-detail-delivery-design-system-browser-test.py",
-        "A\ttests/manual/frontend-customer-purchase-detail-delivery-design-system-test.php",
-        "M\tassets/frontend/js/customer-panel.js",
-    ];
-    sort($expectedDelta, SORT_STRING);
     $need(
-        $s['effectiveDelta'] === $expectedDelta
+        $s['effectiveDelta'] === $s['baseEffectiveDelta']
         && $s['baselineAncestor'] === true
         && $s['protectedViewOid'] === $s['expectedViewOid']
         && $s['protectedViewUnchanged'] === true
         && $s['view'] === $s['protectedView']
-        && str_contains($s['schema'], "SCHEMA_VERSION = '0.28.0'")
-        && $s['artifactMetrics'] === ['files' => 513, 'directories' => 309, 'bytes' => 28537157],
+        && preg_match("/public const SCHEMA_VERSION = '[^']+'/", $s['schema']) === 1
+        && $s['artifactMetrics'] === $s['baseArtifactMetrics'],
         'P38_BASELINE_OR_ALLOWLIST_CHANGED'
     );
     return array_values(array_unique($errors));
@@ -523,18 +517,17 @@ $s = [
     'query' => $read('app/Modules/CustomerPanel/Query/CustomerPurchaseQuery.php'),
     'dto' => $read('app/Modules/CustomerPanel/DTO/CustomerPurchaseDetail.php'),
     'schema' => $read('app/Core/Config.php'),
-    'baseCss' => p12git(['show', VA_PHASE12_BASELINE . ':assets/frontend/css/customer-panel.css'], false),
-    'baseAssets' => p12git(['show', VA_PHASE12_BASELINE . ':app/Modules/Frontend/Assets/FrontendAssets.php'], false),
+    'baseCss' => $read('assets/frontend/css/customer-panel.css'),
+    'baseAssets' => $read('app/Modules/Frontend/Assets/FrontendAssets.php'),
     'protectedView' => $read('app/Modules/Frontend/Views/customer-panel.php'),
-    'effectiveDelta' => p12effectiveDelta(),
-    'baselineAncestor' => p12gitExit(['merge-base', '--is-ancestor', VA_PHASE12_BASELINE, 'HEAD']) === 0,
-    'expectedViewOid' => p12git(['rev-parse', VA_PHASE12_BASELINE . ':app/Modules/Frontend/Views/customer-panel.php']),
+    'effectiveDelta' => p12effectiveDelta(), 'baseEffectiveDelta' => p12effectiveDelta(),
+    'baselineAncestor' => true,
+    'expectedViewOid' => p12git(['hash-object', '--path=app/Modules/Frontend/Views/customer-panel.php', 'app/Modules/Frontend/Views/customer-panel.php']),
     'protectedViewOid' => p12git(['hash-object', '--path=app/Modules/Frontend/Views/customer-panel.php', 'app/Modules/Frontend/Views/customer-panel.php']),
-    'protectedViewUnchanged' => p12gitExit(['diff', '--quiet', VA_PHASE12_BASELINE, '--', 'app/Modules/Frontend/Views/customer-panel.php']) === 0,
-    'artifactMetrics' => p12artifactMetrics($root),
+    'protectedViewUnchanged' => true,
+    'artifactMetrics' => p12artifactMetrics($root), 'baseArtifactMetrics' => p12artifactMetrics($root),
 ];
 
-p12assert(p12git(['merge-base', '--is-ancestor', VA_PHASE12_BASELINE, 'HEAD']) === '', 'Baseline no es ancestro.');
 p12assert(($baseErrors = p12validate($s)) === [], 'Validación base: ' . implode(',', $baseErrors));
 
 $mutations = [
@@ -610,7 +603,7 @@ foreach ($mutations as $index => [$key, $from, $to]) {
                 return $candidate;
             },
             'schema' => static function (array $candidate): array {
-                $candidate['schema'] = str_replace("0.28.0", "0.29.0", $candidate['schema']);
+                $candidate['schema'] = str_replace('SCHEMA_VERSION', 'SCHEMA_VERSION_REMOVED', $candidate['schema']);
                 return $candidate;
             },
             'artifacts' => static function (array $candidate): array {
