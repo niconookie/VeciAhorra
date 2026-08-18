@@ -10,6 +10,7 @@ use VeciAhorra\Modules\Stores\Exceptions\StoreLifecycleException;
 use VeciAhorra\Modules\Stores\Models\Store;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 use VeciAhorra\Modules\ZonalAdmin\Identity\ZonalAdminRole;
+use VeciAhorra\Modules\ZonalAdmin\Authorization\StoreTerritoryAuthorizer;
 use VeciAhorra\Modules\ZonalAdmin\Repositories\StoreDecisionHistoryRepository;
 use VeciAhorra\Modules\ZonalAdmin\Repositories\ZonalAdminServiceZoneRepository;
 
@@ -19,7 +20,8 @@ final class StoreDecisionCoordinator
         private StoreRepository $stores = new StoreRepository(),
         private StoreDecisionHistoryRepository $history = new StoreDecisionHistoryRepository(),
         private ZonalAdminServiceZoneRepository $assignments = new ZonalAdminServiceZoneRepository(),
-        private StoreLifecycleContract $lifecycle = new StoreLifecycleContract()
+        private StoreLifecycleContract $lifecycle = new StoreLifecycleContract(),
+        private StoreTerritoryAuthorizer $territory = new StoreTerritoryAuthorizer()
     ) {}
 
     public function decide(int $storeId, int $actorUserId, string $action, ?string $reason, ?int $zoneId): Store
@@ -71,6 +73,69 @@ final class StoreDecisionCoordinator
             }
             $this->history->append([
                 'store_id'=>$storeId, 'actor_user_id'=>$actorUserId, 'actor_role'=>$actorRole,
+                'action'=>$action, 'from_state'=>$from, 'to_state'=>$to, 'reason'=>$reason,
+                'authority_service_zone_id'=>$global ? null : $zoneId, 'created_at'=>current_time('mysql'),
+            ]);
+            if ($wpdb->query('COMMIT') === false) {
+                throw new PersistenceException('No fue posible confirmar la decision Store.');
+            }
+            $updated = $this->stores->find($storeId);
+            if (! $updated instanceof Store) { throw new PersistenceException('No fue posible comprobar la decision Store.'); }
+            return $updated;
+        } catch (\Throwable $exception) {
+            $wpdb->query('ROLLBACK');
+            throw $exception;
+        }
+    }
+
+    public function decideAuthorized(int $storeId, int $actorUserId, string $action, ?string $reason, string $expectedUpdatedAt): Store
+    {
+        if (! in_array($action, [StoreLifecycleContract::ACTION_APPROVE, StoreLifecycleContract::ACTION_OBSERVE, StoreLifecycleContract::ACTION_REJECT], true)) {
+            throw new \InvalidArgumentException('La accion no es una decision Store.');
+        }
+        $reason = $reason === null ? null : trim(sanitize_textarea_field($reason));
+        if (in_array($action, [StoreLifecycleContract::ACTION_OBSERVE, StoreLifecycleContract::ACTION_REJECT], true) && ($reason === null || $reason === '')) {
+            throw new \InvalidArgumentException('El motivo es obligatorio.');
+        }
+        $actor = get_userdata($actorUserId);
+        if (! $actor instanceof \WP_User || ! $this->territory->canList($actorUserId)) {
+            throw new \DomainException('El actor no posee autoridad zonal.');
+        }
+        $global = $this->territory->isGlobal($actorUserId);
+        if (! $global && ! user_can($actor, ZonalAdminRole::CAPABILITY_DECIDE)) {
+            throw new \DomainException('El actor no posee autoridad de decision.');
+        }
+        global $wpdb;
+        if ($wpdb->query('START TRANSACTION') === false) {
+            throw new PersistenceException('No fue posible iniciar la decision Store.');
+        }
+        try {
+            $table = $wpdb->prefix . \VeciAhorra\Core\Config::TABLE_PREFIX . 'stores';
+            $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE id = %d FOR UPDATE", $storeId));
+            $store = $this->stores->find($storeId);
+            $zoneId = $this->territory->commonServiceZoneId($actorUserId, $storeId);
+            if (! $store instanceof Store || (! $global && $zoneId === null)) {
+                throw new StoreLifecycleException('store_not_found', 'El minimarket no existe.', 'id');
+            }
+            if ((string) $store->updated_at !== $expectedUpdatedAt) {
+                throw new StoreLifecycleException('concurrent_modification', 'El minimarket fue modificado concurrentemente.');
+            }
+            $expected = ['status'=>(string)$store->status, 'onboarding_status'=>(string)$store->onboarding_status, 'approved_at'=>$store->approved_at];
+            $from = $this->lifecycle->validate(...array_values($expected));
+            $target = $this->lifecycle->transitionAuthorities(
+                $action,
+                $expected['status'],
+                $expected['onboarding_status'],
+                $expected['approved_at'],
+                $action === StoreLifecycleContract::ACTION_APPROVE ? current_time('mysql') : null
+            );
+            $to = $this->lifecycle->validate(...array_values($target));
+            if ($this->stores->compareAndSetLifecycle($storeId, $expected, $target, current_time('mysql')) !== 1) {
+                throw new StoreLifecycleException('concurrent_modification', 'El minimarket fue modificado concurrentemente.', null, $from, $action);
+            }
+            $this->history->append([
+                'store_id'=>$storeId, 'actor_user_id'=>$actorUserId,
+                'actor_role'=>$global ? 'administrator' : ZonalAdminRole::ROLE,
                 'action'=>$action, 'from_state'=>$from, 'to_state'=>$to, 'reason'=>$reason,
                 'authority_service_zone_id'=>$global ? null : $zoneId, 'created_at'=>current_time('mysql'),
             ]);

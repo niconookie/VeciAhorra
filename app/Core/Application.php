@@ -44,6 +44,7 @@ use VeciAhorra\Modules\Payments\WooCommerce\WebpayGatewayRegistration;
 use VeciAhorra\Modules\Payments\WooCommerce\WooCommerceWebpayReturnGatewayResolver;
 use VeciAhorra\Modules\Reservations\Routes\ReservationRoutes;
 use VeciAhorra\Modules\Stores\Routes\StoreRoutes;
+use VeciAhorra\Modules\ZonalAdmin\Routes\ZonalStoreRoutes;
 use VeciAhorra\Modules\Stores\Contracts\StoreTransitionRepositoryInterface;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 use VeciAhorra\Modules\Stores\Services\StoreTransitionService;
@@ -515,6 +516,9 @@ final class Application
             'rest_api_init',
             [$storeRoutes, 'register']
         );
+
+        $zonalStoreRoutes = $this->container->make(ZonalStoreRoutes::class);
+        add_action('rest_api_init', [$zonalStoreRoutes, 'register']);
 
         $orderRoutes = $this->container->make(
             OrderRoutes::class
