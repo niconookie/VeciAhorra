@@ -48,6 +48,11 @@ final class FrontendModule
             [$this, 'enqueueHomepageHeroAsset'],
             20
         );
+        add_action(
+            'wp_enqueue_scripts',
+            [$this, 'enqueueHomepageHowItWorksAsset'],
+            20
+        );
         add_shortcode(
             FrontendController::SHORTCODE,
             [$this->controller, 'renderPlaceholder']
@@ -118,6 +123,83 @@ final class FrontendModule
         if ($this->containsHomepageHero($elements)) {
             $this->assets->enqueueHomepageHero();
         }
+    }
+
+    public function enqueueHomepageHowItWorksAsset(): void
+    {
+        if (
+            is_admin()
+            || wp_doing_ajax()
+            || (defined('REST_REQUEST') && REST_REQUEST)
+            || is_feed()
+            || ! is_singular()
+        ) {
+            return;
+        }
+
+        $post = get_queried_object();
+        if (! $post instanceof \WP_Post) {
+            return;
+        }
+
+        $raw = get_post_meta($post->ID, '_elementor_data', true);
+        if (! is_string($raw) || $raw === '') {
+            return;
+        }
+
+        try {
+            $elements = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return;
+        }
+
+        if (is_array($elements) && $this->containsHomepageHowItWorks($elements)) {
+            $this->assets->enqueueHomepageHowItWorks();
+        }
+    }
+
+    /** @param array<mixed> $elements */
+    private function containsHomepageHowItWorks(array $elements): bool
+    {
+        foreach ($elements as $element) {
+            if ($this->isHomepageHowItWorksRoot($element)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isHomepageHowItWorksRoot(mixed $element): bool
+    {
+        if (
+            ! is_array($element)
+            || ! is_string($element['id'] ?? null)
+            || ($element['id'] ?? '') === ''
+            || ($element['elType'] ?? null) !== 'e-flexbox'
+            || ! is_array($element['settings'] ?? null)
+            || ! is_array($element['elements'] ?? null)
+        ) {
+            return false;
+        }
+
+        $classes = $element['settings']['classes'] ?? null;
+        if (
+            ! is_array($classes)
+            || ($classes['$$type'] ?? null) !== 'classes'
+            || ! is_array($classes['value'] ?? null)
+            || ! array_is_list($classes['value'])
+        ) {
+            return false;
+        }
+
+        foreach ($classes['value'] as $class) {
+            if (! is_string($class)) {
+                return false;
+            }
+        }
+
+        return count(array_keys($classes['value'], 'va-home-how-it-works', true)) === 1;
     }
 
     /** @param array<mixed> $elements */

@@ -17,6 +17,7 @@ final class FrontendAssets
 {
     public const STYLE_HANDLE = 'veciahorra-frontend';
     public const HOMEPAGE_HERO_STYLE_HANDLE = 'veciahorra-homepage-hero';
+    public const HOMEPAGE_HOW_IT_WORKS_STYLE_HANDLE = 'veciahorra-homepage-how-it-works';
     public const HOMEPAGE_PRODUCTS_STYLE_HANDLE = 'veciahorra-homepage-products';
     public const DESIGN_SYSTEM_STYLE_HANDLE = 'veciahorra-design-system';
     public const SCRIPT_HANDLE = 'veciahorra-frontend';
@@ -65,6 +66,12 @@ final class FrontendAssets
             self::HOMEPAGE_HERO_STYLE_HANDLE,
             $baseUrl . 'css/homepage-hero.css',
             [],
+            Config::PLUGIN_VERSION
+        );
+        wp_register_style(
+            self::HOMEPAGE_HOW_IT_WORKS_STYLE_HANDLE,
+            $baseUrl . 'css/homepage-how-it-works.css',
+            [self::DESIGN_SYSTEM_STYLE_HANDLE],
             Config::PLUGIN_VERSION
         );
         wp_register_style(
@@ -253,6 +260,16 @@ final class FrontendAssets
 
         $this->registerAssets();
         wp_enqueue_style(self::HOMEPAGE_HERO_STYLE_HANDLE);
+    }
+
+    public function enqueueHomepageHowItWorks(): void
+    {
+        if (is_admin()) {
+            return;
+        }
+
+        $this->registerAssets();
+        wp_enqueue_style(self::HOMEPAGE_HOW_IT_WORKS_STYLE_HANDLE);
     }
 
     public function enqueueHomepageProducts(): void
