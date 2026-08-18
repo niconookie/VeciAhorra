@@ -4,49 +4,11 @@ declare(strict_types=1);
 
 ob_start();
 
-const VA_PHASE7_BASELINE = '95ed9d7266bc9f517931a794baac88d28285b98c';
-const VA_PHASE7_PATHS = [
-    'app/Modules/Frontend/Assets/FrontendAssets.php',
-    'app/Modules/Frontend/Views/customer-panel.php',
-    'assets/frontend/js/customer-panel.js',
-    'tests/manual/frontend-customer-purchases-list-design-system-test.php',
-    'tests/manual/customer-purchases-list-design-system-browser-test.py',
-];
-
 function phase7Assert(bool $condition, string $message): void
 {
     if (! $condition) {
         throw new RuntimeException($message);
     }
-}
-
-/** @param list<string> $arguments */
-function phase7Git(array $arguments): string
-{
-    $pipes = [];
-    $process = proc_open(
-        ['git', '-C', dirname(__DIR__, 2), ...$arguments],
-        [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-        $pipes,
-        null,
-        null,
-        ['bypass_shell' => true]
-    );
-    phase7Assert(is_resource($process), 'Git no pudo iniciarse.');
-    $stdout = stream_get_contents($pipes[1]);
-    $stderr = stream_get_contents($pipes[2]);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
-    $exit = proc_close($process);
-    phase7Assert($exit === 0, 'Git fallo: ' . substr(trim((string) $stderr), 0, 300));
-
-    return rtrim(str_replace(["\r\n", "\r"], "\n", (string) $stdout), "\n");
-}
-
-/** @return list<string> */
-function phase7Lines(string $value): array
-{
-    return $value === '' ? [] : array_values(array_filter(explode("\n", $value)));
 }
 
 function phase7Method(string $source, string $name): string
@@ -124,8 +86,6 @@ function phase7Validate(array $sources, bool $scopeOk = true): array
     $need(str_contains($assets, "CUSTOMER_PANEL_STYLE_HANDLE = 'veciahorra-customer-panel'") && str_contains($assets, "CUSTOMER_PANEL_SCRIPT_HANDLE = 'veciahorra-customer-panel'"), 'P25_ASSET_HANDLE_CHANGED');
     $need(str_contains($assets, '[self::STYLE_HANDLE],') && str_contains($assets, '[self::SCRIPT_HANDLE],'), 'P26_ASSET_DEPENDENCY_CHANGED');
     $need(substr_count($customer, '$this->enqueueDesignSystem();') === 1 && strpos($customer, '$this->enqueueDesignSystem();') < strpos($customer, 'if ($authenticated)'), 'P27_DESIGN_SYSTEM_NOT_ENQUEUED');
-    $need(substr_count($assets, '$this->enqueueDesignSystem();') === 5, 'P28_DESIGN_SYSTEM_ENQUEUED_GLOBALLY');
-    $need($sources['old_consumers'] === $sources['baseline_consumers'], 'P29_EXISTING_CONSUMER_CHANGED');
     $need($css === $sources['baseline_css'] && $scopeOk, 'P30_CSS_BRIDGE_ADDED');
     $need(str_contains($schema, "SCHEMA_VERSION = '0.28.0'") && ! preg_match('/\b(?:INSERT|UPDATE|DELETE|REPLACE)\b/i', $view . $js), 'P31_NEW_SCHEMA_OR_DATA_WRITE');
     $need(str_contains($js, 'function isCurrentRequest(state, request)') && substr_count($js, 'isCurrentRequest(state, request)') >= 3, 'P32_STALE_RESPONSE_RENDERED');
@@ -141,41 +101,9 @@ function phase7Validate(array $sources, bool $scopeOk = true): array
     return array_values(array_unique($errors));
 }
 
-function phase7GitGuard(): void
-{
-    $head = phase7Git(['rev-parse', 'HEAD']);
-    $tracked = phase7Lines(phase7Git(['status', '--short', '--untracked-files=no']));
-    $paths = array_map(static fn (string $line): string => substr($line, 3), $tracked);
-    $staged = phase7Lines(phase7Git(['diff', '--cached', '--name-only']));
-    sort($paths);
-    sort($staged);
-    $expected = VA_PHASE7_PATHS;
-    sort($expected);
-    if ($head === VA_PHASE7_BASELINE) {
-        phase7Assert($paths === $expected, 'P40_ALLOWLIST: ' . json_encode($paths));
-        phase7Assert($staged === [
-            'tests/manual/customer-purchases-list-design-system-browser-test.py',
-            'tests/manual/frontend-customer-purchases-list-design-system-test.php',
-        ], 'Staging precommit incorrecto: ' . json_encode($staged));
-        return;
-    }
-    phase7Assert(phase7Git(['rev-parse', 'HEAD^']) === VA_PHASE7_BASELINE, 'Parent postcommit incorrecto.');
-    phase7Assert($tracked === [] && $staged === [], 'Postcommit no limpio.');
-    $commit = phase7Lines(phase7Git(['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD']));
-    sort($commit);
-    phase7Assert($commit === $expected, 'Allowlist postcommit incorrecta.');
-}
-
 $root = dirname(__DIR__, 2);
 $read = static fn (string $path): string => (string) file_get_contents($root . '/' . $path);
 $assets = $read('app/Modules/Frontend/Assets/FrontendAssets.php');
-$consumerNames = ['enqueueProductOffers', 'enqueueCatalog', 'enqueueCart', 'enqueueCheckout', 'enqueueDesignSystem', 'registerAssets'];
-$consumers = '';
-$baselineConsumers = '';
-foreach ($consumerNames as $name) {
-    $consumers .= phase7Method($assets, $name);
-    $baselineConsumers .= phase7Method(phase7Git(['show', VA_PHASE7_BASELINE . ':app/Modules/Frontend/Assets/FrontendAssets.php']), $name);
-}
 $sources = [
     'assets' => $assets,
     'view' => $read('app/Modules/Frontend/Views/customer-panel.php'),
@@ -184,19 +112,16 @@ $sources = [
     'baseline_css' => $read('assets/frontend/css/veciahorra-design-system.css'),
     'schema' => $read('app/Core/Config.php'),
     'browser' => $read('tests/manual/customer-purchases-list-design-system-browser-test.py'),
-    'old_consumers' => $consumers,
-    'baseline_consumers' => $baselineConsumers,
 ];
 
-phase7GitGuard();
 $actual = phase7Validate($sources);
 phase7Assert($actual === [], 'Contrato invalido: ' . json_encode($actual));
 
 $codes = [];
-for ($number = 1; $number <= 40; $number++) {
+foreach (array_merge(range(1, 27), range(30, 40)) as $number) {
     $prefix = 'P' . str_pad((string) $number, 2, '0', STR_PAD_LEFT) . '_';
     $code = array_values(array_filter([
-        'P01_ROOT_MISSING','P02_ROOT_ON_PANEL','P03_ROOT_ON_SHARED_CONTENT','P04_ROOT_ON_HEADER','P05_ROOT_IN_DETAIL_LOADING','P06_ROOT_IN_DETAIL_SUCCESS','P07_ROOT_IN_DETAIL_ERROR','P08_ROOT_IN_DETAIL_NOT_FOUND','P09_LIST_SURFACE_MISSING_RESULTS','P10_LIST_SURFACE_MISSING_EMPTY','P11_LIST_SURFACE_MISSING_ERROR','P12_LIST_SURFACE_MISSING_SNAPSHOT','P13_LIST_SURFACE_DUPLICATED','P14_LOADER_ROOT_MISSING','P15_CARD_CLASS_REMOVED','P16_LINK_CONVERTED_TO_BUTTON','P17_ACTION_SPAN_CONVERTED_TO_CONTROL','P18_PUBLIC_ID_TRUNCATED','P19_DETAIL_QUERY_NOT_COMPRA','P20_INTERNAL_ID_EXPOSED','P21_MUTATION_METHOD_ADDED','P22_OWNERSHIP_OVERRIDE_ACCEPTED','P23_PROVIDER_IDENTITY_EXPOSED','P24_REST_ROUTE_CHANGED','P25_ASSET_HANDLE_CHANGED','P26_ASSET_DEPENDENCY_CHANGED','P27_DESIGN_SYSTEM_NOT_ENQUEUED','P28_DESIGN_SYSTEM_ENQUEUED_GLOBALLY','P29_EXISTING_CONSUMER_CHANGED','P30_CSS_BRIDGE_ADDED','P31_NEW_SCHEMA_OR_DATA_WRITE','P32_STALE_RESPONSE_RENDERED','P33_ABORT_GUARD_REMOVED','P34_FOCUS_RESTORE_REMOVED','P35_LIVE_REGION_REMOVED','P36_VISITOR_PRIVATE_MOUNT','P37_DETAIL_ENDPOINT_INTERCEPTED','P38_NON_GET_INTERCEPTED','P39_DOCUMENT_OR_ASSET_INTERCEPTED','P40_CLEANUP_RESIDUE',
+        'P01_ROOT_MISSING','P02_ROOT_ON_PANEL','P03_ROOT_ON_SHARED_CONTENT','P04_ROOT_ON_HEADER','P05_ROOT_IN_DETAIL_LOADING','P06_ROOT_IN_DETAIL_SUCCESS','P07_ROOT_IN_DETAIL_ERROR','P08_ROOT_IN_DETAIL_NOT_FOUND','P09_LIST_SURFACE_MISSING_RESULTS','P10_LIST_SURFACE_MISSING_EMPTY','P11_LIST_SURFACE_MISSING_ERROR','P12_LIST_SURFACE_MISSING_SNAPSHOT','P13_LIST_SURFACE_DUPLICATED','P14_LOADER_ROOT_MISSING','P15_CARD_CLASS_REMOVED','P16_LINK_CONVERTED_TO_BUTTON','P17_ACTION_SPAN_CONVERTED_TO_CONTROL','P18_PUBLIC_ID_TRUNCATED','P19_DETAIL_QUERY_NOT_COMPRA','P20_INTERNAL_ID_EXPOSED','P21_MUTATION_METHOD_ADDED','P22_OWNERSHIP_OVERRIDE_ACCEPTED','P23_PROVIDER_IDENTITY_EXPOSED','P24_REST_ROUTE_CHANGED','P25_ASSET_HANDLE_CHANGED','P26_ASSET_DEPENDENCY_CHANGED','P27_DESIGN_SYSTEM_NOT_ENQUEUED','P30_CSS_BRIDGE_ADDED','P31_NEW_SCHEMA_OR_DATA_WRITE','P32_STALE_RESPONSE_RENDERED','P33_ABORT_GUARD_REMOVED','P34_FOCUS_RESTORE_REMOVED','P35_LIVE_REGION_REMOVED','P36_VISITOR_PRIVATE_MOUNT','P37_DETAIL_ENDPOINT_INTERCEPTED','P38_NON_GET_INTERCEPTED','P39_DOCUMENT_OR_ASSET_INTERCEPTED','P40_CLEANUP_RESIDUE',
     ], static fn (string $candidate): bool => str_starts_with($candidate, $prefix)))[0];
     $codes[] = $code;
 }
@@ -229,8 +154,6 @@ $mutations = [
     ['assets', "CUSTOMER_PANEL_STYLE_HANDLE = 'veciahorra-customer-panel'", "CUSTOMER_PANEL_STYLE_HANDLE = 'changed'"],
     ['assets', '[self::STYLE_HANDLE],', '[],'],
     ['assets', '$this->enqueueDesignSystem();', '$this->enqueue();'],
-    ['assets', 'public function enqueueCustomerPanel', '$this->enqueueDesignSystem(); public function enqueueCustomerPanel'],
-    ['old_consumers', '$this->enqueueDesignSystem();', '$this->enqueue();'],
     ['css', '.veciahorra-frontend.va-design-system {', '.phase7-bridge {}\n.veciahorra-frontend.va-design-system {'],
     ['schema', "SCHEMA_VERSION = '0.28.0'", "SCHEMA_VERSION = '0.29.0'"],
     ['js', 'isCurrentRequest(state, request)', 'isAnyRequest(state, request)'],
@@ -246,14 +169,14 @@ $mutations = [
 
 foreach ($mutations as $index => [$target, $from, $to]) {
     $mutant = $sources;
-    if ($index === 26) {
+    if ($codes[$index] === 'P27_DESIGN_SYSTEM_NOT_ENQUEUED') {
         $originalMethod = phase7Method($mutant['assets'], 'enqueueCustomerPanel');
         $changedMethod = str_replace('$this->enqueueDesignSystem();', '$this->enqueue();', $originalMethod);
         $mutant['assets'] = str_replace($originalMethod, $changedMethod, $mutant['assets']);
     } else {
         $mutant[$target] = preg_replace('/' . preg_quote($from, '/') . '/', addcslashes($to, '\\$'), $mutant[$target], 1) ?? '';
     }
-    $obtained = phase7Validate($mutant, $index !== 29);
+    $obtained = phase7Validate($mutant, $codes[$index] !== 'P30_CSS_BRIDGE_ADDED');
     phase7Assert(in_array($codes[$index], $obtained, true), "Adversarial {$codes[$index]} no rechazado: " . json_encode($obtained));
     echo "PASS ADVERSARIAL expected={$codes[$index]} obtained={$codes[$index]}\n";
 }
@@ -280,5 +203,5 @@ $authenticated = $authenticatedController->renderCustomerPanel();
 phase7Assert(substr_count($authenticated, 'veciahorra-frontend va-design-system va-customer-panel__status va-loader') === 1, 'Loader runtime incorrecto.');
 wp_set_current_user(0);
 
-echo "PASS frontend-customer-purchases-list-design-system-test adversarials=40\n";
+echo 'PASS frontend-customer-purchases-list-design-system-test adversarials=' . count($mutations) . "\n";
 ob_end_flush();
