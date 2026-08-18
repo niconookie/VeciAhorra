@@ -74,8 +74,8 @@ INTERCEPT = r"""
   ));
   const productId = 1000000852;
   const offers = [
-    {inventory_id: 1000000101, minimarket_id: 9101, minimarket: 'Minimarket Norte Ficticio', price: '1250.00', stock: 8},
-    {inventory_id: 1000000102, minimarket_id: 9102, minimarket: 'Minimarket Sur Ficticio', price: '1390.00', stock: 4}
+    {inventory_id: 1000000101, price: '1250.00', stock: 8},
+    {inventory_id: 1000000102, price: '1390.00', stock: 4}
   ];
   const product = currentOffers => ({
     id: productId,
@@ -237,6 +237,8 @@ try:
     cards = root.find_elements(By.CSS_SELECTOR, "button.va-card.va-offer-card[role='radio']")
     check(len(cards) == 2, "El frontend inventó u omitió ofertas.")
     check([card.get_attribute("data-inventory-id") for card in cards] == ["1000000101", "1000000102"], "data-inventory-id incorrecto.")
+    check([card.find_element(By.CSS_SELECTOR, ".va-offer-card__store").text for card in cards] == ["Oferta 1", "Oferta 2"], "Neutral offer numbering mismatch.")
+    check("Selecciona la oferta que más te convenga." in root.text, "Public offer instruction mismatch.")
     add = root.find_element(By.CSS_SELECTOR, "[data-va-add-to-cart]")
     check(not add.is_enabled(), "Agregar habilitado sin selección.")
     click_visible(cards[0])

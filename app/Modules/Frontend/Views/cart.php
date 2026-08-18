@@ -35,7 +35,7 @@ $titleId = $instanceId . '-title';
             <table class="va-cart-table">
                 <thead><tr>
                     <th scope="col"><?php esc_html_e('Producto', 'veciahorra'); ?></th>
-                    <th scope="col"><?php esc_html_e('Minimarket', 'veciahorra'); ?></th>
+                    <th scope="col"><?php esc_html_e('Oferta', 'veciahorra'); ?></th>
                     <th scope="col"><?php esc_html_e('Precio unitario', 'veciahorra'); ?></th>
                     <th scope="col"><?php esc_html_e('Cantidad', 'veciahorra'); ?></th>
                     <th scope="col"><?php esc_html_e('Subtotal', 'veciahorra'); ?></th>

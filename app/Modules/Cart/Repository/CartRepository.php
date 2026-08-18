@@ -239,16 +239,13 @@ final class CartRepository extends Repository
                 cart.created_at AS created_at,
                 cart.updated_at AS updated_at,
                 products.name AS product_name,
-                products.image_id AS product_image_id,
-                stores.business_name AS minimarket_name
+                products.image_id AS product_image_id
              FROM %s AS cart
              LEFT JOIN %s AS products ON products.id = cart.product_id
-             LEFT JOIN %s AS stores ON stores.id = cart.minimarket_id
              WHERE cart.%s = %s
              ORDER BY cart.id ASC',
             $this->table(self::TABLE),
             $this->table('products'),
-            $this->table('stores'),
             $field,
             $placeholder
         );

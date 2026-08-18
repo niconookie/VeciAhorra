@@ -235,13 +235,15 @@ try {
         $keys = array_keys($offer);
         sort($keys);
         assertCatalogDetailSame(
-            ['inventory_id', 'minimarket', 'minimarket_id', 'price', 'stock'],
+            ['inventory_id', 'price', 'stock'],
             $keys
         );
-        assertCatalogDetail(
-            ! str_contains($offer['minimarket'], 'Private'),
-            'La oferta expone datos privados del minimarket.'
-        );
+        assertCatalogDetail(!isset($offer['minimarket'], $offer['minimarket_id']), 'La oferta expone identidad del minimarket.');
+    }
+    $serializedDetail = wp_json_encode($data);
+    assertCatalogDetail(is_string($serializedDetail), 'No se pudo serializar el detalle público.');
+    foreach ([' Store ', ' Legal ', 'Private owner', '@example.test', 'Private address', 'Private commune', '111111111', '222222222'] as $identityFragment) {
+        assertCatalogDetail(! str_contains($serializedDetail, $identityFragment), "Identidad comercial expuesta: {$identityFragment}");
     }
 
     assertCatalogDetailSame(6, count($data['related_products']));

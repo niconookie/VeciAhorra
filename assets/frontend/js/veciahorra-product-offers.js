@@ -9,7 +9,6 @@
 
     function normalizeOffer(productId, offer) {
         var inventoryId;
-        var minimarketId;
         var price;
         var stock;
 
@@ -18,13 +17,11 @@
         }
 
         inventoryId = Number(offer.inventory_id);
-        minimarketId = Number(offer.minimarket_id);
         price = Number(offer.price);
         stock = Number(offer.stock);
 
         if (
             !isPositiveInteger(inventoryId)
-            || !isPositiveInteger(minimarketId)
             || !Number.isFinite(price)
             || price <= 0
             || !isPositiveInteger(stock)
@@ -35,8 +32,6 @@
         return {
             product_id: productId,
             inventory_id: inventoryId,
-            minimarket_id: minimarketId,
-            minimarket: typeof offer.minimarket === 'string' ? offer.minimarket.trim() : '',
             unit_price: price,
             available_stock: stock
         };
@@ -82,6 +77,7 @@
                 var normalized = normalizeOffer(productId, offer);
 
                 if (normalized) {
+                    normalized.offer_label = 'Oferta ' + (validOffers.length + 1);
                     validOffers.push(normalized);
                 } else {
                     invalidOffers.push(offer);
@@ -224,7 +220,7 @@
         price.className = 'va-offer-card__price';
         stock.className = 'va-offer-card__stock';
         choice.className = 'va-offer-card__choice';
-        text(store, offer.minimarket || 'Minimarket');
+        text(store, offer.offer_label);
         text(price, money(offer.unit_price));
         text(stock, 'Stock disponible: ' + offer.available_stock);
         text(choice, selected ? '● Seleccionado' : '○ Seleccionar');
@@ -345,7 +341,7 @@
 
             if (state.selection) {
                 text(status, 'Oferta seleccionada.');
-                text(root.querySelector('[data-va-selected-store]'), state.selection.minimarket || 'Minimarket');
+                text(root.querySelector('[data-va-selected-store]'), state.selection.offer_label);
                 text(root.querySelector('[data-va-selected-price]'), money(state.selection.unit_price));
                 text(root.querySelector('[data-va-selected-stock]'), state.selection.available_stock);
             } else if (state.error) {

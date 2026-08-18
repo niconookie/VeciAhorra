@@ -156,9 +156,7 @@ final class CartService
             $item['product_image_url'] = is_string($imageUrl)
                 ? $imageUrl
                 : null;
-            $item['minimarket_name'] = is_string(
-                $item['minimarket_name'] ?? null
-            ) ? $item['minimarket_name'] : null;
+            unset($item['minimarket_name']);
             $item['subtotal'] = $subtotalCents === null
                 ? null
                 : $this->formatCents($subtotalCents);

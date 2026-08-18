@@ -186,7 +186,7 @@ final class CatalogService
      * @param list<int>|null $productIds
      * @return array{
      *   summaries: array<int, array{min_price: string, max_price: string, minimarkets: array<int, true>}>,
-     *   offers: array<int, list<array{inventory_id: int, minimarket_id: int, minimarket: string, price: string, stock: int}>>
+     *   offers: array<int, list<array{inventory_id: int, price: string, stock: int}>>
      * }
      */
     private function publicInventory(?array $productIds = null): array
@@ -270,6 +270,14 @@ final class CatalogService
                 'max_price' => (string) end($prices),
                 'minimarkets' => $minimarkets,
             ];
+        }
+        unset($productOffers);
+
+        foreach ($offers as &$productOffers) {
+            foreach ($productOffers as &$offer) {
+                unset($offer['minimarket_id'], $offer['minimarket']);
+            }
+            unset($offer);
         }
         unset($productOffers);
 

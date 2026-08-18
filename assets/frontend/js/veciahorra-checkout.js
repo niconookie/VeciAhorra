@@ -153,9 +153,6 @@
             if (!groups.has(key)) {
                 groups.set(key, {
                     id: key,
-                    name: typeof item.minimarket_name === 'string' && item.minimarket_name.trim() !== ''
-                        ? item.minimarket_name.trim()
-                        : 'Minimarket no disponible',
                     items: [],
                     subtotalCents: 0
                 });
@@ -197,7 +194,10 @@
 
         return {
             groups: Array.from(groups.values()).sort(function (a, b) {
-                return a.id - b.id || a.name.localeCompare(b.name);
+                return a.id - b.id;
+            }).map(function (group, index) {
+                group.label = 'Oferta ' + (index + 1);
+                return group;
             }),
             totalCents: totalCents,
             valid: !invalid
@@ -238,8 +238,7 @@
                 throw { code: 'invalid_response', message: 'El servidor entregó ítems de validación incompletos.' };
             }
             return Object.assign({}, item, {
-                product_name: previous && typeof previous.product_name === 'string' ? previous.product_name : null,
-                minimarket_name: previous && typeof previous.minimarket_name === 'string' ? previous.minimarket_name : null
+                product_name: previous && typeof previous.product_name === 'string' ? previous.product_name : null
             });
         });
 
@@ -592,13 +591,13 @@
             groupsRoot.replaceChildren();
             summary.groups.forEach(function (group) {
                 var section = element('section', 'va-checkout-group va-card');
-                var title = element('h3', '', group.name);
+                var title = element('h3', '', group.label);
                 var lines = element('div', 'va-checkout-group__items');
                 group.items.forEach(function (entry) { lines.append(renderLine(entry)); });
                 section.append(
                     title,
                     lines,
-                    element('p', 'va-checkout-group__subtotal', 'Subtotal minimarket: ' + moneyFromCents(group.subtotalCents))
+                    element('p', 'va-checkout-group__subtotal', 'Subtotal oferta: ' + moneyFromCents(group.subtotalCents))
                 );
                 groupsRoot.append(section);
             });

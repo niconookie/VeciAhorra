@@ -211,7 +211,7 @@
             remove.addEventListener('click', function () { removeItem(item); });
             row.append(
                 labeledCell('Producto', product),
-                labeledCell('Minimarket', item.minimarket_name || 'Minimarket no disponible'),
+                labeledCell('Oferta', 'Oferta seleccionada'),
                 labeledCell('Precio unitario', money(item.unit_price_snapshot)),
                 labeledCell('Cantidad', quantityControl(item)),
                 labeledCell('Subtotal', money(item.subtotal)),
