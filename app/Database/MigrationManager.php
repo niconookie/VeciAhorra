@@ -28,6 +28,7 @@ use VeciAhorra\Database\Migrations\AddDurableWebpayCreateState;
 use VeciAhorra\Database\Migrations\CreateDurableRetrySchedulesTable;
 use VeciAhorra\Database\Migrations\AddStoreFulfillmentState;
 use VeciAhorra\Database\Migrations\CreateServiceZonesTables;
+use VeciAhorra\Database\Migrations\CreateZonalAdminFoundationTables;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -119,6 +120,7 @@ final class MigrationManager
             new CreateDurableRetrySchedulesTable(),
             new AddStoreFulfillmentState(),
             new CreateServiceZonesTables(),
+            new CreateZonalAdminFoundationTables(),
         ];
     }
 }

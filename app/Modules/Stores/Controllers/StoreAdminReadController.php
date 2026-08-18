@@ -23,6 +23,7 @@ final class StoreAdminReadController
         'active',
         'inactive',
         'rejected',
+        'observed',
     ];
 
     public function __construct(

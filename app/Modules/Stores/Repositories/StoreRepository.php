@@ -445,12 +445,14 @@ final class StoreRepository extends BaseRepository implements StoreTransitionRep
         $valid = "((status = 'pending' AND onboarding_status = 'draft' AND {$unapproved})"
             . " OR (status = 'pending' AND onboarding_status = 'complete' AND {$unapproved})"
             . " OR (status = 'rejected' AND onboarding_status = 'complete' AND {$unapproved})"
+            . " OR (status = 'observed' AND onboarding_status = 'complete' AND {$unapproved})"
             . " OR (status = 'inactive' AND onboarding_status = 'complete' AND {$approved})"
             . " OR (status = 'active' AND onboarding_status = 'complete' AND {$approved}))";
         return match ($state) {
             'draft' => "(status = 'pending' AND onboarding_status = 'draft' AND {$unapproved})",
             'in_review' => "(status = 'pending' AND onboarding_status = 'complete' AND {$unapproved})",
             'rejected' => "(status = 'rejected' AND onboarding_status = 'complete' AND {$unapproved})",
+            'observed' => "(status = 'observed' AND onboarding_status = 'complete' AND {$unapproved})",
             'approved_inactive' => "(status = 'inactive' AND onboarding_status = 'complete' AND {$approved})",
             'active' => "(status = 'active' AND onboarding_status = 'complete' AND {$approved})",
             'invalid' => "NOT ({$valid}) OR status IS NULL OR onboarding_status IS NULL",

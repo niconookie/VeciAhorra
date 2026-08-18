@@ -12,12 +12,14 @@ final class StoreLifecycleContract
     public const STATUS_ACTIVE = 'active';
     public const STATUS_INACTIVE = 'inactive';
     public const STATUS_REJECTED = 'rejected';
+    public const STATUS_OBSERVED = 'observed';
     public const ONBOARDING_DRAFT = 'draft';
     public const ONBOARDING_COMPLETE = 'complete';
 
     public const STATE_DRAFT = 'draft';
     public const STATE_IN_REVIEW = 'in_review';
     public const STATE_REJECTED = 'rejected';
+    public const STATE_OBSERVED = 'observed';
     public const STATE_APPROVED_INACTIVE = 'approved_inactive';
     public const STATE_ACTIVE = 'active';
     public const STATE_INVALID = 'invalid';
@@ -27,13 +29,15 @@ final class StoreLifecycleContract
     public const ACTION_DELETE_IF_UNREFERENCED = 'delete_if_unreferenced';
     public const ACTION_APPROVE = 'approve';
     public const ACTION_REJECT = 'reject';
+    public const ACTION_OBSERVE = 'observe';
     public const ACTION_RETURN_TO_DRAFT = 'return_to_draft';
     public const ACTION_ACTIVATE = 'activate';
     public const ACTION_DEACTIVATE = 'deactivate';
 
     private const ACTIONS_BY_STATE = [
         self::STATE_DRAFT => [self::ACTION_SAVE, self::ACTION_SUBMIT_FOR_REVIEW, self::ACTION_DELETE_IF_UNREFERENCED],
-        self::STATE_IN_REVIEW => [self::ACTION_SAVE, self::ACTION_APPROVE, self::ACTION_REJECT],
+        self::STATE_IN_REVIEW => [self::ACTION_SAVE, self::ACTION_APPROVE, self::ACTION_REJECT, self::ACTION_OBSERVE],
+        self::STATE_OBSERVED => [self::ACTION_SAVE, self::ACTION_RETURN_TO_DRAFT],
         self::STATE_REJECTED => [self::ACTION_SAVE, self::ACTION_RETURN_TO_DRAFT],
         self::STATE_APPROVED_INACTIVE => [self::ACTION_SAVE, self::ACTION_ACTIVATE],
         self::STATE_ACTIVE => [self::ACTION_SAVE, self::ACTION_DEACTIVATE],
@@ -53,6 +57,7 @@ final class StoreLifecycleContract
             'pending|draft|unapproved' => self::STATE_DRAFT,
             'pending|complete|unapproved' => self::STATE_IN_REVIEW,
             'rejected|complete|unapproved' => self::STATE_REJECTED,
+            'observed|complete|unapproved' => self::STATE_OBSERVED,
             'inactive|complete|approved' => self::STATE_APPROVED_INACTIVE,
             'active|complete|approved' => self::STATE_ACTIVE,
         ][$key] ?? self::STATE_INVALID;
@@ -105,6 +110,7 @@ final class StoreLifecycleContract
             self::ACTION_RETURN_TO_DRAFT => [self::STATUS_PENDING, self::ONBOARDING_DRAFT, null],
             self::ACTION_APPROVE => [self::STATUS_INACTIVE, self::ONBOARDING_COMPLETE, $approvalTimestamp],
             self::ACTION_REJECT => [self::STATUS_REJECTED, self::ONBOARDING_COMPLETE, null],
+            self::ACTION_OBSERVE => [self::STATUS_OBSERVED, self::ONBOARDING_COMPLETE, null],
             self::ACTION_ACTIVATE => [self::STATUS_ACTIVE, self::ONBOARDING_COMPLETE, $approvedAt],
             self::ACTION_DEACTIVATE => [self::STATUS_INACTIVE, self::ONBOARDING_COMPLETE, $approvedAt],
             default => throw new StoreLifecycleException(
@@ -128,7 +134,7 @@ final class StoreLifecycleContract
 
     public function statuses(): array
     {
-        return [self::STATUS_PENDING, self::STATUS_ACTIVE, self::STATUS_INACTIVE, self::STATUS_REJECTED];
+        return [self::STATUS_PENDING, self::STATUS_ACTIVE, self::STATUS_INACTIVE, self::STATUS_REJECTED, self::STATUS_OBSERVED];
     }
 
     public function onboardingStatuses(): array

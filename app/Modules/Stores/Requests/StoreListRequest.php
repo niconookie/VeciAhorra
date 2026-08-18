@@ -30,6 +30,7 @@ final class StoreListRequest
         'active',
         'inactive',
         'rejected',
+        'observed',
     ];
 
     private const ALLOWED_ORDER_FIELDS = [
@@ -48,6 +49,7 @@ final class StoreListRequest
         'draft',
         'in_review',
         'rejected',
+        'observed',
         'approved_inactive',
         'active',
         'invalid',

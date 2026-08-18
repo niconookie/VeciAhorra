@@ -42,7 +42,8 @@ $contract = new Lifecycle();
 $approvedAt = '2026-07-21 12:00:00';
 $canonical = [
     ['pending', 'draft', null, Lifecycle::STATE_DRAFT, [Lifecycle::ACTION_SAVE, Lifecycle::ACTION_SUBMIT_FOR_REVIEW, Lifecycle::ACTION_DELETE_IF_UNREFERENCED]],
-    ['pending', 'complete', null, Lifecycle::STATE_IN_REVIEW, [Lifecycle::ACTION_SAVE, Lifecycle::ACTION_APPROVE, Lifecycle::ACTION_REJECT]],
+    ['pending', 'complete', null, Lifecycle::STATE_IN_REVIEW, [Lifecycle::ACTION_SAVE, Lifecycle::ACTION_APPROVE, Lifecycle::ACTION_REJECT, Lifecycle::ACTION_OBSERVE]],
+    ['observed', 'complete', null, Lifecycle::STATE_OBSERVED, [Lifecycle::ACTION_SAVE, Lifecycle::ACTION_RETURN_TO_DRAFT]],
     ['rejected', 'complete', null, Lifecycle::STATE_REJECTED, [Lifecycle::ACTION_SAVE, Lifecycle::ACTION_RETURN_TO_DRAFT]],
     ['inactive', 'complete', $approvedAt, Lifecycle::STATE_APPROVED_INACTIVE, [Lifecycle::ACTION_SAVE, Lifecycle::ACTION_ACTIVATE]],
     ['active', 'complete', $approvedAt, Lifecycle::STATE_ACTIVE, [Lifecycle::ACTION_SAVE, Lifecycle::ACTION_DEACTIVATE]],
@@ -58,6 +59,8 @@ lifecycleInvalid($contract, ['active', 'draft', $approvedAt], 'invalid_combinati
 lifecycleInvalid($contract, ['inactive', 'complete', null], 'invalid_combination');
 lifecycleInvalid($contract, ['rejected', 'complete', $approvedAt], 'invalid_combination');
 lifecycleInvalid($contract, ['rejected', 'draft', null], 'invalid_combination');
+lifecycleInvalid($contract, ['observed', 'draft', null], 'invalid_combination');
+lifecycleInvalid($contract, ['observed', 'complete', $approvedAt], 'invalid_combination');
 lifecycleInvalid($contract, ['pending', 'draft', $approvedAt], 'invalid_combination');
 lifecycleInvalid($contract, ['pending', 'complete', $approvedAt], 'invalid_combination');
 lifecycleInvalid($contract, ['unknown', 'draft', null], 'unknown_status', 'status');

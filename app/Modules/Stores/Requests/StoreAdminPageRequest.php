@@ -18,6 +18,7 @@ final class StoreAdminPageRequest
         'draft',
         'in_review',
         'rejected',
+        'observed',
         'approved_inactive',
         'active',
         'invalid',
@@ -28,6 +29,7 @@ final class StoreAdminPageRequest
         'active',
         'inactive',
         'rejected',
+        'observed',
     ];
 
     /** Valores técnicos de assets/admin/js/modules/stores/app.js. */

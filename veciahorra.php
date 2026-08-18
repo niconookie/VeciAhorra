@@ -70,6 +70,7 @@ VeciAhorra\Core\Bootstrap::boot();
 (new VeciAhorra\Modules\Minimarket\MinimarketModule())->register();
 (new VeciAhorra\Modules\Couriers\CourierModule())->register();
 (new VeciAhorra\Modules\Sectorization\SectorizationModule())->register();
+add_action('init', [VeciAhorra\Modules\ZonalAdmin\Identity\ZonalAdminRole::class, 'register']);
 $customerAccess = new VeciAhorra\Modules\CustomerAccess\CustomerAccessModule();
 (new VeciAhorra\Modules\ServiceProviders\ServiceProviderModule($customerAccess))->register();
 $customerAccess->register();
