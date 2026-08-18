@@ -49,6 +49,9 @@ final class FrontendAssets
 
         $this->registered = true;
         $baseUrl = VA_PLUGIN_URL . 'assets/frontend/';
+        $offerScriptVersion = $this->contentVersion(
+            'assets/frontend/js/veciahorra-product-offers.js'
+        );
 
         wp_register_style(
             self::DESIGN_SYSTEM_STYLE_HANDLE,
@@ -112,7 +115,7 @@ final class FrontendAssets
             self::OFFER_SCRIPT_HANDLE,
             $baseUrl . 'js/veciahorra-product-offers.js',
             [self::SCRIPT_HANDLE],
-            Config::PLUGIN_VERSION,
+            $offerScriptVersion,
             true
         );
         wp_register_script(
@@ -153,6 +156,21 @@ final class FrontendAssets
         $this->enqueueDesignSystem();
         $this->enqueue();
         wp_enqueue_script(self::OFFER_SCRIPT_HANDLE);
+    }
+
+    private function contentVersion(string $relativePath): string
+    {
+        $path = VA_PLUGIN_PATH . ltrim($relativePath, '/\\');
+
+        if (! is_file($path) || ! is_readable($path)) {
+            return Config::PLUGIN_VERSION;
+        }
+
+        $hash = @hash_file('sha256', $path);
+
+        return is_string($hash) && $hash !== ''
+            ? $hash
+            : Config::PLUGIN_VERSION;
     }
 
     public function enqueueCatalog(): void

@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+use VeciAhorra\Core\Config;
+use VeciAhorra\Modules\Frontend\Assets\FrontendAssets;
+
+require_once dirname(__DIR__, 5) . '/wp-load.php';
+
 function offerPrivacyAssert(bool $condition, string $message): void
 {
     if (! $condition) {
@@ -23,6 +28,7 @@ function validateOfferPrivacy(array $sources): void
     offerPrivacyAssert(! str_contains($sources['cart'], 'item.minimarket_name'), 'PUBLIC_CART_RENDERER_IDENTITY_EXPOSED');
     offerPrivacyAssert(! str_contains($sources['checkout'], 'item.minimarket_name') && ! str_contains($sources['checkout'], 'group.name'), 'PUBLIC_CHECKOUT_IDENTITY_EXPOSED');
     offerPrivacyAssert(str_contains($sources['checkout'], "group.label = 'Oferta ' + (index + 1);"), 'PUBLIC_CHECKOUT_NEUTRAL_LABEL_REMOVED');
+    offerPrivacyAssert(str_contains($sources['assets'], "'assets/frontend/js/veciahorra-product-offers.js'") && str_contains($sources['assets'], "@hash_file('sha256', \$path)") && str_contains($sources['assets'], '$offerScriptVersion,'), 'PUBLIC_OFFER_CACHE_VERSION_STALE');
 }
 
 $root = dirname(__DIR__, 2);
@@ -34,12 +40,30 @@ $paths = [
     'cart_repository' => 'app/Modules/Cart/Repository/CartRepository.php',
     'cart' => 'assets/frontend/js/veciahorra-cart.js',
     'checkout' => 'assets/frontend/js/veciahorra-checkout.js',
+    'assets' => 'app/Modules/Frontend/Assets/FrontendAssets.php',
 ];
 $sources = [];
 foreach ($paths as $name => $path) {
     $sources[$name] = (string) file_get_contents($root . '/' . $path);
 }
 validateOfferPrivacy($sources);
+
+$versionMethod = new ReflectionMethod(FrontendAssets::class, 'contentVersion');
+$assets = new FrontendAssets();
+$expectedHash = hash_file('sha256', $root . '/assets/frontend/js/veciahorra-product-offers.js');
+offerPrivacyAssert(is_string($expectedHash) && $expectedHash !== '', 'PUBLIC_OFFER_ASSET_HASH_MISSING');
+offerPrivacyAssert($versionMethod->invoke($assets, 'assets/frontend/js/veciahorra-product-offers.js') === $expectedHash, 'PUBLIC_OFFER_ASSET_HASH_MISMATCH');
+$warning = null;
+set_error_handler(static function (int $severity, string $message) use (&$warning): bool {
+    $warning = [$severity, $message];
+    return true;
+});
+try {
+    $fallback = $versionMethod->invoke($assets, 'assets/frontend/js/definitely-missing-offers.js');
+} finally {
+    restore_error_handler();
+}
+offerPrivacyAssert($warning === null && $fallback === Config::PLUGIN_VERSION && is_string($fallback) && $fallback !== '', 'PUBLIC_OFFER_ASSET_FALLBACK_INVALID');
 
 $mutations = [
     ['catalog', "unset(\$offer['minimarket_id'], \$offer['minimarket']);", ''],
@@ -51,6 +75,7 @@ $mutations = [
     ['cart_repository', 'products.image_id AS product_image_id', "products.image_id AS product_image_id,\n                stores.business_name AS minimarket_name"],
     ['cart', "labeledCell('Oferta', 'Oferta seleccionada')", "labeledCell('Oferta', item.minimarket_name)"],
     ['checkout', "group.label = 'Oferta ' + (index + 1);", 'group.label = group.name;'],
+    ['assets', '$offerScriptVersion,', 'Config::PLUGIN_VERSION,'],
 ];
 $accepted = 0;
 foreach ($mutations as [$name, $search, $replacement]) {

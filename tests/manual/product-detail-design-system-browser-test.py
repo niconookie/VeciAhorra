@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BASE = os.environ.get("VA_TEST_ROOT", "https://localhost/Minimarket").rstrip("/") + "/catalogo-veciahorra/"
 DRIVER = os.environ.get("VA_CHROMEDRIVER", r"C:\Users\UserMSI\.cache\selenium\chromedriver\win64\151.0.7922.77\chromedriver.exe")
 PRODUCT_ID = 1000000852
+OLD_ASSET_URL = BASE.split('/catalogo-veciahorra/', 1)[0] + '/wp-content/plugins/veciahorra/assets/frontend/js/veciahorra-product-offers.js?ver=0.3.0'
 
 
 def check(condition, message):
@@ -64,6 +65,7 @@ result = {
     "console": "PENDING",
     "payload": "PENDING",
     "privacy": "PENDING",
+    "cache_reuse": "PENDING",
 }
 
 INTERCEPT = r"""
@@ -111,6 +113,9 @@ INTERCEPT = r"""
       }
       if (state === 'load-error') return response({success: false, error: {code: 'catalog_unavailable', message: 'Error controlado de ficha.'}}, 503);
       if (state === 'empty') return response({success: true, data: product([])});
+      if (state === 'missing-inventory') return response({success: true, data: product([{price:'1250.00',stock:8}])});
+      if (state === 'invalid-price') return response({success: true, data: product([{inventory_id:1000000101,price:'0.00',stock:8}])});
+      if (state === 'invalid-stock') return response({success: true, data: product([{inventory_id:1000000101,price:'1250.00',stock:0}])});
       if (window.__vaOffersMode === 'stale') return response({success: true, data: product([offers[1]])});
       return response({success: true, data: product(offers)});
     }
@@ -128,6 +133,11 @@ INTERCEPT = r"""
 
 driver.execute_cdp_cmd("Network.enable", {})
 driver.execute_cdp_cmd("Runtime.enable", {})
+driver.get(OLD_ASSET_URL)
+check(driver.execute_script("return document.readyState") == "complete", "No se pudo precargar la URL legacy.")
+driver.get_log("performance")
+driver.get_log("browser")
+result["cache_reuse"] = "LEGACY_URL_PRELOADED"
 driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": INTERCEPT})
 
 
@@ -212,6 +222,9 @@ def asset_evidence():
     remote = base64.b64decode(body["body"]) if body.get("base64Encoded") else body["body"].encode("utf-8")
     local = (ROOT / "assets/frontend/js/veciahorra-product-offers.js").read_bytes()
     check(remote == local, "El JS descargado no coincide byte a byte.")
+    check("ver=" + hashlib.sha256(local).hexdigest() in observed["offers-js"]["url"], "La URL no invalida caché por contenido.")
+    check(observed["offers-js"]["url"] != OLD_ASSET_URL, "La ficha reutilizó la URL legacy.")
+    result["cache_reuse"] = "PASS"
     result["assets"] = {label: "PASS" for label in required}
     result["assets"]["document"] = "PASS"
     result["assets"]["offers_sha256"] = hashlib.sha256(local).hexdigest()
@@ -257,6 +270,13 @@ try:
     check(not root.find_elements(By.CSS_SELECTOR, "[role='radio']"), "Empty contiene ofertas inventadas.")
     result["states"]["empty"] = "PASS"
     drain_logs()
+
+    for invalid_state in ("missing-inventory", "invalid-price", "invalid-stock"):
+        root = load(invalid_state)
+        wait.until(lambda current: len(root.find_elements(By.CSS_SELECTOR, ".va-offer-card--unavailable")) == 1)
+        check(not root.find_elements(By.CSS_SELECTOR, "[role='radio']"), "Invalid offer became selectable: " + invalid_state)
+        result["states"][invalid_state] = "PASS"
+        drain_logs()
 
     root = load("load-error")
     wait.until(lambda current: visible(root, "[data-va-product-error]"))
