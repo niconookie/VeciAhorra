@@ -29,6 +29,9 @@ final class StoresTable implements TableInterface
 
         ->id()
 
+        ->bigIntegerUnsigned('owner_user_id')
+            ->nullable()
+
         /*
         |--------------------------------------------------------------------------
         | Información General
@@ -93,5 +96,7 @@ final class StoresTable implements TableInterface
         ->datetime('created_at')
 
         ->datetime('updated_at');
+
+    $table->unique('owner_user_id', 'stores_owner_user_unique');
 }
 }

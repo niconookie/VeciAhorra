@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Minimarket\Identity;
 
 use VeciAhorra\Modules\Minimarket\Repository\MinimarketRepository;
+use VeciAhorra\Modules\Minimarket\Ownership\StoreOwnershipRepository;
 
 final class StoreContext
 {
-    public function __construct(private ?MinimarketRepository $repository = null) {}
+    public function __construct(private ?MinimarketRepository $repository = null, private ?StoreOwnershipRepository $ownership = null) {}
 
     public function current(): array|\WP_Error
     {
@@ -18,7 +19,11 @@ final class StoreContext
         if (! current_user_can(MinimarketRole::CAPABILITY)) {
             return new \WP_Error('minimarket_forbidden', 'La cuenta no es un actor minimarket.', ['status' => 403]);
         }
-        $storeId = (int) get_user_meta(get_current_user_id(), MinimarketRole::STORE_META_KEY, true);
+        try {
+            $storeId = ($this->ownership ??= new StoreOwnershipRepository())->resolveStoreIdForOwnerUser(get_current_user_id()) ?? 0;
+        } catch (\RuntimeException) {
+            return new \WP_Error('minimarket_store_conflict', 'La asociacion del Store requiere revision administrativa.', ['status' => 403]);
+        }
         if ($storeId <= 0) {
             return new \WP_Error('minimarket_store_missing', 'La cuenta no tiene un Store asociado.', ['status' => 403]);
         }
