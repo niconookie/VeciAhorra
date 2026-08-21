@@ -63,6 +63,7 @@ final class R1aSchemaWpdb
                     'Seq_in_index' => $offset + 1,
                     'Column_name' => $column,
                     'Non_unique' => $definition['unique'] ? 0 : 1,
+                    'Sub_part' => $definition['sub_parts'][$offset] ?? null,
                 ];
             }
             return $rows;
@@ -121,6 +122,11 @@ isolatedFailure(static function(array &$columns):void{unset($columns['iso_va_sto
 isolatedFailure(static function(array &$columns):void{unset($columns['iso_va_stores']['owner_user_id']);},'r1a_schema_missing:stores.owner_user_id');
 isolatedFailure(static function(array &$columns,array &$indexes):void{unset($indexes['iso_va_stores']['stores_owner_user_unique']);},'r1a_schema_missing:index.stores_owner_user_unique');
 isolatedFailure(static function(array &$columns):void{unset($columns['iso_va_store_onboarding_applications']['terms_version']);},'r1a_schema_missing:onboarding.terms_version');
+isolatedFailure(static function(array &$columns,array &$indexes):void{$indexes['iso_va_store_onboarding_applications']['onboarding_public_id_unique']['sub_parts']=[20];},'r1a_schema_invalid:index.onboarding_public_id_unique');
+isolatedFailure(static function(array &$columns,array &$indexes):void{$indexes['iso_va_stores']['stores_owner_user_unique']['sub_parts']=[8];},'r1a_schema_invalid:index.stores_owner_user_unique');
+isolatedFailure(static function(array &$columns,array &$indexes):void{$indexes['iso_va_store_onboarding_applications']['onboarding_status_updated']['columns'][]='id';},'r1a_schema_invalid:index.onboarding_status_updated');
+isolatedFailure(static function(array &$columns,array &$indexes):void{$indexes['iso_va_store_onboarding_applications']['onboarding_status_updated']['columns']=['updated_at','status'];},'r1a_schema_invalid:index.onboarding_status_updated');
+isolatedFailure(static function(array &$columns,array &$indexes):void{$indexes['iso_va_store_onboarding_applications']['onboarding_public_id_unique']['unique']=false;},'r1a_schema_invalid:index.onboarding_public_id_unique');
 
 $installer = file_get_contents(dirname(__DIR__, 2) . '/app/Database/Installer.php');
 isolatedAssert(is_string($installer) && strpos($installer, 'MigrationManager::migrate();') < strpos($installer, 'MigrationManager::updateVersion();'), 'Installer versiona antes de migrar.');
@@ -128,7 +134,7 @@ $migrationSource=file_get_contents(dirname(__DIR__,2).'/app/Database/Migrations/
 isolatedAssert(is_string($migrationSource)&&strpos($migrationSource,'$this->assertStructure();')<strpos($migrationSource,'$this->backfillValidatedOwners();'),'Backfill ocurre antes de validar esquema.');
 isolatedAssert(!str_contains((string)$installer,'catch ('),'Installer oculta excepcion de migracion.');
 
-echo "R1A_SCHEMA_ISOLATED=PASS cases=5\nR1A_INSTALLER_ORDER=PASS assertions=3\n";
+echo "R1A_SCHEMA_ISOLATED=PASS cases=10\nR1A_INSTALLER_ORDER=PASS assertions=3\n";
 
 $r1aExistingUsers = [1=>true,2=>true,3=>true];
 function get_userdata(int $userId): object|false
@@ -141,15 +147,24 @@ function clean_user_cache(int $userId): void {}
 final class R1aOwnershipWpdb
 {
     public string $prefix='iso_'; public string $users='iso_users'; public string $usermeta='iso_usermeta';
+    public string $last_error='';
     /** @var array<int,?int> */ public array $stores=[10=>null,11=>null,12=>2];
     /** @var array<int,list<int>> */ public array $meta=[1=>[10],2=>[12],3=>[12]];
+    public array $storeLockSequences=[]; public array $userLockSequences=[]; public bool $zeroRelease=false; public bool $failProjectionInsert=false;
     private array $values=[]; private ?array $snapshot=null;
     public function prepare(string $query,mixed ...$values):string{$this->values=$values;return $query;}
     public function get_col(string $query):array
     {
         if(str_contains($query,'SELECT id FROM')){ $user=(int)$this->values[0];$ids=[];foreach($this->stores as $id=>$owner)if($owner===$user)$ids[]=$id;sort($ids);return $ids; }
+        if(str_contains($query,'SELECT ID FROM')){ $ids=array_map('intval',$this->values);sort($ids);$this->userLockSequences[]=$ids;return array_values(array_filter($ids,static fn(int $id):bool=>isset($GLOBALS['r1aExistingUsers'][$id]))); }
         if(str_contains($query,'SELECT DISTINCT user_id FROM')){ $store=(int)$this->values[1];$excluded=(int)$this->values[2];$users=[];foreach($this->meta as $user=>$ids)if($user!==$excluded&&in_array($store,$ids,true))$users[]=$user;return $users; }
         if(str_contains($query,'SELECT meta_value FROM'))return array_map('strval',$this->meta[(int)$this->values[0]]??[]);
+        return [];
+    }
+    public function get_results(string $query,string $format):array
+    {
+        if(str_contains($query,'FROM iso_va_stores')){$ids=array_map('intval',$this->values);sort($ids);$this->storeLockSequences[]=$ids;$rows=[];foreach($ids as $id)if(array_key_exists($id,$this->stores))$rows[]=['id'=>(string)$id,'owner_user_id'=>$this->stores[$id]===null?null:(string)$this->stores[$id]];return $rows;}
+        if(str_contains($query,'FROM iso_usermeta'))return [];
         return [];
     }
     public function get_row(string $query,string $format):?array
@@ -173,15 +188,30 @@ final class R1aOwnershipWpdb
     {
         $id=(int)$where['id'];if(!array_key_exists($id,$this->stores))return 0;
         if(array_key_exists('owner_user_id',$where)&&$this->stores[$id]!==$where['owner_user_id'])return 0;
+        if($this->zeroRelease&&$data['owner_user_id']===null)return 0;
         $changed=$this->stores[$id]!==$data['owner_user_id'];$this->stores[$id]=$data['owner_user_id'];return $changed?1:0;
     }
     public function delete(string $table,array $where):int|false
     { $user=(int)$where['user_id'];$count=count($this->meta[$user]??[]);$this->meta[$user]=[];return $count; }
     public function insert(string $table,array $data):int|false
-    { $this->meta[(int)$data['user_id']][]=(int)$data['meta_value'];return 1; }
+    { if($this->failProjectionInsert)return false;$this->meta[(int)$data['user_id']][]=(int)$data['meta_value'];return 1; }
 }
 
 require_once dirname(__DIR__,2).'/app/Modules/Minimarket/Ownership/StoreOwnershipRepository.php';
+$wpdb=new R1aOwnershipWpdb();$wpdb->stores[10]=1;$wpdb->meta[1]=[];
+$ownership=new VeciAhorra\Modules\Minimarket\Ownership\StoreOwnershipRepository();
+isolatedAssert($ownership->resolveStoreIdForOwnerUser(1)===10&&$wpdb->meta[1]===[],'Resolucion canonica escribio proyeccion.');
+$ownership->reconcileCompatibilityProjection(10,1);
+isolatedAssert($wpdb->stores[10]===1&&$wpdb->meta[1]===[10],'Reconciliacion explicita no proyecto autoridad.');
+$ownership->unassignOwner(1);
+isolatedAssert($ownership->resolveStoreIdForOwnerUser(1)===null&&$wpdb->meta[1]===[],'Lectura posterior restauro fallback.');
+$wpdb->meta[1]=[10];$ownership->reconcileCompatibilityProjection(10,1);
+isolatedAssert($wpdb->stores[10]===null&&$wpdb->meta[1]===[],'Reconciliacion explicita no limpio proyeccion sin autoridad.');
+$wpdb->meta[1]=[10,11];
+try{$ownership->reconcileCompatibilityProjection(10,1);throw new RuntimeException('Reconciliacion borro ambiguedad.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='store_owner_historical_user_ambiguous','Ambiguedad de reconciliacion incorrecta.');}
+isolatedAssert($wpdb->meta[1]===[10,11],'Reconciliacion ambigua produjo escrituras.');
+
 $wpdb=new R1aOwnershipWpdb();
 $ownership=new VeciAhorra\Modules\Minimarket\Ownership\StoreOwnershipRepository();
 try{$ownership->resolveStoreIdForOwnerUser(3);throw new RuntimeException('Fallback acepto owner ajeno.');}
@@ -189,8 +219,18 @@ catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='st
 isolatedAssert($wpdb->stores[12]===2&&$wpdb->meta[3]===[12],'Fallback conflictivo produjo escrituras.');
 $ownership->setOwnerStoreForUser(1,10);
 isolatedAssert($wpdb->stores[10]===1&&$wpdb->meta[1]===[10],'Asignacion atomica fallo.');
+$wpdb->failProjectionInsert=true;
+try{$ownership->setOwnerStoreForUser(1,11);throw new RuntimeException('Acepto fallo de proyeccion.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='store_owner_projection_write_failed','Fallo parcial incorrecto.');}
+isolatedAssert($wpdb->stores[10]===1&&$wpdb->stores[11]===null&&$wpdb->meta[1]===[10],'Rollback posterior a escritura parcial fallo.');
+$wpdb->failProjectionInsert=false;$wpdb->zeroRelease=true;
+try{$ownership->setOwnerStoreForUser(1,11);throw new RuntimeException('Acepto liberacion cero.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='store_owner_unassignment_failed','Liberacion cero incorrecta.');}
+isolatedAssert($wpdb->stores[10]===1&&$wpdb->stores[11]===null&&$wpdb->meta[1]===[10],'Rollback liberacion cero fallo.');
+$wpdb->zeroRelease=false;
 $ownership->setOwnerStoreForUser(1,11);
 isolatedAssert($wpdb->stores[10]===null&&$wpdb->stores[11]===1&&$wpdb->meta[1]===[11],'Reasignacion atomica fallo.');
+isolatedAssert(end($wpdb->storeLockSequences)===[10,11],'Orden global de Stores no fue ascendente.');
 $ownership->unassignOwner(1);
 isolatedAssert($wpdb->stores[11]===null&&$wpdb->meta[1]===[],'Desasignacion atomica fallo.');
 try{$ownership->setOwnerStoreForUser(1,12);throw new RuntimeException('Reasigno Store ajeno.');}
@@ -201,26 +241,39 @@ try{$ownership->setOwnerStoreForUser(1,12);throw new RuntimeException('Reasigno 
 catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='store_owner_historical_store_ambiguous','Proyeccion legacy ajena no fue rechazada.');}
 isolatedAssert($wpdb->stores[12]===null&&$wpdb->meta[1]===[]&&$wpdb->meta[3]===[12],'Rollback de proyeccion ajena fallo.');
 
-echo "R1A_OWNERSHIP_ISOLATED=PASS cases=6\n";
+$cross=new R1aOwnershipWpdb();$cross->stores=[10=>1,11=>2];$cross->meta=[1=>[10],2=>[11]];$wpdb=$cross;
+foreach([[1,11],[2,10]] as [$user,$target])try{$ownership->setOwnerStoreForUser($user,$target);}catch(RuntimeException){}
+isolatedAssert($cross->storeLockSequences[0]===[10,11]&&$cross->storeLockSequences[1]===[10,11],'Reasignaciones cruzadas no comparten orden global.');
+isolatedAssert($cross->userLockSequences[0]===[1,2]&&$cross->userLockSequences[1]===[1,2],'Reasignaciones cruzadas no bloquean usuarios en orden global.');
+$competition=new R1aOwnershipWpdb();$competition->stores=[10=>null];$competition->meta=[1=>[],2=>[]];$wpdb=$competition;
+$ownership->setOwnerStoreForUser(1,10);
+try{$ownership->setOwnerStoreForUser(2,10);throw new RuntimeException('Dos usuarios obtuvieron el mismo Store.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='store_owner_store_already_owned','Competencia por Store fallo abierta.');}
+isolatedAssert($competition->stores[10]===1&&$competition->meta[1]===[10]&&$competition->meta[2]===[],'Competencia altero ganador.');
+
+echo "R1A_OWNERSHIP_ISOLATED=PASS cases=15\n";
 
 final class R1aOnboardingWpdb
 {
     public string $prefix='iso_';public string $users='iso_users';public string $usermeta='iso_usermeta';
     public array $stores=[10=>1,11=>null,12=>2];
     public array $application;
+    public bool $failUpdate=false; public array $events=[];
     private array $values=[];private ?array $snapshot=null;
     public function __construct(){ $this->application=['id'=>'50','public_id'=>'onb_iso','user_id'=>'1','account_email'=>'owner@example.test','owner_rut_normalized'=>'123456785','status'=>'ready_to_materialize','idempotency_key_hash'=>str_repeat('a',64),'terms_version'=>'2026-08','terms_accepted_at'=>'2026-08-01 00:00:00','store_id'=>null,'failure_code'=>null,'attempt_count'=>'0','last_attempt_at'=>null,'created_at'=>'2026-08-01 00:00:00','updated_at'=>'2026-08-01 00:00:03','abandoned_at'=>null]; }
     public function prepare(string $query,mixed ...$values):string{$this->values=$values;return $query;}
-    public function query(string $query):int|false{if($query==='START TRANSACTION'){$this->snapshot=$this->application;return 0;}if($query==='COMMIT'){$this->snapshot=null;return 0;}if($query==='ROLLBACK'){if($this->snapshot!==null)$this->application=$this->snapshot;$this->snapshot=null;return 0;}return false;}
-    public function get_var(string $query):mixed{return str_contains($query,'SELECT ID FROM')&&isset($GLOBALS['r1aExistingUsers'][(int)$this->values[0]])?(string)$this->values[0]:null;}
+    public function query(string $query):int|false{$this->events[]=$query;if($query==='START TRANSACTION'){$this->snapshot=$this->application;return 0;}if($query==='COMMIT'){$this->snapshot=null;return 0;}if($query==='ROLLBACK'){if($this->snapshot!==null)$this->application=$this->snapshot;$this->snapshot=null;return 0;}return false;}
+    public function get_var(string $query):mixed{$this->events[]=$query;return str_contains($query,'SELECT ID FROM')&&isset($GLOBALS['r1aExistingUsers'][(int)$this->values[0]])?(string)$this->values[0]:null;}
     public function get_row(string $query,string $format):?array
     {
-        if(str_contains($query,'store_onboarding_applications')){if((int)$this->values[0]!==50)return null;return str_contains($query,'SELECT *')?$this->application:['user_id'=>$this->application['user_id'],'status'=>$this->application['status'],'updated_at'=>$this->application['updated_at']];}
+        $this->events[]=$query;
+        if(str_contains($query,'store_onboarding_applications')){if((int)$this->values[0]!==50)return null;return str_contains($query,'SELECT *')?$this->application:['user_id'=>$this->application['user_id'],'status'=>$this->application['status'],'updated_at'=>$this->application['updated_at'],'store_id'=>$this->application['store_id']];}
         if(str_contains($query,'va_stores')){$id=(int)$this->values[0];return array_key_exists($id,$this->stores)?['id'=>(string)$id,'owner_user_id'=>$this->stores[$id]===null?null:(string)$this->stores[$id]]:null;}
         return null;
     }
     public function update(string $table,array $data,array $where):int|false
     {
+        $this->events[]='UPDATE';if($this->failUpdate)return false;
         if((int)$where['id']!==50||$this->application['status']!==$where['status']||$this->application['updated_at']!==$where['updated_at'])return 0;
         $this->application=array_merge($this->application,$data);return 1;
     }
@@ -230,8 +283,23 @@ require_once dirname(__DIR__,2).'/app/Modules/Minimarket/Onboarding/StoreOnboard
 require_once dirname(__DIR__,2).'/app/Modules/Minimarket/Onboarding/StoreOnboardingApplicationRepository.php';
 $onboarding=new VeciAhorra\Modules\Minimarket\Onboarding\StoreOnboardingApplicationRepository();
 $wpdb=new R1aOnboardingWpdb();
+$wpdb->application['status']='provisioning';$wpdb->application['user_id']=null;$wpdb->application['updated_at']='2026-08-01 00:00:00';
 try{$onboarding->attachUser(50,999,'2026-08-01 00:00:00','2026-08-01 00:00:01');throw new RuntimeException('Acepto usuario inexistente.');}
 catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='onboarding_user_missing','Error de usuario inexistente incorrecto.');}
+isolatedAssert($wpdb->application['status']==='provisioning'&&$wpdb->application['user_id']===null,'Usuario inexistente produjo escritura parcial.');
+$wpdb->application['updated_at']='2026-08-01 00:00:02';
+try{$onboarding->attachUser(50,1,'2026-08-01 00:00:00','2026-08-01 00:00:01');throw new RuntimeException('Acepto aplicacion concurrente.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='onboarding_concurrent_modification','CAS attachUser incorrecto.');}
+$wpdb->application['updated_at']='2026-08-01 00:00:00';
+$wpdb->failUpdate=true;
+try{$onboarding->attachUser(50,1,'2026-08-01 00:00:00','2026-08-01 00:00:01');throw new RuntimeException('Acepto fallo UPDATE.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='onboarding_concurrent_modification','Fallo UPDATE incorrecto.');}
+isolatedAssert($wpdb->application['status']==='provisioning'&&$wpdb->application['user_id']===null,'Rollback attachUser incompleto.');
+$wpdb->failUpdate=false;$wpdb->events=[];
+$attached=$onboarding->attachUser(50,1,'2026-08-01 00:00:00','2026-08-01 00:00:01');
+isolatedAssert($attached->data['status']==='account_created'&&(int)$attached->data['user_id']===1,'attachUser atomico fallo.');
+isolatedAssert(array_search('UPDATE',$wpdb->events,true)>array_search('SELECT ID FROM iso_users WHERE ID=%d FOR UPDATE',$wpdb->events,true),'Usuario no fue bloqueado antes del UPDATE.');
+$wpdb=new R1aOnboardingWpdb();
 foreach([[999,'onboarding_store_missing'],[11,'onboarding_store_owner_missing'],[12,'onboarding_store_owner_conflict']] as [$store,$error]){
     try{$onboarding->attachMaterializedStore(50,$store,'2026-08-01 00:00:03','2026-08-01 00:00:04');throw new RuntimeException('Acepto referencia invalida.');}
     catch(RuntimeException $exception){isolatedAssert($exception->getMessage()===$error,"Esperaba {$error}.");}
@@ -239,8 +307,22 @@ foreach([[999,'onboarding_store_missing'],[11,'onboarding_store_owner_missing'],
 }
 $materialized=$onboarding->attachMaterializedStore(50,10,'2026-08-01 00:00:03','2026-08-01 00:00:04');
 isolatedAssert($materialized->data['status']==='store_materialized'&&(int)$materialized->data['store_id']===10,'Materializacion canonica fallo.');
+$timestamp=$materialized->data['updated_at'];
+$replayed=$onboarding->attachMaterializedStore(50,10,'2026-08-01 00:00:03','2026-08-01 00:00:09');
+isolatedAssert($replayed->data['status']==='store_materialized'&&$replayed->data['updated_at']===$timestamp,'Replay valido modifico estado o timestamp.');
+try{$onboarding->attachMaterializedStore(50,12,'2026-08-01 00:00:04','2026-08-01 00:00:09');throw new RuntimeException('Replay cambio Store.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='onboarding_materialized_store_conflict','Replay de Store distinto incorrecto.');}
+unset($wpdb->stores[10]);
+try{$onboarding->attachMaterializedStore(50,10,'2026-08-01 00:00:04','2026-08-01 00:00:09');throw new RuntimeException('Replay acepto Store eliminado.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='onboarding_store_missing','Replay Store eliminado incorrecto.');}
+$wpdb->stores[10]=null;
+try{$onboarding->attachMaterializedStore(50,10,'2026-08-01 00:00:04','2026-08-01 00:00:09');throw new RuntimeException('Replay acepto owner NULL.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='onboarding_store_owner_missing','Replay owner NULL incorrecto.');}
+$wpdb->stores[10]=2;
+try{$onboarding->attachMaterializedStore(50,10,'2026-08-01 00:00:04','2026-08-01 00:00:09');throw new RuntimeException('Replay acepto owner cambiado.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='onboarding_store_owner_conflict','Replay owner cambiado incorrecto.');}
 
-echo "R1A_ONBOARDING_REFERENCES_ISOLATED=PASS cases=5\n";
+echo "R1A_ONBOARDING_REFERENCES_ISOLATED=PASS cases=14\n";
 
 $roleSource=file_get_contents(dirname(__DIR__,2).'/app/Modules/Minimarket/Identity/MinimarketRole.php');
 $contextSource=file_get_contents(dirname(__DIR__,2).'/app/Modules/Minimarket/Identity/StoreContext.php');

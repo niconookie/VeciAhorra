@@ -105,7 +105,11 @@ final class CreateStoreOnboardingFoundation
         usort($rows, static fn(array $a, array $b): int => (int) $a['Seq_in_index'] <=> (int) $b['Seq_in_index']);
         $columns = array_map(static fn(array $row): string => (string) $row['Column_name'], $rows);
         $isUnique = array_reduce($rows, static fn(bool $carry, array $row): bool => $carry && (int) $row['Non_unique'] === 0, true);
-        if ($columns !== $expectedColumns || $isUnique !== $unique) {
+        $indexesWholeColumns = array_reduce($rows, static function (bool $carry, array $row): bool {
+            $subPart = $row['Sub_part'] ?? null;
+            return $carry && ($subPart === null || strtolower((string) $subPart) === 'null');
+        }, true);
+        if ($columns !== $expectedColumns || $isUnique !== $unique || ! $indexesWholeColumns) {
             throw new RuntimeException('r1a_schema_invalid:index.' . $name);
         }
     }

@@ -83,7 +83,9 @@ try {
     $ownerRepo->assignOwner($historicalStore,$historicalUser);
     delete_user_meta($historicalUser,MinimarketRole::STORE_META_KEY);
     r1aAssert($ownerRepo->resolveStoreIdForOwnerUser($historicalUser)===$historicalStore,'Resolucion canonica fallo.');
-    r1aAssert((int)get_user_meta($historicalUser,MinimarketRole::STORE_META_KEY,true)===$historicalStore,'No reparo proyeccion ausente.');
+    r1aAssert((int)get_user_meta($historicalUser,MinimarketRole::STORE_META_KEY,true)===0,'Resolucion escribio proyeccion ausente.');
+    $ownerRepo->reconcileCompatibilityProjection($historicalStore,$historicalUser);
+    r1aAssert((int)get_user_meta($historicalUser,MinimarketRole::STORE_META_KEY,true)===$historicalStore,'Reconciliacion explicita fallo.');
     $otherStore=$newStore('other'); update_user_meta($historicalUser,MinimarketRole::STORE_META_KEY,$otherStore);
     r1aThrows(static fn()=>$ownerRepo->resolveStoreIdForOwnerUser($historicalUser),'store_owner_projection_conflict');
     update_user_meta($historicalUser,MinimarketRole::STORE_META_KEY,$historicalStore);
@@ -162,6 +164,9 @@ try {
     r1aThrows(static fn()=>$repo->attachMaterializedStore((int)$app->data['id'],$foreignStore,$later4,$later5),'onboarding_store_owner_conflict');
     $app=$repo->attachMaterializedStore((int)$app->data['id'],$historicalStore,$later4,$later5);
     r1aAssert($app->data['status']===Application::STORE_MATERIALIZED,'Materializacion fallo.');
+    $replay=$repo->attachMaterializedStore((int)$app->data['id'],$historicalStore,$later4,gmdate('Y-m-d H:i:s',time()+6));
+    r1aAssert($replay->data['status']===Application::STORE_MATERIALIZED&&$replay->data['updated_at']===$later5,'Replay materializado no fue idempotente.');
+    r1aThrows(static fn()=>$repo->attachMaterializedStore((int)$app->data['id'],$foreignStore,$later5,gmdate('Y-m-d H:i:s',time()+7)),'onboarding_materialized_store_conflict');
     $failureInput=$input;
     $failureInput['public_id']='onb_'.wp_generate_password(24,false);
     $failureInput['idempotency_key_hash']=hash('sha256','r1a-failure-'.wp_generate_password(24,true,true));
