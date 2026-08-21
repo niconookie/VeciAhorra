@@ -144,19 +144,20 @@ r1bAssert(preg_match('/\Aonb_[a-f0-9]{40}\z/',(new RandomOnboardingPublicIdGener
 
 final class R1bRepositoryWpdb
 {
-    public string $prefix='iso_';public string $users='iso_users';public string $last_error='';public int $insert_id=0;public int $insertCalls=0;public int $getRowCalls=0;public array $lookupLog=[];public array $rows=[];public array $existingUsers=[7=>true];public array $stores=[10=>7];public ?string $forcedInsertError=null;public ?Throwable $insertException=null;public ?string $throwLookup=null;public ?string $corruptLookup=null;public bool $throwGetVar=false;private array $values=[];private int $sequence=0;
+    public string $prefix='iso_';public string $users='iso_users';public string $last_error='';public int $insert_id=0;public int $insertCalls=0;public int $getRowCalls=0;public array $lookupLog=[];public array $rows=[];public array $existingUsers=[7=>true];public array $stores=[10=>7];public ?string $forcedInsertError=null;public ?int $insertErrno=null;public ?string $insertSqlState=null;public ?int $lookupErrno=null;public bool $driverEvidenceAvailable=true;public ?Throwable $insertException=null;public ?string $throwLookup=null;public ?string $corruptLookup=null;public bool $throwGetVar=false;public object $dbh;private array $values=[];private int $sequence=0;
+    public function __construct(){$this->dbh=(object)['errno'=>0,'sqlstate'=>'00000'];}
     public function suppress_errors(bool $suppress):bool{return false;}
     public function prepare(string $query,mixed ...$values):string{$this->values=$values;return $query;}
     public function insert(string $table,array $row):int|false
     {
         $this->insertCalls++;if($this->insertException!==null)throw $this->insertException;
-        if($this->forcedInsertError!==null){$this->last_error=$this->forcedInsertError;return false;}
-        foreach($this->rows as $existing){if($existing['idempotency_key_hash']===$row['idempotency_key_hash']||$existing['public_id']===$row['public_id']){$this->last_error='Duplicate key';return false;}}
-        $this->last_error='';$this->insert_id=++$this->sequence;$this->rows[$this->insert_id]=['id'=>(string)$this->insert_id]+$row;return 1;
+        if($this->forcedInsertError!==null){$this->last_error=$this->forcedInsertError;$this->dbh=$this->driverEvidenceAvailable?(object)['errno'=>$this->insertErrno??0,'sqlstate'=>$this->insertSqlState??'00000']:(object)[];return false;}
+        foreach($this->rows as $existing){if($existing['idempotency_key_hash']===$row['idempotency_key_hash']||$existing['public_id']===$row['public_id']){$this->last_error='Duplicate key';$this->dbh->errno=1062;$this->dbh->sqlstate='23000';return false;}}
+        $this->last_error='';$this->dbh->errno=0;$this->dbh->sqlstate='00000';$this->insert_id=++$this->sequence;$this->rows[$this->insert_id]=['id'=>(string)$this->insert_id]+$row;return 1;
     }
     public function get_row(string $query,string $format):?array
     {
-        $this->getRowCalls++;$lookup=str_contains($query,'FROM iso_va_stores')?'store':(str_contains($query,'idempotency_key_hash=')?'idempotency_hash':(str_contains($query,'public_id=')?'public_id':'id'));$this->lookupLog[]=$lookup;
+        $this->getRowCalls++;$lookup=str_contains($query,'FROM iso_va_stores')?'store':(str_contains($query,'idempotency_key_hash=')?'idempotency_hash':(str_contains($query,'public_id=')?'public_id':'id'));$this->lookupLog[]=$lookup;if($this->lookupErrno!==null)$this->dbh->errno=$this->lookupErrno;
         if($this->throwLookup===$lookup)throw r1bHostile();
         if($lookup==='store'){$id=(int)($this->values[0]??0);return isset($this->stores[$id])?['id'=>(string)$id,'owner_user_id'=>(string)$this->stores[$id]]:null;}
         $value=$this->values[0]??null;$column=$lookup==='idempotency_hash'?'idempotency_key_hash':($lookup==='public_id'?'public_id':'id');
@@ -192,11 +193,15 @@ r1bAssert(count($hostileWriters['writer']->inputs)===1&&$hostileGenerator->calls
 // Query-aware seams distinguish INSERT, each lookup, hydration and duplicate classification.
 $queryCases=[
     'insert'=>['persistence_failed',[],static function(R1bRepositoryWpdb $db):void{$db->insertException=r1bHostile();}],
-    'hash_read'=>['persistence_failed',['idempotency_hash'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='duplicate';$db->throwLookup='idempotency_hash';}],
-    'public_read'=>['persistence_failed',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='duplicate';$db->throwLookup='public_id';}],
+    'hash_read'=>['persistence_failed',['idempotency_hash'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='SQL_SENTINEL';$db->insertErrno=1062;$db->insertSqlState='23000';$db->throwLookup='idempotency_hash';}],
+    'public_read'=>['persistence_failed',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='SQL_SENTINEL';$db->insertErrno=1062;$db->insertSqlState='23000';$db->throwLookup='public_id';}],
     'hydration'=>['persistence_failed',['id'],static function(R1bRepositoryWpdb $db):void{$db->corruptLookup='id';}],
-    'duplicate_absent'=>['outcome_uncertain',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='';}],
-    'sql_known'=>['persistence_failed',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='database failure';}],
+    'duplicate_1062_absent'=>['outcome_uncertain',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='SQL_SENTINEL PAYLOAD_SENTINEL';$db->insertErrno=1062;$db->insertSqlState='23000';}],
+    'duplicate_errno_overwritten'=>['outcome_uncertain',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='SQL_SENTINEL';$db->insertErrno=1062;$db->insertSqlState='23000';$db->lookupErrno=1205;}],
+    'sql_known'=>['persistence_failed',[],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='SQL_SENTINEL';$db->insertErrno=1205;$db->insertSqlState='HY000';}],
+    'driver_unavailable'=>['persistence_failed',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='SQL_SENTINEL';$db->driverEvidenceAvailable=false;}],
+    'driver_unavailable_public_occupied'=>['persistence_failed',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='SQL_SENTINEL';$db->driverEvidenceAvailable=false;$db->rows[9]=['id'=>'9']+r1bRow('onb_'.str_repeat('d',40),str_repeat('9',64));}],
+    'no_error_evidence'=>['outcome_uncertain',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='';$db->insertErrno=0;$db->insertSqlState='00000';}],
     'reference_select'=>['persistence_failed',['idempotency_hash'],static function(R1bRepositoryWpdb $db):void{$key=str_repeat('A',32);$db->rows[1]=['id'=>'1']+array_replace(r1bRow('onb_'.str_repeat('7',40),hash('sha256','minimarket-onboarding-v1|'.$key),status:'account_created'),['user_id'=>'7']);$db->throwGetVar=true;}],
 ];
 foreach($queryCases as $case=>[$reason,$expectedLookups,$configure]){
@@ -206,6 +211,7 @@ foreach($queryCases as $case=>[$reason,$expectedLookups,$configure]){
 }
 $wpdb=new R1bRepositoryWpdb();$collisionKey=str_repeat('C',32);$wpdb->rows[9]=['id'=>'9']+r1bRow('onb_'.str_repeat('8',40),str_repeat('9',64));$ids=new R1bIds(['onb_'.str_repeat('8',40),'onb_'.str_repeat('9',40)]);$result=r1bService(new StoreOnboardingApplicationRepository(),new R1bClock(),$ids)->execute(r1bCommand(key:$collisionKey));
 r1bAssert($ids->calls===2&&$wpdb->insertCalls===2&&$wpdb->lookupLog===['idempotency_hash','public_id','id'],'Clasificador duplicate no regenero exclusivamente public ID.');
+$wpdb=new R1bRepositoryWpdb();$wpdb->last_error='SQL_SENTINEL';$result=r1bService(new StoreOnboardingApplicationRepository(),new R1bClock(),new R1bIds(['onb_'.str_repeat('b',40)]))->execute(r1bCommand(key:str_repeat('L',32)));r1bAssert($result->status==='provisioning'&&$wpdb->last_error===''&&$wpdb->dbh->errno===0,'last_error previo contamino INSERT exitoso.');
 
 // Independent intent conflicts preserve the original row and never insert twice.
 foreach(['email','rut','terms'] as $case){
@@ -251,4 +257,4 @@ $source=file_get_contents(dirname(__DIR__,2).'/app/Modules/Minimarket/Onboarding
 r1bAssert(is_string($source)&&!preg_match('/add_action|add_filter|register_rest_route|add_shortcode/',$source),'Servicio registro superficie publica.');
 r1bAssert(!str_contains($source,'wp_insert_user')&&!str_contains($source,'wp_create_user')&&!str_contains($source,'owner_user_id')&&!str_contains($source,'_veciahorra_store_id'),'Servicio escribio autoridad diferida.');
 
-echo "R1B_AUTOLOAD=PASS\nR1B_EMAIL=PASS cases=11\nR1B_RUT=PASS cases=12\nR1B_INPUT_PRECEDENCE=PASS\nR1B_TERMS_IDEMPOTENCY=PASS\nR1B_PUBLIC_ID=PASS\nR1B_CREATE_REPLAY=PASS\nR1B_REPOSITORY_ADAPTER=PASS\nR1B_PRIVACY_BOUNDARIES=PASS cases=13\nR1B_QUERY_SEAMS=PASS cases=8\nR1B_INTENT_CONFLICTS=PASS cases=3\nR1B_REPLAY_STATES=PASS cases=13\nR1B_NO_COMPOSITION=PASS\n";
+echo "R1B_AUTOLOAD=PASS\nR1B_EMAIL=PASS cases=11\nR1B_RUT=PASS cases=12\nR1B_INPUT_PRECEDENCE=PASS\nR1B_TERMS_IDEMPOTENCY=PASS\nR1B_PUBLIC_ID=PASS\nR1B_CREATE_REPLAY=PASS\nR1B_REPOSITORY_ADAPTER=PASS\nR1B_PRIVACY_BOUNDARIES=PASS cases=13\nR1B_QUERY_SEAMS=PASS cases=12\nR1B_INTENT_CONFLICTS=PASS cases=3\nR1B_REPLAY_STATES=PASS cases=13\nR1B_NO_COMPOSITION=PASS\n";

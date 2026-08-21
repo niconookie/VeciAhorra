@@ -49,16 +49,24 @@ final class StoreOnboardingApplicationRepository implements StoreOnboardingAppli
         $previousSuppression = $wpdb->suppress_errors(true);
         $inserted = $wpdb->insert($this->table(), $row);
         $insertError = (string) ($wpdb->last_error ?? '');
+        [$insertErrno, $insertSqlState] = $this->captureDriverError($wpdb);
         $wpdb->suppress_errors($previousSuppression);
         if ($inserted !== 1) {
+            if ($insertErrno !== null && $insertErrno !== 0 && $insertErrno !== 1062) {
+                throw new RuntimeException('onboarding_create_failed');
+            }
             $existing = $this->findByIdempotencyHash((string) $data['idempotency_key_hash']);
             if ($existing !== null) {
                 $this->assertReplayCompatible($existing->data);
                 if ($this->sameCreationIntent($existing->data, $data)) return $existing;
                 throw new RuntimeException('onboarding_idempotency_conflict');
             }
-            if ($this->findByPublicId((string) $data['public_id']) !== null) {
+            $publicIdOccupied = $this->findByPublicId((string) $data['public_id']) !== null;
+            if ($publicIdOccupied && $insertErrno === 1062) {
                 throw new OnboardingPublicIdCollisionException();
+            }
+            if ($insertErrno === 1062) {
+                throw new RuntimeException('onboarding_create_uncertain');
             }
             throw new RuntimeException($insertError !== ''
                 ? 'onboarding_create_failed'
@@ -311,5 +319,26 @@ final class StoreOnboardingApplicationRepository implements StoreOnboardingAppli
     {
         global $wpdb;
         return $wpdb->prefix . Config::TABLE_PREFIX . 'stores';
+    }
+
+    /** @return array{?int,?string} */
+    private function captureDriverError(object $wpdb): array
+    {
+        try {
+            $dbh = $wpdb->dbh ?? null;
+            if ($dbh instanceof \mysqli) {
+                return [mysqli_errno($dbh), mysqli_sqlstate($dbh)];
+            }
+            // Isolated wpdb-compatible fakes expose the same structured driver
+            // fields without requiring a live mutable database connection.
+            if (is_object($dbh)) {
+                $errno = property_exists($dbh, 'errno') && is_int($dbh->errno) ? $dbh->errno : null;
+                $sqlState = property_exists($dbh, 'sqlstate') && is_string($dbh->sqlstate) ? $dbh->sqlstate : null;
+                return [$errno, $sqlState];
+            }
+        } catch (\Throwable $exception) {
+            return [null, null];
+        }
+        return [null, null];
     }
 }
