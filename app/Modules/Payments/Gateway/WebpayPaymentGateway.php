@@ -22,29 +22,26 @@ final class WebpayPaymentGateway implements
         'production' => 'webpay3g.transbank.cl',
     ];
 
-    private object $transaction;
+    private ?object $transaction;
 
     public function __construct(
         private WebpayGatewayConfiguration $configuration,
         ?object $transaction = null
     ) {
-        if ($configuration->environment !== 'integration') {
-            throw new InvalidArgumentException(
-                'Webpay solo admite el ambiente integration en este hito.'
-            );
-        }
-
-        $this->transaction = $transaction ?? new Transaction(new Options(
-            $configuration->apiKey(),
-            $configuration->commerceCode,
-            Options::ENVIRONMENT_INTEGRATION,
-            30
-        ));
+        $this->transaction = $transaction;
     }
 
     public function createSession(
         PaymentSessionContext $context
     ): GatewaySessionResult {
+        if ($this->configuration->environment === 'production'
+            && ! $this->configuration->productionCreationEnabled) {
+            throw $this->failure(
+                'Webpay productivo no esta habilitado para nuevas sesiones.',
+                'webpay_production_disabled'
+            );
+        }
+
         $amount = $this->amount($context->amount);
         $buyOrder = $context->buyOrder ?? WebpayTransactionReference::buyOrder(
             $context->checkoutId, $context->idempotencyKey
@@ -53,7 +50,7 @@ final class WebpayPaymentGateway implements
             ?? WebpayTransactionReference::sessionId($context->checkoutId);
 
         try {
-            $response = $this->transaction->create(
+            $response = $this->transaction()->create(
                 $buyOrder,
                 $sessionId,
                 $amount,
@@ -79,7 +76,11 @@ final class WebpayPaymentGateway implements
 
     public static function supportsEnvironment(string $environment): bool
     {
-        return strtolower(trim($environment)) === 'integration';
+        return in_array(
+            strtolower(trim($environment)),
+            ['integration', 'production'],
+            true
+        );
     }
 
     public static function isAllowedPaymentUrl(
@@ -110,7 +111,7 @@ final class WebpayPaymentGateway implements
         $this->assertToken($providerSessionId);
 
         try {
-            $response = $this->transaction->status($providerSessionId);
+            $response = $this->transaction()->status($providerSessionId);
 
             return $this->statusResult($providerSessionId, $response);
         } catch (PaymentGatewayException $exception) {
@@ -131,7 +132,7 @@ final class WebpayPaymentGateway implements
                 : PaymentConfirmationResult::failed();
         } catch (PaymentGatewayException $exception) {
             try {
-                $status = $this->transaction->status($providerReference);
+                $status = $this->transaction()->status($providerReference);
 
                 return $this->confirmationResult($status);
             } catch (Throwable) {
@@ -145,7 +146,7 @@ final class WebpayPaymentGateway implements
         $this->assertToken($token);
 
         try {
-            $response = $this->transaction->commit($token);
+            $response = $this->transaction()->commit($token);
         } catch (Throwable $exception) {
             throw $this->sdkFailure('commit', $exception);
         }
@@ -375,6 +376,28 @@ final class WebpayPaymentGateway implements
             $code,
             $previous
         );
+    }
+
+    private function transaction(): object
+    {
+        if ($this->transaction !== null) {
+            return $this->transaction;
+        }
+
+        $environment = match ($this->configuration->environment) {
+            'integration' => Options::ENVIRONMENT_INTEGRATION,
+            'production' => Options::ENVIRONMENT_PRODUCTION,
+            default => throw new InvalidArgumentException(
+                'El ambiente Webpay configurado no es valido.'
+            ),
+        };
+
+        return $this->transaction = new Transaction(new Options(
+            $this->configuration->apiKey(),
+            $this->configuration->commerceCode,
+            $environment,
+            30
+        ));
     }
 
     private function sdkFailure(

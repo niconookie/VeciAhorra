@@ -473,19 +473,33 @@ $productionConfiguration = new WebpayGatewayConfiguration(
     ' PrOdUcTiOn ',
     ' 597055555555 ',
     ' ' . str_repeat('S', 64) . ' ',
-    ' https://example.test/webpay/return '
+    'https://EXAMPLE.TEST/wp-json/veciahorra/v1/payments/webpay/return'
 );
 assertWebpayGatewaySame('production', $productionConfiguration->environment);
-
+assertWebpayGatewaySame(
+    'https://example.test/wp-json/veciahorra/v1/payments/webpay/return',
+    $productionConfiguration->returnUrl
+);
+$productionTransaction = new FakeWebpayTransaction();
+$productionTransaction->commitResponse = new FakeWebpayResponse(
+    status: 'AUTHORIZED', responseCode: 0
+);
+$productionTransaction->statusResponse = new FakeWebpayResponse(
+    status: 'AUTHORIZED', responseCode: 0
+);
+$productionGateway = new WebpayPaymentGateway(
+    $productionConfiguration,
+    $productionTransaction
+);
 try {
-    new WebpayPaymentGateway($productionConfiguration);
-    throw new RuntimeException('Produccion se activo accidentalmente.');
-} catch (InvalidArgumentException $exception) {
-    assertWebpayGateway(
-        ! str_contains($exception->getMessage(), str_repeat('S', 64)),
-        'El rechazo de Produccion expuso la API Key.'
-    );
+    $productionGateway->createSession($context);
+    throw new RuntimeException('Gate productivo cerrado permitio create.');
+} catch (PaymentGatewayException $exception) {
+    assertWebpayGatewaySame('webpay_production_disabled', $exception->errorCode());
 }
+$productionGateway->commit($token);
+$productionGateway->recoverSession($token);
+assertWebpayGatewaySame(1, $productionTransaction->commitCalls);
 
 putenv('payment_gateway=webpay');
 putenv('webpay_environment=integration');

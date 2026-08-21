@@ -6,6 +6,7 @@ namespace VeciAhorra\Modules\Payments\WooCommerce;
 
 use Throwable;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayException;
+use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration;
 use VeciAhorra\Modules\Payments\Gateway\WebpayPaymentGateway;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnContext;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnGatewayInterface;
@@ -27,13 +28,17 @@ final class WooCommerceWebpayReturnGatewayResolver implements
         }
 
         try {
-            $settings = get_option(
-                'woocommerce_' . WebpayPlusGateway::GATEWAY_ID . '_settings',
-                []
-            );
-            $configuration = WebpayGatewaySettings::configuration(
-                is_array($settings) ? $settings : []
-            );
+            if ($context->environment === 'production') {
+                $configuration = PaymentGatewayConfiguration::webpay();
+            } else {
+                $settings = get_option(
+                    'woocommerce_' . WebpayPlusGateway::GATEWAY_ID . '_settings',
+                    []
+                );
+                $configuration = WebpayGatewaySettings::configuration(
+                    is_array($settings) ? $settings : []
+                );
+            }
         } catch (Throwable $exception) {
             throw new PaymentGatewayException(
                 'La configuracion Webpay del retorno no es valida.',

@@ -390,8 +390,12 @@ assertWcWebpay(
     'El retorno WooCommerce no resolvio el gateway Webpay configurado.'
 );
 assertWcWebpay(
-    $gateway->validate_mode_field('mode', ' PRODUCTION ') === 'production',
-    'Modo permitido no normalizado.'
+    $gateway->validate_mode_field('mode', ' PRODUCTION ') !== 'production',
+    'Produccion fue aceptada desde wp_options.'
+);
+assertWcWebpay(
+    $gateway->validate_mode_field('mode', ' INTEGRATION ') === 'integration',
+    'Integracion permitida no fue normalizada.'
 );
 assertWcWebpay(
     $gateway->validate_mode_field('mode', 'staging') !== 'staging',

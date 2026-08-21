@@ -7,6 +7,7 @@ namespace VeciAhorra\Modules\Payments\WooCommerce;
 use InvalidArgumentException;
 use Throwable;
 use VeciAhorra\Modules\Payments\Gateway\GatewaySessionResult;
+use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
 use VeciAhorra\Modules\Payments\Gateway\PaymentSessionContext;
 use VeciAhorra\Modules\Payments\Gateway\WebpayGatewayConfiguration;
@@ -79,16 +80,16 @@ class WebpayPlusGateway extends \WC_Payment_Gateway
                 'default' => 'integration',
                 'options' => [
                     'integration' => 'Integracion (Sandbox)',
-                    'production' => 'Produccion',
                 ],
+                'description' => 'Produccion se habilita exclusivamente desde el entorno de despliegue.',
             ],
             'commerce_code' => [
-                'title' => 'Commerce code',
+                'title' => 'Commerce code de integracion (Sandbox)',
                 'type' => 'text',
                 'default' => '',
             ],
             'api_key' => [
-                'title' => 'API Key',
+                'title' => 'API Key de integracion (Sandbox)',
                 'type' => 'password',
                 'default' => '',
                 'custom_attributes' => ['autocomplete' => 'new-password'],
@@ -328,6 +329,12 @@ class WebpayPlusGateway extends \WC_Payment_Gateway
 
     private function configuration(): WebpayGatewayConfiguration
     {
+        $deploymentEnvironment = getenv('VECIAHORRA_WEBPAY_ENVIRONMENT');
+        if (is_string($deploymentEnvironment)
+            && strtolower(trim($deploymentEnvironment)) === 'production') {
+            return PaymentGatewayConfiguration::webpay();
+        }
+
         return WebpayGatewaySettings::configuration([
             'mode' => $this->mode(),
             'commerce_code' => (string) $this->get_option('commerce_code', ''),
@@ -533,6 +540,15 @@ class WebpayPlusGateway extends \WC_Payment_Gateway
     private function validatedSetting(string $key, string $value, string $field): string
     {
         $candidate = trim($value);
+        if ($field === 'mode' && strtolower($candidate) === 'production') {
+            if (class_exists('WC_Admin_Settings')) {
+                \WC_Admin_Settings::add_error(
+                    'Produccion se configura exclusivamente desde el entorno de despliegue.'
+                );
+            }
+
+            return (string) $this->get_option($key, 'integration');
+        }
         $values = [
             'mode' => $field === 'mode' ? $candidate : $this->mode(),
             'commerce_code' => $field === 'commerce_code'
