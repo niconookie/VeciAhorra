@@ -130,26 +130,76 @@ final class CreateStoreOnboardingFoundation
     public function backfillValidatedOwners(): int
     {
         global $wpdb;
+        $discoveredRows = $this->projectionRows();
+        $candidates = $this->validateBackfillRows($discoveredRows);
+        if ($candidates === []) {
+            return 0;
+        }
+        $storeIds = array_values(array_unique(array_values($candidates)));
+        $userIds = array_values(array_unique(array_keys($candidates)));
+        sort($storeIds, SORT_NUMERIC);
+        sort($userIds, SORT_NUMERIC);
+
         if ($wpdb->query('START TRANSACTION') === false) {
             throw new RuntimeException('store_owner_backfill_transaction_failed');
         }
         try {
-            $candidates = $this->validatedBackfillCandidates(true);
-            if ($candidates === []) {
-                if ($wpdb->query('COMMIT') === false) {
-                    throw new RuntimeException('store_owner_backfill_commit_failed');
-                }
-                return 0;
-            }
             $stores = $wpdb->prefix . Config::TABLE_PREFIX . 'stores';
-            foreach ($candidates as $userId => $storeId) {
+            $lockedStores = [];
+            foreach ($storeIds as $storeId) {
+                $row = $wpdb->get_row($wpdb->prepare(
+                    "SELECT id,owner_user_id FROM {$stores} WHERE id=%d FOR UPDATE",
+                    $storeId
+                ), ARRAY_A);
+                if (! is_array($row)) throw new RuntimeException('store_owner_backfill_concurrent_conflict');
+                $lockedStores[$storeId] = $row;
+            }
+            foreach ($userIds as $userId) {
+                if ((int) $wpdb->get_var($wpdb->prepare(
+                    "SELECT ID FROM {$wpdb->users} WHERE ID=%d FOR UPDATE",
+                    $userId
+                )) !== $userId) throw new RuntimeException('store_owner_backfill_concurrent_conflict');
+            }
+            foreach ($userIds as $userId) {
+                $rows = $wpdb->get_results($wpdb->prepare(
+                    "SELECT umeta_id,user_id,meta_value FROM {$wpdb->usermeta}"
+                    . " WHERE user_id=%d AND meta_key=%s ORDER BY umeta_id FOR UPDATE",
+                    $userId,
+                    MinimarketRole::STORE_META_KEY
+                ), ARRAY_A);
+                if (! is_array($rows) || $wpdb->last_error !== '') {
+                    throw new RuntimeException('store_owner_backfill_lock_failed');
+                }
+            }
+
+            // Lock the complete meta-key range last so a new user cannot add a
+            // competing projection after the closed Store/User sets were built.
+            $lockedProjectionRows = $wpdb->get_results($wpdb->prepare(
+                "SELECT umeta_id,user_id,meta_value FROM {$wpdb->usermeta}"
+                . " WHERE meta_key=%s ORDER BY user_id,umeta_id FOR UPDATE",
+                MinimarketRole::STORE_META_KEY
+            ), ARRAY_A);
+            if (! is_array($lockedProjectionRows) || $wpdb->last_error !== '') {
+                throw new RuntimeException('store_owner_backfill_lock_failed');
+            }
+            if ($this->projectionIdentity($lockedProjectionRows) !== $this->projectionIdentity($discoveredRows)) {
+                throw new RuntimeException('store_owner_backfill_concurrent_conflict');
+            }
+
+            $revalidated = $this->validateBackfillRows($lockedProjectionRows, $lockedStores, $userIds);
+            if ($revalidated !== $candidates) {
+                throw new RuntimeException('store_owner_backfill_concurrent_conflict');
+            }
+
+            ksort($revalidated, SORT_NUMERIC);
+            foreach ($revalidated as $userId => $storeId) {
                 $updated = $wpdb->query($wpdb->prepare(
                     "UPDATE {$stores} SET owner_user_id=%d WHERE id=%d AND (owner_user_id IS NULL OR owner_user_id=%d)",
                     $userId,
                     $storeId,
                     $userId
                 ));
-                if ($updated === false) {
+                if ($updated === false || ($updated !== 0 && $updated !== 1)) {
                     throw new RuntimeException('store_owner_backfill_write_failed');
                 }
                 $owner = $wpdb->get_var($wpdb->prepare(
@@ -173,32 +223,64 @@ final class CreateStoreOnboardingFoundation
     /** @return array<int,int> */
     public function validatedBackfillCandidates(bool $lockRows = false): array
     {
+        if ($lockRows) throw new RuntimeException('store_owner_backfill_join_lock_forbidden');
+        return $this->validateBackfillRows($this->projectionRows());
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function projectionRows(): array
+    {
         global $wpdb;
-        $stores = $wpdb->prefix . Config::TABLE_PREFIX . 'stores';
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT um.user_id,um.meta_value,CASE WHEN u.ID IS NULL THEN 0 ELSE 1 END user_exists,"
-            . "s.id store_id,s.owner_user_id FROM {$wpdb->usermeta} um"
-            . " LEFT JOIN {$wpdb->users} u ON u.ID=um.user_id"
-            . " LEFT JOIN {$stores} s ON s.id=CAST(um.meta_value AS UNSIGNED)"
-            . ' WHERE um.meta_key=%s ORDER BY um.user_id,um.umeta_id'
-            . ($lockRows ? ' FOR UPDATE' : ''),
+            "SELECT umeta_id,user_id,meta_value FROM {$wpdb->usermeta}"
+            . ' WHERE meta_key=%s ORDER BY user_id,umeta_id',
             MinimarketRole::STORE_META_KEY
         ), ARRAY_A);
         if (! is_array($rows) || $wpdb->last_error !== '') {
             throw new RuntimeException('store_owner_backfill_read_failed');
         }
+        return $rows;
+    }
 
+    /**
+     * @param list<array<string,mixed>> $rows
+     * @param array<int,array<string,mixed>>|null $lockedStores
+     * @param list<int>|null $lockedUsers
+     * @return array<int,int>
+     */
+    private function validateBackfillRows(array $rows, ?array $lockedStores = null, ?array $lockedUsers = null): array
+    {
+        global $wpdb;
+        $stores = $wpdb->prefix . Config::TABLE_PREFIX . 'stores';
         $byUser = [];
         $byStore = [];
         $candidates = [];
         foreach ($rows as $row) {
             $userId = (int) $row['user_id'];
-            $storeId = (int) $row['meta_value'];
-            if ((int) $row['user_exists'] !== 1) throw new RuntimeException('store_owner_backfill_user_missing');
-            if ($storeId <= 0 || $row['store_id'] === null) throw new RuntimeException('store_owner_backfill_store_missing');
+            $rawStoreId = (string) $row['meta_value'];
+            if ($userId <= 0 || preg_match('/^[1-9][0-9]*$/', $rawStoreId) !== 1) {
+                throw new RuntimeException('store_owner_backfill_store_missing');
+            }
+            $storeId = (int) $rawStoreId;
+            if ($lockedUsers !== null) {
+                if (! in_array($userId, $lockedUsers, true)) throw new RuntimeException('store_owner_backfill_concurrent_conflict');
+            } elseif ((int) $wpdb->get_var($wpdb->prepare(
+                "SELECT ID FROM {$wpdb->users} WHERE ID=%d",
+                $userId
+            )) !== $userId) {
+                throw new RuntimeException('store_owner_backfill_user_missing');
+            }
+            $store = $lockedStores[$storeId] ?? null;
+            if ($lockedStores === null) {
+                $store = $wpdb->get_row($wpdb->prepare(
+                    "SELECT id,owner_user_id FROM {$stores} WHERE id=%d",
+                    $storeId
+                ), ARRAY_A);
+            }
+            if (! is_array($store)) throw new RuntimeException('store_owner_backfill_store_missing');
             $byUser[$userId][$storeId] = true;
             $byStore[$storeId][$userId] = true;
-            $owner = $row['owner_user_id'] === null ? null : (int) $row['owner_user_id'];
+            $owner = $store['owner_user_id'] === null ? null : (int) $store['owner_user_id'];
             if ($owner !== null && $owner !== $userId) throw new RuntimeException('store_owner_backfill_owner_conflict');
             $candidates[$userId] = $storeId;
         }
@@ -208,6 +290,19 @@ final class CreateStoreOnboardingFoundation
         foreach ($byStore as $usersForStore) {
             if (count($usersForStore) !== 1) throw new RuntimeException('store_owner_backfill_store_ambiguous');
         }
+        ksort($candidates, SORT_NUMERIC);
         return $candidates;
+    }
+
+    /** @param list<array<string,mixed>> $rows @return list<array{int,int,string}> */
+    private function projectionIdentity(array $rows): array
+    {
+        $identity = array_map(static fn(array $row): array => [
+            (int) $row['user_id'],
+            (int) $row['umeta_id'],
+            (string) $row['meta_value'],
+        ], $rows);
+        usort($identity, static fn(array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+        return $identity;
     }
 }

@@ -136,6 +136,81 @@ isolatedAssert(!str_contains((string)$installer,'catch ('),'Installer oculta exc
 
 echo "R1A_SCHEMA_ISOLATED=PASS cases=10\nR1A_INSTALLER_ORDER=PASS assertions=3\n";
 
+final class R1aBackfillWpdb
+{
+    public string $prefix='iso_'; public string $users='iso_users'; public string $usermeta='iso_usermeta'; public string $last_error='';
+    /** @var array<int,?int> */ public array $stores=[10=>null,2=>null];
+    /** @var array<int,bool> */ public array $existingUsers=[10=>true,2=>true];
+    /** @var list<array{umeta_id:int,user_id:int,meta_value:string}> */ public array $meta=[['umeta_id'=>20,'user_id'=>10,'meta_value'=>'10'],['umeta_id'=>10,'user_id'=>2,'meta_value'=>'2']];
+    public array $events=[]; public ?string $failAt=null; public $mutation=null; private array $values=[]; private ?array $snapshot=null; private bool $mutated=false;
+    public function prepare(string $query,mixed ...$values):string{$this->values=$values;return $query;}
+    private function event(string $name):void
+    {
+        $this->events[]=$name;
+        if(!$this->mutated&&is_callable($this->mutation)){$mutation=$this->mutation;if($mutation($name,$this)===true)$this->mutated=true;}
+        if($this->failAt===$name){$this->last_error='fixture failure';}
+    }
+    public function get_results(string $query,string $format):array|false
+    {
+        if(str_contains($query,'FROM iso_usermeta')){
+            $locked=str_contains($query,'FOR UPDATE');
+            if($locked&&str_contains($query,'user_id=%d')){$user=(int)$this->values[0];$this->event("meta_user:{$user}");$rows=array_values(array_filter($this->meta,static fn(array $r):bool=>$r['user_id']===$user));}
+            elseif($locked){$this->event('meta_global');$rows=$this->meta;}
+            else{$this->event('discover');$rows=$this->meta;}
+            if($this->last_error!=='')return false;
+            usort($rows,static fn(array $a,array $b):int=>[$a['user_id'],$a['umeta_id']]<=>[$b['user_id'],$b['umeta_id']]);return $rows;
+        }
+        return [];
+    }
+    public function get_row(string $query,string $format):?array
+    {
+        $store=(int)$this->values[0];$this->event((str_contains($query,'FOR UPDATE')?'store_lock:':'store_read:').$store);
+        if(!array_key_exists($store,$this->stores))return null;
+        return ['id'=>(string)$store,'owner_user_id'=>$this->stores[$store]===null?null:(string)$this->stores[$store]];
+    }
+    public function get_var(string $query):mixed
+    {
+        if(str_contains($query,'SELECT ID FROM')){$user=(int)$this->values[0];$this->event((str_contains($query,'FOR UPDATE')?'user_lock:':'user_read:').$user);return isset($this->existingUsers[$user])?$user:null;}
+        if(str_contains($query,'SELECT owner_user_id FROM')){$store=(int)$this->values[0];return $this->stores[$store]??null;}
+        return null;
+    }
+    public function query(string $query):int|false
+    {
+        if($query==='START TRANSACTION'){$this->events[]='start';$this->snapshot=[$this->stores,$this->meta];return 1;}
+        if($query==='COMMIT'){$this->events[]='commit';$this->snapshot=null;return 1;}
+        if($query==='ROLLBACK'){$this->events[]='rollback';if($this->snapshot!==null)[$this->stores,$this->meta]=$this->snapshot;$this->snapshot=null;return 1;}
+        if(str_starts_with($query,'UPDATE ')){
+            $user=(int)$this->values[0];$store=(int)$this->values[1];$this->event("write:{$store}:{$user}");
+            if($this->last_error!==''||($this->failAt==='second_write'&&count(array_filter($this->events,static fn(string $e):bool=>str_starts_with($e,'write:')))===2))return false;
+            foreach($this->stores as $id=>$owner)if($id!==$store&&$owner===$user)return false;
+            $current=$this->stores[$store]??null;if($current!==null&&$current!==$user)return 0;$this->stores[$store]=$user;return $current===$user?0:1;
+        }
+        return 1;
+    }
+}
+
+function backfillFailure(R1aBackfillWpdb $fake,string $expected):void
+{
+    global $wpdb;$wpdb=$fake;
+    try{(new CreateStoreOnboardingFoundation())->backfillValidatedOwners();throw new RuntimeException("No rechazo {$expected}");}
+    catch(RuntimeException $exception){isolatedAssert($exception->getMessage()===$expected,"Esperaba {$expected}, obtuvo {$exception->getMessage()}");}
+}
+
+$wpdb=new R1aBackfillWpdb();
+isolatedAssert((new CreateStoreOnboardingFoundation())->backfillValidatedOwners()===2,'Backfill ordenado no proceso candidatos.');
+isolatedAssert($wpdb->events===['discover','user_read:2','store_read:2','user_read:10','store_read:10','start','store_lock:2','store_lock:10','user_lock:2','user_lock:10','meta_user:2','meta_user:10','meta_global','write:2:2','write:10:10','commit'],'Secuencia global de locks incorrecta: '.json_encode($wpdb->events));
+
+$duplicate=new R1aBackfillWpdb();$duplicate->meta[]=['umeta_id'=>21,'user_id'=>10,'meta_value'=>'10'];
+$wpdb=$duplicate;isolatedAssert((new CreateStoreOnboardingFoundation())->backfillValidatedOwners()===2,'Filas duplicadas identicas no fueron idempotentes.');
+$shared=new R1aBackfillWpdb();$shared->meta[0]['meta_value']='2';backfillFailure($shared,'store_owner_backfill_store_ambiguous');
+$multi=new R1aBackfillWpdb();$multi->meta[]=['umeta_id'=>21,'user_id'=>10,'meta_value'=>'2'];backfillFailure($multi,'store_owner_backfill_user_ambiguous');
+foreach(['change','insert','delete'] as $race){$fake=new R1aBackfillWpdb();$fake->mutation=static function(string $event,R1aBackfillWpdb $db)use($race):bool{if($event!=='meta_global')return false;if($race==='change')$db->meta[0]['meta_value']='2';elseif($race==='insert')$db->meta[]=['umeta_id'=>30,'user_id'=>3,'meta_value'=>'11'];else array_shift($db->meta);return true;};backfillFailure($fake,'store_owner_backfill_concurrent_conflict');isolatedAssert(in_array('rollback',$fake->events,true),'Carrera no hizo rollback.');if($race==='insert')isolatedAssert(!in_array('store_lock:11',$fake->events,true)&&!in_array('user_lock:3',$fake->events,true),'Conjunto creciente adquirio locks tardios.');}
+$foreign=new R1aBackfillWpdb();$foreign->mutation=static function(string $event,R1aBackfillWpdb $db):bool{if($event!=='store_lock:10')return false;$db->stores[10]=99;return true;};backfillFailure($foreign,'store_owner_backfill_owner_conflict');
+$newCanonical=new R1aBackfillWpdb();$newCanonical->stores[11]=null;$newCanonical->mutation=static function(string $event,R1aBackfillWpdb $db):bool{if($event!=='user_lock:10')return false;$db->stores[11]=10;return true;};backfillFailure($newCanonical,'store_owner_backfill_write_failed');isolatedAssert(!in_array('store_lock:11',$newCanonical->events,true),'Bloqueo tardio ID nuevo.');
+$lockFailure=new R1aBackfillWpdb();$lockFailure->failAt='meta_user:10';backfillFailure($lockFailure,'store_owner_backfill_lock_failed');isolatedAssert($lockFailure->stores[2]===null&&$lockFailure->stores[10]===null&&in_array('rollback',$lockFailure->events,true),'Falla intermedia escribio o no revirtio.');
+$writeFailure=new R1aBackfillWpdb();$writeFailure->failAt='second_write';backfillFailure($writeFailure,'store_owner_backfill_write_failed');isolatedAssert($writeFailure->stores[2]===null&&$writeFailure->stores[10]===null,'Rollback no revirtio escritura parcial.');
+echo "R1A_BACKFILL_LOCK_ORDER_ISOLATED=PASS cases=11\n";
+
 $r1aExistingUsers = [1=>true,2=>true,3=>true];
 function get_userdata(int $userId): object|false
 {
