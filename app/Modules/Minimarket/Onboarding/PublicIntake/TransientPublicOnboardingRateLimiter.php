@@ -8,7 +8,7 @@ final class TransientPublicOnboardingRateLimiter implements PublicOnboardingRate
 {
     public function __construct(private RateLimitKeyDeriver $keys, private RateLimitBucketStore $store) {}
 
-    public function consume(PublicClientAddress $client, ?RateLimitIdentity $identity, string $idempotencyKey): RateLimitDecision
+    public function consume(PublicClientAddress $client, ?RateLimitIdentity $identity, string $idempotencyKey, ?callable $classifyIntent = null, ?callable $onAllowed = null): RateLimitDecision
     {
         $network = $client->networkBytes . pack('n', $client->prefixLength);
         $buckets = [
@@ -20,7 +20,7 @@ final class TransientPublicOnboardingRateLimiter implements PublicOnboardingRate
             $buckets[] = $this->bucket('identity-day', $identity->emailHmac . $identity->rutHmac, 3, 86400, false);
             $buckets[] = $this->bucket('key-short', $this->keys->derive('idempotency', $idempotencyKey), 10, 600, true, true);
         }
-        return $this->store->consumeAtomically($buckets);
+        return $this->store->consumeAtomically($buckets, $classifyIntent, $onAllowed);
     }
 
     private function bucket(string $domain, string $value, int $limit, int $window, bool $onRetry = true, bool $key = false): RateLimitBucket

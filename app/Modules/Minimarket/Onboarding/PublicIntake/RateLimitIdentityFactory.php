@@ -17,9 +17,13 @@ final class RateLimitIdentityFactory
 
     public function fromRaw(string $email, string $rut): RateLimitIdentity
     {
+        $normalizedEmail = $this->emails->normalize($email);
+        $normalizedRut = $this->ruts->normalizeAndValidate($rut);
         return new RateLimitIdentity(
-            $this->keys->derive('identity-email', $this->emails->normalize($email)),
-            $this->keys->derive('identity-rut', $this->ruts->normalizeAndValidate($rut))
+            $this->keys->derive('identity-email', $normalizedEmail),
+            $this->keys->derive('identity-rut', $normalizedRut),
+            $normalizedEmail,
+            $normalizedRut
         );
     }
 }

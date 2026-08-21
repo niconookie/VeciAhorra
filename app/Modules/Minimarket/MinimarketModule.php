@@ -22,6 +22,7 @@ use VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\PublicOnboardingReques
 use VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\PublicRequestGuard;
 use VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\RandomIdempotencyKeyIssuer;
 use VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\RateLimitIdentityFactory;
+use VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\RepositoryOnboardingIntentClassifier;
 use VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\RemoteAddressResolver;
 use VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\TransientPublicOnboardingRateLimiter;
 use VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\WordPressTransientRateLimitBucketStore;
@@ -77,11 +78,13 @@ final class MinimarketModule
         $locks = new MariaDbNamedRateLimitLockManager($wpdb);
         $bucketStore = new WordPressTransientRateLimitBucketStore($wpdb, $locks);
         $limiter = new TransientPublicOnboardingRateLimiter($keys, $bucketStore);
+        $repository = new StoreOnboardingApplicationRepository();
+        $currentTerms = new ConfiguredCurrentOnboardingTerms($legalValidator);
         $start = new StartStoreOnboarding(
-            new StoreOnboardingApplicationRepository(),
+            $repository,
             new SystemOnboardingClock(),
             new RandomOnboardingPublicIdGenerator(),
-            new ConfiguredCurrentOnboardingTerms($legalValidator),
+            $currentTerms,
             $emails,
             $ruts
         );
@@ -90,7 +93,9 @@ final class MinimarketModule
             $start,
             new RateLimitIdentityFactory($emails, $ruts, $keys),
             $limiter,
-            $errorTranslator
+            $errorTranslator,
+            new RepositoryOnboardingIntentClassifier($repository),
+            $currentTerms
         );
         $controller = new PublicOnboardingController(
             new PublicRequestGuard(),
@@ -98,13 +103,15 @@ final class MinimarketModule
             $handler,
             new RemoteAddressResolver(),
             $errorTranslator,
-            $state
+            $state,
+            $legalValidator
         );
         $renderer = new PublicOnboardingRenderer(
             new RandomIdempotencyKeyIssuer(),
             new OnboardingLegalLinkProvider($legalValidator),
             $state,
-            new PublicOnboardingAssets()
+            new PublicOnboardingAssets(),
+            $legalValidator
         );
         add_action('template_redirect', [$controller, 'handle'], 1);
         add_shortcode(self::ONBOARDING_SHORTCODE, [$renderer, 'render']);

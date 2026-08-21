@@ -43,6 +43,7 @@ if (($argv[1] ?? '') === '--apply') {
             'terms_page_id'=>$ids['terminos-y-condiciones'],'terms_content_hash'=>OnboardingLegalAuthorityValidator::contentHash($termsHtml),
             'privacy_document_code'=>'V-ES-P-02','privacy_version'=>'01','privacy_effective_date'=>'2026-07-30',
             'privacy_page_id'=>$ids['politica-de-privacidad'],'privacy_content_hash'=>OnboardingLegalAuthorityValidator::contentHash($privacyHtml),
+            'registration_page_id'=>$ids['registro-minimarket'],'registration_content_hash'=>OnboardingLegalAuthorityValidator::contentHash('[veciahorra_minimarket_onboarding]'),
         ];
         if (! update_option(OnboardingLegalConfiguration::OPTION, $configuration, false)) throw new RuntimeException('No se pudo guardar autoridad legal.');
         if (! update_option('wp_page_for_privacy_policy', $ids['politica-de-privacidad'])) throw new RuntimeException('No se pudo asignar privacidad.');
@@ -55,13 +56,20 @@ if (($argv[1] ?? '') === '--apply') {
 }
 
 if (($argv[1] ?? '') === '--refresh-created') {
-    $current = OnboardingLegalConfiguration::fromWordPress();
-    (new OnboardingLegalAuthorityValidator())->validate($current);
+    $stored = get_option(OnboardingLegalConfiguration::OPTION);
+    if (! is_array($stored)) throw new RuntimeException('Configuración legal ausente.');
+    $termsId=(int)($stored['terms_page_id']??0);$privacyId=(int)($stored['privacy_page_id']??0);
+    $currentTerms=get_post($termsId);$currentPrivacy=get_post($privacyId);
+    if(!$currentTerms instanceof WP_Post||!$currentPrivacy instanceof WP_Post
+        ||!hash_equals((string)($stored['terms_content_hash']??''),OnboardingLegalAuthorityValidator::contentHash($currentTerms->post_content))
+        ||!hash_equals((string)($stored['privacy_content_hash']??''),OnboardingLegalAuthorityValidator::contentHash($currentPrivacy->post_content))) {
+        throw new RuntimeException('Autoridad legal previa inconsistente.');
+    }
     if ($wpdb->query('START TRANSACTION') === false) throw new RuntimeException('No se pudo iniciar actualización legal.');
     try {
         $updates = [
-            $current->termsPageId => $termsHtml,
-            $current->privacyPageId => $privacyHtml,
+            $termsId => $termsHtml,
+            $privacyId => $privacyHtml,
         ];
         foreach ($updates as $id=>$content) {
             $changed=wp_update_post(wp_slash(['ID'=>$id,'post_content'=>$content]),true);
@@ -71,11 +79,15 @@ if (($argv[1] ?? '') === '--refresh-created') {
         if(!is_array($configuration))throw new RuntimeException('Configuración legal ausente.');
         $configuration['terms_content_hash']=OnboardingLegalAuthorityValidator::contentHash($termsHtml);
         $configuration['privacy_content_hash']=OnboardingLegalAuthorityValidator::contentHash($privacyHtml);
+        $registration=get_page_by_path('registro-minimarket',OBJECT,'page');
+        if(!$registration instanceof WP_Post)throw new RuntimeException('Registro ausente.');
+        $configuration['registration_page_id']=(int)$registration->ID;
+        $configuration['registration_content_hash']=OnboardingLegalAuthorityValidator::contentHash($registration->post_content);
         update_option(OnboardingLegalConfiguration::OPTION,$configuration,false);
         if($wpdb->query('COMMIT')===false)throw new RuntimeException('Commit legal incierto.');
     }catch(Throwable $exception){$wpdb->query('ROLLBACK');throw $exception;}
-    do_action('litespeed_purge_url',get_permalink($current->termsPageId));
-    do_action('litespeed_purge_url',get_permalink($current->privacyPageId));
+    do_action('litespeed_purge_url',get_permalink($termsId));
+    do_action('litespeed_purge_url',get_permalink($privacyId));
 }
 
 $config = OnboardingLegalConfiguration::fromWordPress();

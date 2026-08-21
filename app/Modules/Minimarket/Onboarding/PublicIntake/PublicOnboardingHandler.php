@@ -6,6 +6,8 @@ namespace VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake;
 
 use VeciAhorra\Modules\Minimarket\Onboarding\Application\StartStoreOnboarding;
 use VeciAhorra\Modules\Minimarket\Onboarding\Application\StartStoreOnboardingCommand;
+use VeciAhorra\Modules\Minimarket\Onboarding\Contracts\CurrentOnboardingTerms;
+use VeciAhorra\Modules\Minimarket\Onboarding\Contracts\OnboardingIntentClassifier;
 
 final class PublicOnboardingHandler
 {
@@ -13,7 +15,9 @@ final class PublicOnboardingHandler
         private StartStoreOnboarding $start,
         private RateLimitIdentityFactory $identities,
         private PublicOnboardingRateLimiter $rateLimiter,
-        private PublicOnboardingErrorTranslator $errors
+        private PublicOnboardingErrorTranslator $errors,
+        private OnboardingIntentClassifier $intentClassifier,
+        private CurrentOnboardingTerms $terms
     ) {}
 
     public function handle(PublicOnboardingRequest $request, PublicClientAddress $client): PublicOnboardingResponse
@@ -26,14 +30,30 @@ final class PublicOnboardingHandler
                 if (! $decision->allowed) return new PublicOnboardingResponse(429, 'rate_limited', retryAfter: $decision->retryAfter, reuseIdempotencyKey: true);
                 return $this->errors->translate($validation);
             }
-            $decision = $this->rateLimiter->consume($client, $identity, $request->idempotencyKey);
-            if (! $decision->allowed) return new PublicOnboardingResponse(429, 'rate_limited', retryAfter: $decision->retryAfter, reuseIdempotencyKey: true);
-            $result = $this->start->execute(new StartStoreOnboardingCommand(
-                $request->accountEmail,
-                $request->ownerRut,
+            $termsVersion = $this->terms->version();
+            $idempotencyHash = hash('sha256', 'minimarket-onboarding-v1|' . $request->idempotencyKey);
+            $result = null;
+            $decision = $this->rateLimiter->consume(
+                $client,
+                $identity,
                 $request->idempotencyKey,
-                $request->termsAccepted
-            ));
+                fn (): string => $this->intentClassifier->classify(
+                    $idempotencyHash,
+                    $identity->normalizedEmail,
+                    $identity->normalizedRut,
+                    $termsVersion
+                ),
+                function () use ($request, &$result): void {
+                    $result = $this->start->execute(new StartStoreOnboardingCommand(
+                        $request->accountEmail,
+                        $request->ownerRut,
+                        $request->idempotencyKey,
+                        $request->termsAccepted
+                    ));
+                }
+            );
+            if (! $decision->allowed) return new PublicOnboardingResponse(429, 'rate_limited', retryAfter: $decision->retryAfter, reuseIdempotencyKey: true);
+            if ($result === null) throw new PublicIntakeException('rate_limit_unavailable');
             return new PublicOnboardingResponse(200, 'accepted', publicId: $result->publicId);
         } catch (\Throwable $exception) {
             return $this->errors->translate($exception);

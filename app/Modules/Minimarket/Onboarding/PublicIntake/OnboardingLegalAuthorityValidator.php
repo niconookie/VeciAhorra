@@ -15,21 +15,45 @@ final class OnboardingLegalAuthorityValidator
             || $config->termsPageId <= 0 || $config->privacyPageId <= 0 || $config->termsPageId === $config->privacyPageId
             || preg_match('/\A[a-f0-9]{64}\z/', $config->termsContentHash) !== 1
             || preg_match('/\A[a-f0-9]{64}\z/', $config->privacyContentHash) !== 1
+            || $config->registrationPageId <= 0 || preg_match('/\A[a-f0-9]{64}\z/', $config->registrationContentHash) !== 1
             || (int) get_option('wp_page_for_privacy_policy', 0) !== $config->privacyPageId) {
             throw new PublicIntakeException('terms_version_unavailable');
         }
         $terms = get_post($config->termsPageId);
         $privacy = get_post($config->privacyPageId);
+        $registration = get_post($config->registrationPageId);
         $this->assertPage($terms, 'terminos-y-condiciones', $config->termsContentHash);
         $this->assertPage($privacy, 'politica-de-privacidad', $config->privacyContentHash);
+        $this->assertPage($registration, 'registro-minimarket', $config->registrationContentHash);
         $this->assertUniqueSlug('terminos-y-condiciones', $config->termsPageId);
         $this->assertUniqueSlug('politica-de-privacidad', $config->privacyPageId);
+        $this->assertUniqueSlug('registro-minimarket', $config->registrationPageId);
         $termsUrl = get_permalink($config->termsPageId);
         $privacyUrl = get_permalink($config->privacyPageId);
         if (! is_string($termsUrl) || $termsUrl === '' || ! is_string($privacyUrl) || $privacyUrl === '') {
             throw new PublicIntakeException('terms_version_unavailable');
         }
+        $registrationUrl = get_permalink($config->registrationPageId);
+        if (! is_string($registrationUrl) || $registrationUrl === ''
+            || untrailingslashit($registrationUrl) !== untrailingslashit(home_url('/registro-minimarket/'))) {
+            throw new PublicIntakeException('terms_version_unavailable');
+        }
         return ['terms_url' => $termsUrl, 'privacy_url' => $privacyUrl];
+    }
+
+    public function isAuthorizedRegistrationPage(mixed $page): bool
+    {
+        try {
+            $config = OnboardingLegalConfiguration::fromWordPress();
+            $this->validate($config);
+            return $page instanceof \WP_Post && $page->ID === $config->registrationPageId
+                && $page->post_type === 'page' && $page->post_status === 'publish'
+                && $page->post_name === 'registro-minimarket'
+                && trim($page->post_content) === '[veciahorra_minimarket_onboarding]'
+                && hash_equals($config->registrationContentHash, self::contentHash($page->post_content));
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public static function contentHash(string $html): string

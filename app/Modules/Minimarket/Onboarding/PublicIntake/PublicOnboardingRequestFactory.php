@@ -6,7 +6,7 @@ namespace VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake;
 
 final class PublicOnboardingRequestFactory
 {
-    private const ALLOWED = [
+    public const ALLOWED_FIELDS = [
         'veciahorra_minimarket_onboarding', '_va_minimarket_onboarding_nonce',
         'account_email', 'owner_rut', 'terms_accepted', 'idempotency_key',
     ];
@@ -15,7 +15,7 @@ final class PublicOnboardingRequestFactory
     public function fromPost(array $post): PublicOnboardingRequest
     {
         foreach ($post as $key => $value) {
-            if (! is_string($key) || ! in_array($key, self::ALLOWED, true) || (! is_string($value) && ! is_int($value))) {
+            if (! is_string($key) || ! in_array($key, self::ALLOWED_FIELDS, true) || (! is_string($value) && ! is_int($value))) {
                 throw new PublicIntakeException('invalid_shape');
             }
         }

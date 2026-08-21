@@ -14,6 +14,27 @@ use VeciAhorra\Modules\Minimarket\Onboarding\Exceptions\OnboardingPublicIdCollis
 
 final class StoreOnboardingApplicationRepository implements StoreOnboardingApplicationWriter
 {
+    public function classify(string $idempotencyHash, string $accountEmail, string $ownerRutNormalized, string $termsVersion): string
+    {
+        if (preg_match('/\A[a-f0-9]{64}\z/', $idempotencyHash) !== 1) throw new RuntimeException('onboarding_lookup_failed');
+        global $wpdb;
+        $previousSuppression = $wpdb->suppress_errors(true);
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$this->table()} WHERE idempotency_key_hash=%s LIMIT 1",
+            $idempotencyHash
+        ), ARRAY_A);
+        $error = (string) ($wpdb->last_error ?? '');
+        $wpdb->suppress_errors($previousSuppression);
+        if ($error !== '') throw new RuntimeException('onboarding_lookup_failed');
+        if (! is_array($row)) return 'new';
+        $application = $this->hydrate($row);
+        $this->assertReplayCompatible($application->data);
+        return $this->sameCreationIntent($application->data, [
+            'account_email' => $accountEmail,
+            'owner_rut_normalized' => $ownerRutNormalized,
+            'terms_version' => $termsVersion,
+        ]) ? 'compatible_replay' : 'conflict';
+    }
     public function createProvisioning(array $data): StoreOnboardingApplication
     {
         $required = ['public_id','account_email','owner_rut_normalized','idempotency_key_hash','terms_version','terms_accepted_at','created_at','updated_at'];
@@ -227,6 +248,11 @@ final class StoreOnboardingApplicationRepository implements StoreOnboardingAppli
         $placeholder = is_int($value) ? '%d' : '%s';
         $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$this->table()} WHERE {$column}={$placeholder} LIMIT 1", $value), ARRAY_A);
         if (! is_array($row)) return null;
+        return $this->hydrate($row);
+    }
+
+    private function hydrate(array $row): StoreOnboardingApplication
+    {
         foreach (['terms_accepted_at','created_at','updated_at'] as $field) {
             $this->requireCanonicalUtcTimestamp((string) $row[$field], $field);
         }

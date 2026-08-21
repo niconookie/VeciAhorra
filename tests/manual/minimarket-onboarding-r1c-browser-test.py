@@ -34,7 +34,13 @@ def paragraphs(path: Path) -> list[tuple[str, str, bool]]:
     for node in body:
         if node.tag != W + "p":
             continue
-        text = "".join((item.text or "") for item in node.findall(".//w:t", NS)).strip()
+        parts: list[str] = []
+        for item in node.iter():
+            if item.tag == W + "t":
+                parts.append(item.text or "")
+            elif item.tag in {W + "br", W + "tab"}:
+                parts.append(" ")
+        text = "".join(parts).strip()
         if not text:
             continue
         style_node = node.find("w:pPr/w:pStyle", NS)
@@ -176,6 +182,8 @@ def certify() -> None:
     assert "Goodbe Analitics SpA" in terms and "78.457.575-6" in terms
     assert "solicitantes de incorporación de minimarkets" in privacy
     assert "<script" not in terms.lower() and "<script" not in privacy.lower()
+    for broken in ("SpARUT", "6Domicilio", "SantiagoCorreo", "SpACorreo", ".clSitio"):
+        assert broken not in terms and broken not in privacy
     terms_items = paragraphs(TERMS)
     skip = False
     certified_terms = 0
@@ -198,6 +206,40 @@ def certify() -> None:
         if cleaned:
             assert html.escape(cleaned) in privacy
             certified_privacy += 1
+    # Independent separator audit: inspect Word XML recursively instead of using
+    # the generation extractor, then require each normalized paragraph in HTML.
+    for path, rendered, privacy_mode in ((TERMS, terms, False), (PRIVACY, privacy, True)):
+        with zipfile.ZipFile(path) as archive:
+            document = ET.fromstring(archive.read("word/document.xml"))
+        body = document.find("w:body", NS)
+        assert body is not None
+        references: list[tuple[str, str]] = []
+        for paragraph in body.findall("w:p", NS):
+            tokens: list[str] = []
+            for child in paragraph.iter():
+                local = child.tag.rsplit("}", 1)[-1]
+                if local == "t":
+                    tokens.append(child.text or "")
+                if local in {"br", "tab"}:
+                    tokens.append(" ")
+            candidate = clean_text("".join(tokens), privacy_mode)
+            if candidate:
+                style_node = paragraph.find("w:pPr/w:pStyle", NS)
+                style = style_node.get(W + "val", "") if style_node is not None else ""
+                references.append((candidate, style))
+        start_needle = "Introducción" if privacy_mode else "CAPÍTULO I: Objeto"
+        starts = [i for i, (value, _) in enumerate(references) if start_needle.lower() in value.lower()]
+        assert starts
+        skip_observation = False
+        for reference, style in references[starts[-1]:]:
+            if reference.lower().rstrip(".") == "observación jurídica":
+                skip_observation = True
+                continue
+            if skip_observation:
+                if heading_level(reference, style) is None:
+                    continue
+                skip_observation = False
+            assert html.escape(reference) in rendered
     print("R1C_LEGAL_SOURCE=PASS", len(terms), len(privacy), f"paragraphs={certified_terms}/{certified_privacy}")
 
 

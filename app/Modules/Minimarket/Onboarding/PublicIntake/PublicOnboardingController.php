@@ -12,7 +12,8 @@ final class PublicOnboardingController
         private PublicOnboardingHandler $handler,
         private RemoteAddressResolver $addresses,
         private PublicOnboardingErrorTranslator $errors,
-        private PublicOnboardingPageState $state
+        private PublicOnboardingPageState $state,
+        private OnboardingLegalAuthorityValidator $legalAuthority
     ) {}
 
     public function handle(): void
@@ -24,7 +25,8 @@ final class PublicOnboardingController
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') return;
         $request = null;
         try {
-            $this->guard->assertAllowed(true, $_SERVER, $_POST, home_url('/'));
+            [$rawBody, $completeBody] = $this->readRawBody();
+            $this->guard->assertAllowed(true, $_SERVER, $_POST, home_url('/'), $rawBody, $completeBody);
             $request = $this->requests->fromPost($_POST);
             $response = $this->handler->handle($request, $this->addresses->resolve($_SERVER));
         } catch (\Throwable $exception) {
@@ -48,7 +50,22 @@ final class PublicOnboardingController
     private function isOnboardingPage(): bool
     {
         $page = get_queried_object();
-        return $page instanceof \WP_Post && $page->post_type === 'page'
-            && has_shortcode($page->post_content, 'veciahorra_minimarket_onboarding');
+        return $this->legalAuthority->isAuthorizedRegistrationPage($page);
+    }
+
+    /** @return array{string,bool} */
+    private function readRawBody(): array
+    {
+        $stream = fopen('php://input', 'rb');
+        if (! is_resource($stream)) return ['', false];
+        $body = '';
+        while (strlen($body) <= PublicRequestGuard::MAX_BODY_BYTES && ! feof($stream)) {
+            $chunk = fread($stream, PublicRequestGuard::MAX_BODY_BYTES + 1 - strlen($body));
+            if (! is_string($chunk)) { fclose($stream); return [$body, false]; }
+            $body .= $chunk;
+        }
+        $complete = feof($stream);
+        fclose($stream);
+        return [$body, $complete];
     }
 }

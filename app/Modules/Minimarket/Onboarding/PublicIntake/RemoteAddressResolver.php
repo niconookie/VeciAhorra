@@ -14,7 +14,12 @@ final class RemoteAddressResolver
         $packed = @inet_pton($raw);
         if ($packed === false) throw new PublicIntakeException('invalid_remote_address');
         if (strlen($packed) === 4) return new PublicClientAddress($packed, 32);
-        if (strlen($packed) === 16) return new PublicClientAddress(substr($packed, 0, 8), 64);
+        if (strlen($packed) === 16) {
+            if (substr($packed, 0, 12) === str_repeat("\0", 10) . "\xff\xff") {
+                return new PublicClientAddress(substr($packed, 12, 4), 32);
+            }
+            return new PublicClientAddress(substr($packed, 0, 8), 64);
+        }
         throw new PublicIntakeException('invalid_remote_address');
     }
 }

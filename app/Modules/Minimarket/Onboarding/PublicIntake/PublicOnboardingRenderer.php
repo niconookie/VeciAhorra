@@ -10,11 +10,13 @@ final class PublicOnboardingRenderer
         private IdempotencyKeyIssuer $keys,
         private OnboardingLegalLinkProvider $legalLinks,
         private PublicOnboardingPageState $state,
-        private PublicOnboardingAssets $assets
+        private PublicOnboardingAssets $assets,
+        private OnboardingLegalAuthorityValidator $legalAuthority
     ) {}
 
     public function render(): string
     {
+        if (! $this->legalAuthority->isAuthorizedRegistrationPage(get_queried_object())) return '';
         $this->assets->enqueue();
         $response = $this->state->response();
         try {

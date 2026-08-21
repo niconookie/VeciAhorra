@@ -34,6 +34,9 @@ $ipv4 = $resolver->resolve(['REMOTE_ADDR' => '192.0.2.4', 'HTTP_X_FORWARDED_FOR'
 $ipv6a = $resolver->resolve(['REMOTE_ADDR' => '2001:db8:abcd:12::1']);
 $ipv6b = $resolver->resolve(['REMOTE_ADDR' => '2001:db8:abcd:12:ffff::2']);
 r1c_assert($ipv4->prefixLength === 32 && $ipv6a->prefixLength === 64 && $ipv6a->networkBytes === $ipv6b->networkBytes, 'Normalización IP inválida.');
+$mappedA = $resolver->resolve(['REMOTE_ADDR' => '::ffff:192.0.2.4']);
+$mappedB = $resolver->resolve(['REMOTE_ADDR' => '::ffff:c000:0204']);
+r1c_assert($mappedA->prefixLength === 32 && $mappedA->networkBytes === $ipv4->networkBytes && $mappedB->networkBytes === $ipv4->networkBytes, 'IPv4 mapped inválida.');
 
 $deriver = new HmacRateLimitKeyDeriver(str_repeat('s', 64));
 $digest = $deriver->derive('email', 'owner@example.com');
@@ -44,16 +47,22 @@ r1c_assert($translator->translate(new OnboardingInputException('invalid_email'))
 r1c_assert($translator->translate(new OnboardingInputException('terms_version_unavailable'))->httpStatus === 503, 'Traducción legal inválida.');
 
 $nonce = wp_create_nonce(PublicRequestGuard::NONCE_ACTION);
-$server = ['REQUEST_METHOD'=>'POST','CONTENT_TYPE'=>'application/x-www-form-urlencoded','CONTENT_LENGTH'=>'200','HTTP_ORIGIN'=>home_url('/'),'REMOTE_ADDR'=>'127.0.0.1'];
 $post = ['veciahorra_minimarket_onboarding'=>'1',PublicRequestGuard::NONCE_FIELD=>$nonce];
-(new PublicRequestGuard())->assertAllowed(true, $server, $post, home_url('/'));
+$raw = http_build_query($post);
+$server = ['REQUEST_METHOD'=>'POST','CONTENT_TYPE'=>'application/x-www-form-urlencoded','CONTENT_LENGTH'=>(string)strlen($raw),'HTTP_ORIGIN'=>home_url('/'),'REMOTE_ADDR'=>'127.0.0.1'];
+(new PublicRequestGuard())->assertAllowed(true, $server, $post, home_url('/'), $raw, true);
 foreach ([
     array_merge($server, ['HTTP_ORIGIN'=>'https://evil.example']),
     array_diff_key($server, ['HTTP_ORIGIN'=>true]),
     array_merge($server, ['CONTENT_TYPE'=>'application/json']),
     array_merge($server, ['CONTENT_LENGTH'=>'8193']),
 ] as $bad) {
-    try { (new PublicRequestGuard())->assertAllowed(true, $bad, $post, home_url('/')); throw new RuntimeException('Guard hostil aceptado.'); } catch (\VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\PublicIntakeException) {}
+    try { (new PublicRequestGuard())->assertAllowed(true, $bad, $post, home_url('/'), $raw, true); throw new RuntimeException('Guard hostil aceptado.'); } catch (\VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\PublicIntakeException) {}
 }
+foreach ([['1',true],['8193',true],[(string)(strlen($raw)-1),true],[(string)(strlen($raw)+1),true],[(string)strlen($raw),false]] as [$length,$complete]) {
+    try { (new PublicRequestGuard())->assertAllowed(true,array_merge($server,['CONTENT_LENGTH'=>$length]),$post,home_url('/'),$raw,$complete); throw new RuntimeException('Longitud hostil aceptada.'); } catch (\VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\PublicIntakeException) {}
+}
+try { (new PublicRequestGuard())->assertAllowed(true,array_diff_key($server,['CONTENT_LENGTH'=>true]),$post,home_url('/'),$raw,true); } catch (Throwable) { throw new RuntimeException('Body verificable sin longitud rechazado.'); }
+try { (new PublicRequestGuard())->assertAllowed(true,$server,$post,home_url('/'),$raw.'&veciahorra_minimarket_onboarding=1',true); throw new RuntimeException('Clave repetida aceptada.'); } catch (\VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\PublicIntakeException) {}
 
 echo "R1C_ISOLATED=PASS request=PASS guard=PASS origin=PASS nonce=PASS ip=PASS key=PASS privacy=PASS\n";

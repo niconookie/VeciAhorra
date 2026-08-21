@@ -20,14 +20,16 @@ final readonly class OnboardingLegalConfiguration
         public string $privacyVersion,
         public string $privacyEffectiveDate,
         public int $privacyPageId,
-        public string $privacyContentHash
+        public string $privacyContentHash,
+        public int $registrationPageId,
+        public string $registrationContentHash
     ) {}
 
     public static function fromWordPress(): self
     {
         $value = get_option(self::OPTION, null);
         if (! is_array($value)) throw new PublicIntakeException('terms_version_unavailable');
-        $keys = ['joint_version','terms_document_code','terms_version','terms_effective_date','terms_page_id','terms_content_hash','privacy_document_code','privacy_version','privacy_effective_date','privacy_page_id','privacy_content_hash'];
+        $keys = ['joint_version','terms_document_code','terms_version','terms_effective_date','terms_page_id','terms_content_hash','privacy_document_code','privacy_version','privacy_effective_date','privacy_page_id','privacy_content_hash','registration_page_id','registration_content_hash'];
         if (array_diff($keys, array_keys($value)) !== [] || array_diff(array_keys($value), $keys) !== []) {
             throw new PublicIntakeException('terms_version_unavailable');
         }
@@ -36,7 +38,8 @@ final readonly class OnboardingLegalConfiguration
             (string) $value['joint_version'], (string) $value['terms_document_code'], (string) $value['terms_version'],
             (string) $value['terms_effective_date'], (int) $value['terms_page_id'], (string) $value['terms_content_hash'],
             (string) $value['privacy_document_code'], (string) $value['privacy_version'], (string) $value['privacy_effective_date'],
-            (int) $value['privacy_page_id'], (string) $value['privacy_content_hash']
+            (int) $value['privacy_page_id'], (string) $value['privacy_content_hash'],
+            (int) $value['registration_page_id'], (string) $value['registration_content_hash']
         );
     }
 }
