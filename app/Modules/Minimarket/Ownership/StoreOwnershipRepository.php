@@ -36,8 +36,15 @@ final class StoreOwnershipRepository
         if (count($projection) > 1) throw new RuntimeException('store_owner_historical_user_ambiguous');
         if ($projection === []) return null;
         $storeId = $projection[0];
-        if ((int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE id=%d", $storeId)) !== 1) {
+        $historicalStore = $wpdb->get_row($wpdb->prepare(
+            "SELECT id,owner_user_id FROM {$table} WHERE id=%d",
+            $storeId
+        ), ARRAY_A);
+        if (! is_array($historicalStore)) {
             throw new RuntimeException('store_owner_historical_store_missing');
+        }
+        if ($historicalStore['owner_user_id'] !== null && (int) $historicalStore['owner_user_id'] !== $userId) {
+            throw new RuntimeException('store_owner_projection_conflict');
         }
         if ((int) $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(DISTINCT user_id) FROM {$wpdb->usermeta} WHERE meta_key=%s AND CAST(meta_value AS UNSIGNED)=%d",
@@ -49,7 +56,17 @@ final class StoreOwnershipRepository
 
     public function assignOwner(int $storeId, int $userId): void
     {
-        if ($storeId <= 0 || $userId <= 0 || get_userdata($userId) === false) {
+        $this->setOwnerStoreForUser($userId, $storeId);
+    }
+
+    public function unassignOwner(int $userId): void
+    {
+        $this->setOwnerStoreForUser($userId, null);
+    }
+
+    public function setOwnerStoreForUser(int $userId, ?int $storeId): void
+    {
+        if ($userId <= 0 || ($storeId !== null && $storeId <= 0) || get_userdata($userId) === false) {
             throw new RuntimeException('store_owner_invalid_assignment');
         }
         global $wpdb;
@@ -58,33 +75,68 @@ final class StoreOwnershipRepository
             throw new RuntimeException('store_owner_assignment_transaction_failed');
         }
         try {
-            $store = $wpdb->get_row($wpdb->prepare(
-                "SELECT id,owner_user_id FROM {$table} WHERE id=%d FOR UPDATE",
-                $storeId
-            ), ARRAY_A);
-            if (! is_array($store)) throw new RuntimeException('store_owner_store_missing');
-            if ($store['owner_user_id'] !== null && (int) $store['owner_user_id'] !== $userId) {
-                throw new RuntimeException('store_owner_store_already_owned');
-            }
-            $other = (int) $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM {$table} WHERE owner_user_id=%d AND id<>%d LIMIT 1 FOR UPDATE",
-                $userId,
-                $storeId
-            ));
-            if ($other > 0) throw new RuntimeException('store_owner_user_already_owns_store');
+            $owned = array_map('intval', $wpdb->get_col($wpdb->prepare(
+                "SELECT id FROM {$table} WHERE owner_user_id=%d ORDER BY id FOR UPDATE",
+                $userId
+            )));
+            if (count($owned) > 1) throw new RuntimeException('store_owner_authority_ambiguous');
             $projection = $this->projectedStoreIds($userId, true);
-            if ($projection !== [] && $projection !== [$storeId]) {
+            if (count($projection) > 1) throw new RuntimeException('store_owner_historical_user_ambiguous');
+            if ($owned !== [] && $projection !== [] && $projection !== $owned) {
                 throw new RuntimeException('store_owner_projection_conflict');
             }
-            if ($wpdb->update($table, ['owner_user_id' => $userId], ['id' => $storeId]) === false) {
-                throw new RuntimeException('store_owner_assignment_failed');
+
+            if ($storeId !== null) {
+                $store = $wpdb->get_row($wpdb->prepare(
+                    "SELECT id,owner_user_id FROM {$table} WHERE id=%d FOR UPDATE",
+                    $storeId
+                ), ARRAY_A);
+                if (! is_array($store)) throw new RuntimeException('store_owner_store_missing');
+                if ($store['owner_user_id'] !== null && (int) $store['owner_user_id'] !== $userId) {
+                    throw new RuntimeException('store_owner_store_already_owned');
+                }
+                $otherProjectedUsers = array_map('intval', $wpdb->get_col($wpdb->prepare(
+                    "SELECT DISTINCT user_id FROM {$wpdb->usermeta}"
+                    . " WHERE meta_key=%s AND CAST(meta_value AS UNSIGNED)=%d AND user_id<>%d FOR UPDATE",
+                    MinimarketRole::STORE_META_KEY,
+                    $storeId,
+                    $userId
+                )));
+                if ($otherProjectedUsers !== []) {
+                    throw new RuntimeException('store_owner_historical_store_ambiguous');
+                }
             }
-            $this->reconcileCompatibilityProjection($storeId, $userId);
+
+            if ($owned !== [] && ($storeId === null || $owned[0] !== $storeId)) {
+                if ($wpdb->update($table, ['owner_user_id' => null], ['id' => $owned[0], 'owner_user_id' => $userId]) === false) {
+                    throw new RuntimeException('store_owner_unassignment_failed');
+                }
+            }
+            if ($storeId !== null && ($owned === [] || $owned[0] !== $storeId)) {
+                if ($wpdb->update($table, ['owner_user_id' => $userId], ['id' => $storeId, 'owner_user_id' => null]) !== 1) {
+                    throw new RuntimeException('store_owner_assignment_failed');
+                }
+            }
+            if ($wpdb->delete($wpdb->usermeta, [
+                'user_id' => $userId,
+                'meta_key' => MinimarketRole::STORE_META_KEY,
+            ]) === false) {
+                throw new RuntimeException('store_owner_projection_write_failed');
+            }
+            if ($storeId !== null && $wpdb->insert($wpdb->usermeta, [
+                'user_id' => $userId,
+                'meta_key' => MinimarketRole::STORE_META_KEY,
+                'meta_value' => $storeId,
+            ]) !== 1) {
+                throw new RuntimeException('store_owner_projection_write_failed');
+            }
             if ($wpdb->query('COMMIT') === false) {
                 throw new RuntimeException('store_owner_assignment_commit_failed');
             }
+            clean_user_cache($userId);
         } catch (\Throwable $exception) {
             $wpdb->query('ROLLBACK');
+            clean_user_cache($userId);
             throw $exception;
         }
     }

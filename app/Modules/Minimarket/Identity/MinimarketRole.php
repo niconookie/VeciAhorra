@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Minimarket\Identity;
 
+use VeciAhorra\Modules\Minimarket\Ownership\StoreOwnershipRepository;
+
 final class MinimarketRole
 {
     public const ROLE = 'veciahorra_minimarket';
@@ -33,7 +35,11 @@ final class MinimarketRole
         global $wpdb;
         $table = $wpdb->prefix . \VeciAhorra\Core\Config::TABLE_PREFIX . 'stores';
         $stores = $wpdb->get_results("SELECT id, business_name, status FROM {$table} ORDER BY business_name", ARRAY_A);
-        $selected = (int) get_user_meta($user->ID, self::STORE_META_KEY, true);
+        try {
+            $selected = (new StoreOwnershipRepository())->resolveStoreIdForOwnerUser((int) $user->ID) ?? 0;
+        } catch (\RuntimeException) {
+            $selected = 0;
+        }
         wp_nonce_field('veciahorra_assign_store_' . $user->ID, 'veciahorra_store_nonce');
         ?>
         <h2><?php esc_html_e('Minimarket VeciAhorra', 'veciahorra'); ?></h2>
@@ -46,7 +52,7 @@ final class MinimarketRole
                         <?php echo esc_html($store['business_name'] . ' (' . $store['status'] . ')'); ?>
                     </option>
                 <?php endforeach; ?>
-            </select><p class="description"><?php esc_html_e('Esta asociación es la única autoridad user → store del panel minimarket.', 'veciahorra'); ?></p></td>
+            </select><p class="description"><?php esc_html_e('La asignación se guarda en el Store; el perfil conserva una proyección de compatibilidad.', 'veciahorra'); ?></p></td>
         </tr></table>
         <?php
     }
@@ -59,14 +65,18 @@ final class MinimarketRole
             return;
         }
         $storeId = isset($_POST['veciahorra_store_id']) ? absint($_POST['veciahorra_store_id']) : 0;
-        if ($storeId === 0) {
-            delete_user_meta($userId, self::STORE_META_KEY);
-            return;
-        }
-        global $wpdb;
-        $table = $wpdb->prefix . \VeciAhorra\Core\Config::TABLE_PREFIX . 'stores';
-        if ((int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE id=%d", $storeId)) === 1) {
-            update_user_meta($userId, self::STORE_META_KEY, $storeId);
+        try {
+            (new StoreOwnershipRepository())->setOwnerStoreForUser(
+                $userId,
+                $storeId > 0 ? $storeId : null
+            );
+        } catch (\RuntimeException $exception) {
+            add_settings_error(
+                'veciahorra_store_ownership',
+                $exception->getMessage(),
+                __('No fue posible cambiar el Store porque la asignación requiere revisión.', 'veciahorra'),
+                'error'
+            );
         }
     }
 }

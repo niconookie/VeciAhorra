@@ -87,11 +87,32 @@ try {
     $otherStore=$newStore('other'); update_user_meta($historicalUser,MinimarketRole::STORE_META_KEY,$otherStore);
     r1aThrows(static fn()=>$ownerRepo->resolveStoreIdForOwnerUser($historicalUser),'store_owner_projection_conflict');
     update_user_meta($historicalUser,MinimarketRole::STORE_META_KEY,$historicalStore);
+    $foreignOwner=$newUser('foreignowner'); $foreignStore=$newStore('foreignowner',$foreignOwner);
+    $foreignProjected=$newUser('foreignprojected'); add_user_meta($foreignProjected,MinimarketRole::STORE_META_KEY,$foreignStore);
+    r1aThrows(static fn()=>$ownerRepo->resolveStoreIdForOwnerUser($foreignProjected),'store_owner_projection_conflict');
+    r1aAssert((int)$wpdb->get_var($wpdb->prepare("SELECT owner_user_id FROM {$stores} WHERE id=%d",$foreignStore))===$foreignOwner,'Fallback altero owner canonico.');
+    r1aAssert((int)get_user_meta($foreignProjected,MinimarketRole::STORE_META_KEY,true)===$foreignStore,'Fallback altero proyeccion conflictiva.');
+    delete_user_meta($foreignProjected,MinimarketRole::STORE_META_KEY,$foreignStore);
+
+    $adminUser=$newUser('adminassignment'); $adminStoreA=$newStore('admina'); $adminStoreB=$newStore('adminb');
+    $ownerRepo->setOwnerStoreForUser($adminUser,$adminStoreA);
+    r1aAssert($ownerRepo->resolveStoreIdForOwnerUser($adminUser)===$adminStoreA,'Asignacion administrativa fallo.');
+    $ownerRepo->setOwnerStoreForUser($adminUser,$adminStoreB);
+    r1aAssert($ownerRepo->resolveStoreIdForOwnerUser($adminUser)===$adminStoreB,'Reasignacion administrativa fallo.');
+    r1aAssert($wpdb->get_var($wpdb->prepare("SELECT owner_user_id FROM {$stores} WHERE id=%d",$adminStoreA))===null,'Reasignacion no libero Store anterior.');
+    $ownerRepo->unassignOwner($adminUser);
+    r1aAssert($ownerRepo->resolveStoreIdForOwnerUser($adminUser)===null,'Desasignacion administrativa fallo.');
+    r1aThrows(static fn()=>$ownerRepo->setOwnerStoreForUser($adminUser,PHP_INT_MAX),'store_owner_store_missing');
+    r1aThrows(static fn()=>$ownerRepo->setOwnerStoreForUser($adminUser,$foreignStore),'store_owner_store_already_owned');
+    add_user_meta($foreignProjected,MinimarketRole::STORE_META_KEY,$otherStore);
+    r1aThrows(static fn()=>$ownerRepo->setOwnerStoreForUser($adminUser,$otherStore),'store_owner_historical_store_ambiguous');
+    delete_user_meta($foreignProjected,MinimarketRole::STORE_META_KEY,$otherStore);
     $wpdb->suppress_errors(true);
     r1aAssert($wpdb->update($stores,['owner_user_id'=>$historicalUser],['id'=>$otherStore])===false,'Unicidad owner_user_id no rechazo duplicado.'); $wpdb->last_error='';
     $wpdb->suppress_errors(false);
 
     $migration=new CreateStoreOnboardingFoundation();
+    $migration->assertStructure();
     $migration->validatedBackfillCandidates();
     add_user_meta($historicalUser,MinimarketRole::STORE_META_KEY,$otherStore);
     r1aThrows(static fn()=>$migration->validatedBackfillCandidates(),'store_owner_backfill_user_ambiguous');
@@ -127,6 +148,7 @@ try {
     $conflicting=$input; $conflicting['public_id']='onb_'.wp_generate_password(24,false);
     r1aThrows(static fn()=>$repo->createProvisioning($conflicting),'onboarding_idempotency_conflict'); $wpdb->last_error='';
     r1aThrows(static fn()=>$repo->attachUser((int)$app->data['id'],$historicalUser,$now,$now),'onboarding_updated_at_must_advance');
+    r1aThrows(static fn()=>$repo->attachUser((int)$app->data['id'],PHP_INT_MAX,$now,$later),'onboarding_user_missing');
     $app=$repo->attachUser((int)$app->data['id'],$historicalUser,$now,$later);
     r1aAssert($repo->findByUserId($historicalUser)?->data['status']===Application::ACCOUNT_CREATED,'Attach user fallo.');
     r1aThrows(static fn()=>$repo->markProfileIncomplete((int)$app->data['id'],$now,$later2),'onboarding_concurrent_modification');
@@ -134,7 +156,11 @@ try {
     $later3=gmdate('Y-m-d H:i:s',time()+3); $app=$repo->markReadyToMaterialize((int)$app->data['id'],$later2,$later3);
     $later4=gmdate('Y-m-d H:i:s',time()+4); $app=$repo->incrementAttempt((int)$app->data['id'],$later3,$later4);
     r1aAssert((int)$app->data['attempt_count']===1,'Increment attempt fallo.');
-    $later5=gmdate('Y-m-d H:i:s',time()+5); $app=$repo->attachMaterializedStore((int)$app->data['id'],$historicalStore,$later4,$later5);
+    $later5=gmdate('Y-m-d H:i:s',time()+5);
+    r1aThrows(static fn()=>$repo->attachMaterializedStore((int)$app->data['id'],PHP_INT_MAX,$later4,$later5),'onboarding_store_missing');
+    r1aThrows(static fn()=>$repo->attachMaterializedStore((int)$app->data['id'],$otherStore,$later4,$later5),'onboarding_store_owner_missing');
+    r1aThrows(static fn()=>$repo->attachMaterializedStore((int)$app->data['id'],$foreignStore,$later4,$later5),'onboarding_store_owner_conflict');
+    $app=$repo->attachMaterializedStore((int)$app->data['id'],$historicalStore,$later4,$later5);
     r1aAssert($app->data['status']===Application::STORE_MATERIALIZED,'Materializacion fallo.');
     $failureInput=$input;
     $failureInput['public_id']='onb_'.wp_generate_password(24,false);

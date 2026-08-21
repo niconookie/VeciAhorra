@@ -63,6 +63,7 @@ final class StoreOnboardingApplicationRepository
     public function attachUser(int $id, int $userId, string $expectedUpdatedAt, string $updatedAt): StoreOnboardingApplication
     {
         if ($userId <= 0) throw new InvalidArgumentException('onboarding_invalid_user_id');
+        if (get_userdata($userId) === false) throw new RuntimeException('onboarding_user_missing');
         return $this->transition($id, StoreOnboardingApplication::PROVISIONING, StoreOnboardingApplication::ACCOUNT_CREATED, $expectedUpdatedAt, $updatedAt, ['user_id'=>$userId]);
     }
     public function markProfileIncomplete(int $id, string $expectedUpdatedAt, string $updatedAt): StoreOnboardingApplication
@@ -76,7 +77,52 @@ final class StoreOnboardingApplicationRepository
     public function attachMaterializedStore(int $id, int $storeId, string $expectedUpdatedAt, string $updatedAt): StoreOnboardingApplication
     {
         if ($storeId <= 0) throw new InvalidArgumentException('onboarding_invalid_store_id');
-        return $this->transition($id, StoreOnboardingApplication::READY_TO_MATERIALIZE, StoreOnboardingApplication::STORE_MATERIALIZED, $expectedUpdatedAt, $updatedAt, ['store_id'=>$storeId]);
+        global $wpdb;
+        if ($wpdb->query('START TRANSACTION') === false) {
+            throw new RuntimeException('onboarding_materialization_transaction_failed');
+        }
+        try {
+            $application = $wpdb->get_row($wpdb->prepare(
+                "SELECT user_id,status,updated_at FROM {$this->table()} WHERE id=%d FOR UPDATE",
+                $id
+            ), ARRAY_A);
+            if (! is_array($application)) throw new RuntimeException('onboarding_not_found');
+            if ((string) $application['status'] !== StoreOnboardingApplication::READY_TO_MATERIALIZE
+                || (string) $application['updated_at'] !== $expectedUpdatedAt) {
+                throw new RuntimeException('onboarding_concurrent_modification');
+            }
+            $userId = (int) ($application['user_id'] ?? 0);
+            if ($userId <= 0 || (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT ID FROM {$wpdb->users} WHERE ID=%d FOR UPDATE",
+                $userId
+            )) !== $userId) {
+                throw new RuntimeException('onboarding_user_missing');
+            }
+            $store = $wpdb->get_row($wpdb->prepare(
+                "SELECT id,owner_user_id FROM {$this->storesTable()} WHERE id=%d FOR UPDATE",
+                $storeId
+            ), ARRAY_A);
+            if (! is_array($store)) throw new RuntimeException('onboarding_store_missing');
+            if ($store['owner_user_id'] === null) throw new RuntimeException('onboarding_store_owner_missing');
+            if ((int) $store['owner_user_id'] !== $userId) {
+                throw new RuntimeException('onboarding_store_owner_conflict');
+            }
+            $result = $this->transition(
+                $id,
+                StoreOnboardingApplication::READY_TO_MATERIALIZE,
+                StoreOnboardingApplication::STORE_MATERIALIZED,
+                $expectedUpdatedAt,
+                $updatedAt,
+                ['store_id'=>$storeId]
+            );
+            if ($wpdb->query('COMMIT') === false) {
+                throw new RuntimeException('onboarding_materialization_commit_failed');
+            }
+            return $result;
+        } catch (\Throwable $exception) {
+            $wpdb->query('ROLLBACK');
+            throw $exception;
+        }
     }
     public function markProvisioningFailed(int $id, string $failureCode, string $expectedUpdatedAt, string $updatedAt): StoreOnboardingApplication
     {
@@ -176,5 +222,10 @@ final class StoreOnboardingApplicationRepository
     {
         global $wpdb;
         return $wpdb->prefix . Config::TABLE_PREFIX . 'store_onboarding_applications';
+    }
+    private function storesTable(): string
+    {
+        global $wpdb;
+        return $wpdb->prefix . Config::TABLE_PREFIX . 'stores';
     }
 }
