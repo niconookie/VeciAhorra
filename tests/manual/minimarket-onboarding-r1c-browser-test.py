@@ -206,14 +206,51 @@ def certify() -> None:
         if cleaned:
             assert html.escape(cleaned) in privacy
             certified_privacy += 1
-    # Independent separator audit: inspect Word XML recursively instead of using
-    # the generation extractor, then require each normalized paragraph in HTML.
+    # Independent audit. This intentionally does not call clean_text(),
+    # heading_level(), paragraphs(), render_body(), or any generator helper.
+    editorial_replacements = {
+        "comunidades y o barrios": "comunidades y/o barrios",
+        "Principio del formulario": "",
+        "Final del formulario": "",
+        "Goodbe Analitics SpA_": "Goodbe Analitics SpA",
+        "POLITICA": "POLÍTICA",
+        "Correo electrónica": "Correo electrónico",
+        "CAPITULO: Definiciones": "CAPÍTULO II: Definiciones",
+    }
+
+    def reference_normalize(value: str, privacy_mode: bool) -> str:
+        value = value.replace("\r\n", "\n").replace("\r", "\n")
+        for old, new in editorial_replacements.items():
+            if privacy_mode or old not in {"POLITICA", "Correo electrónica"}:
+                value = value.replace(old, new)
+        value = re.sub(r"\s+", " ", value).strip()
+        value = re.sub(r"^CAPITULO\b", "CAPÍTULO", value)
+        value = re.sub(r"^(CAPÍTULO\s+[IVXLCDM]+)(?!:)\s+", r"\1: ", value)
+        return value
+
+    def reference_heading(value: str, style: str) -> bool:
+        lowered = style.lower()
+        return bool(re.search(r"(?:heading|ttulo|titulo)\d+", lowered)) or bool(re.match(r"^CAP[IÍ]TULO\b", value, re.I)) or (
+            len(value) <= 100 and not value.endswith(".") and bool(style) and "normal" not in lowered
+        )
+
+    def reference_matches(value: str, rendered: str, numbered: bool = False) -> bool:
+        escaped = html.escape(value)
+        return (f"<li>{escaped}</li>" in rendered) if numbered else (escaped in rendered)
+
+    original_clean_text = clean_text
+    globals()["clean_text"] = lambda *_args, **_kwargs: "MUTATED_GENERATOR_TEXT"
+    try:
+        assert reference_normalize("Goodbe Analitics SpA\tRUT", False) == "Goodbe Analitics SpA RUT"
+    finally:
+        globals()["clean_text"] = original_clean_text
+
     for path, rendered, privacy_mode in ((TERMS, terms, False), (PRIVACY, privacy, True)):
         with zipfile.ZipFile(path) as archive:
             document = ET.fromstring(archive.read("word/document.xml"))
         body = document.find("w:body", NS)
         assert body is not None
-        references: list[tuple[str, str]] = []
+        references: list[tuple[str, str, bool]] = []
         for paragraph in body.findall("w:p", NS):
             tokens: list[str] = []
             for child in paragraph.iter():
@@ -222,24 +259,34 @@ def certify() -> None:
                     tokens.append(child.text or "")
                 if local in {"br", "tab"}:
                     tokens.append(" ")
-            candidate = clean_text("".join(tokens), privacy_mode)
+            candidate = reference_normalize("".join(tokens), privacy_mode)
             if candidate:
                 style_node = paragraph.find("w:pPr/w:pStyle", NS)
                 style = style_node.get(W + "val", "") if style_node is not None else ""
-                references.append((candidate, style))
+                numbered = paragraph.find("w:pPr/w:numPr", NS) is not None
+                references.append((candidate, style, numbered))
         start_needle = "Introducción" if privacy_mode else "CAPÍTULO I: Objeto"
-        starts = [i for i, (value, _) in enumerate(references) if start_needle.lower() in value.lower()]
+        starts = [i for i, (value, _, _) in enumerate(references) if start_needle.lower() in value.lower()]
         assert starts
         skip_observation = False
-        for reference, style in references[starts[-1]:]:
+        for reference, style, numbered in references[starts[-1]:]:
             if reference.lower().rstrip(".") == "observación jurídica":
                 skip_observation = True
                 continue
             if skip_observation:
-                if heading_level(reference, style) is None:
+                if not reference_heading(reference, style):
                     continue
                 skip_observation = False
-            assert html.escape(reference) in rendered
+            assert reference_matches(reference, rendered, numbered)
+    separator_mutations = (
+        (terms, "Goodbe Analitics SpA RUT", "Goodbe Analitics SpARUT"),
+        (terms, "Santiago Correo electrónico", "SantiagoCorreo electrónico"),
+        (privacy, "Goodbe Analitics SpA Correo electrónico", "Goodbe Analitics SpACorreo electrónico"),
+    )
+    for rendered, correct, broken in separator_mutations:
+        assert correct in rendered
+        mutated = rendered.replace(correct, broken, 1)
+        assert not reference_matches(correct, mutated) and broken in mutated
     print("R1C_LEGAL_SOURCE=PASS", len(terms), len(privacy), f"paragraphs={certified_terms}/{certified_privacy}")
 
 

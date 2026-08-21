@@ -29,9 +29,7 @@ final class PublicRequestGuard
         if (! is_string($contentType) || strtolower(trim(explode(';', $contentType, 2)[0])) !== 'application/x-www-form-urlencoded') {
             throw new PublicIntakeException('invalid_content_type');
         }
-        $transferEncoding = $server['HTTP_TRANSFER_ENCODING'] ?? $server['TRANSFER_ENCODING'] ?? null;
-        if ($transferEncoding !== null && (! is_string($transferEncoding)
-            || strtolower(trim($transferEncoding)) !== 'chunked' || str_contains($transferEncoding, ','))) {
+        if (array_key_exists('HTTP_TRANSFER_ENCODING', $server) || array_key_exists('TRANSFER_ENCODING', $server)) {
             throw new PublicIntakeException('payload_too_large');
         }
         if (! is_string($rawBody) || ! $rawBodyComplete || strlen($rawBody) > self::MAX_BODY_BYTES) {
@@ -64,6 +62,8 @@ final class PublicRequestGuard
     /** @param array<string,mixed> $post */
     private function assertRawFormMatches(string $rawBody, array $post): void
     {
+        $invalidPercentEncoding = preg_match('/%(?![0-9A-Fa-f]{2})/', $rawBody);
+        if ($invalidPercentEncoding !== 0) throw new PublicIntakeException('invalid_shape');
         $seen = [];
         foreach ($rawBody === '' ? [] : explode('&', $rawBody) as $pair) {
             $parts = explode('=', $pair, 2);

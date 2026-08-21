@@ -65,4 +65,46 @@ foreach ([['1',true],['8193',true],[(string)(strlen($raw)-1),true],[(string)(str
 try { (new PublicRequestGuard())->assertAllowed(true,array_diff_key($server,['CONTENT_LENGTH'=>true]),$post,home_url('/'),$raw,true); } catch (Throwable) { throw new RuntimeException('Body verificable sin longitud rechazado.'); }
 try { (new PublicRequestGuard())->assertAllowed(true,$server,$post,home_url('/'),$raw.'&veciahorra_minimarket_onboarding=1',true); throw new RuntimeException('Clave repetida aceptada.'); } catch (\VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\PublicIntakeException) {}
 
+foreach (['chunked','identity','',' CHUNKED ','chunked, identity','owner@example.com SQL SELECT'] as $encoding) {
+    foreach (['HTTP_TRANSFER_ENCODING','TRANSFER_ENCODING'] as $headerName) foreach ([false,true] as $withLength) {
+        $framed=$withLength?$server:array_diff_key($server,['CONTENT_LENGTH'=>true]);
+        $framed[$headerName]=$encoding;
+        try { (new PublicRequestGuard())->assertAllowed(true,$framed,$post,home_url('/'),$raw,true); throw new RuntimeException('Transfer-Encoding aceptado.'); } catch (\VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\PublicIntakeException $e) {
+            r1c_assert($e->getPrevious()===null&&($encoding===''||!str_contains($e->getMessage(),$encoding)),'Transfer-Encoding reflejado.');
+        }
+    }
+}
+
+foreach ([8191,8192,8193] as $bodyBytes) {
+    $boundaryPost=$post+['account_email'=>''];$emptyBoundary=http_build_query($boundaryPost);
+    $boundaryPost['account_email']=str_repeat('X',$bodyBytes-strlen($emptyBoundary));$boundaryRaw=http_build_query($boundaryPost);
+    r1c_assert(strlen($boundaryRaw)===$bodyBytes,'Fixture de límite incorrecto.');
+    $boundaryServer=$server;$boundaryServer['CONTENT_LENGTH']=(string)$bodyBytes;
+    try {
+        (new PublicRequestGuard())->assertAllowed(true,$boundaryServer,$boundaryPost,home_url('/'),$boundaryRaw,true);
+        r1c_assert($bodyBytes<=8192,'Body de 8.193 aceptado.');
+    } catch (\VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\PublicIntakeException $e) {
+        r1c_assert($bodyBytes===8193&&$e->reason()==='payload_too_large','Límite válido rechazado.');
+    }
+}
+
+foreach (['%','%0','%ZZ','%G0','%0G','x%','x%0','x%ZZy','%20%ZZ','%ZZ%ZZ'] as $invalidEncoding) {
+    $hostileRaw=$raw.'&account_email='.str_replace('%','%25',$invalidEncoding);
+    $hostileRaw=str_replace('%25',$invalidEncoding,$hostileRaw);
+    $hostilePost=$post;$hostilePost['account_email']=$invalidEncoding;
+    $hostileServer=$server;$hostileServer['CONTENT_LENGTH']=(string)strlen($hostileRaw);
+    try { (new PublicRequestGuard())->assertAllowed(true,$hostileServer,$hostilePost,home_url('/'),$hostileRaw,true); throw new RuntimeException('Percent encoding inválido aceptado.'); } catch (\VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\PublicIntakeException $e) {
+        r1c_assert($e->getPrevious()===null&&!str_contains($e->getMessage(),$invalidEncoding),'Payload reflejado.');
+    }
+}
+foreach (['%ZZaccount_email','account_%ZZemail','account_email%ZZ'] as $invalidName) {
+    $hostileRaw=$raw.'&'.$invalidName.'=x';$hostileServer=$server;$hostileServer['CONTENT_LENGTH']=(string)strlen($hostileRaw);
+    try { (new PublicRequestGuard())->assertAllowed(true,$hostileServer,$post,home_url('/'),$hostileRaw,true); throw new RuntimeException('Percent encoding inválido en nombre aceptado.'); } catch (\VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\PublicIntakeException) {}
+}
+foreach (['%20','%2B','%2b','%25','%25ZZ'] as $validEncoding) {
+    $validRaw=$raw.'&account_email='.$validEncoding;$validPost=$post;$validPost['account_email']=urldecode($validEncoding);
+    $validServer=$server;$validServer['CONTENT_LENGTH']=(string)strlen($validRaw);
+    (new PublicRequestGuard())->assertAllowed(true,$validServer,$validPost,home_url('/'),$validRaw,true);
+}
+
 echo "R1C_ISOLATED=PASS request=PASS guard=PASS origin=PASS nonce=PASS ip=PASS key=PASS privacy=PASS\n";
