@@ -42,8 +42,22 @@ function r1bAssert(bool $condition,string $message):void{if(!$condition)throw ne
 function r1bReason(callable $call,string $class,string $reason):void
 {
     try{$call();throw new RuntimeException("No rechazo {$reason}");}
-    catch(Throwable $exception){r1bAssert($exception instanceof $class,"Clase incorrecta para {$reason}");r1bAssert($exception->reason()===$reason,"Reason incorrecto para {$reason}");r1bAssert(!str_contains($exception->getMessage(),'@')&&!str_contains($exception->getMessage(),'12345678'),'Excepcion expuso PII.');}
+    catch(Throwable $exception){r1bAssert($exception instanceof $class,"Clase incorrecta para {$reason}");r1bAssert($exception->reason()===$reason,"Reason incorrecto para {$reason}");r1bAssert($exception->getPrevious()===null,"Causa previa expuesta para {$reason}");r1bAssert(!str_contains($exception->getMessage(),'@')&&!str_contains($exception->getMessage(),'12345678'),'Excepcion expuso PII.');}
 }
+function r1bAssertSanitized(Throwable $exception,string $class,string $reason,string $case):void
+{
+    r1bAssert($exception instanceof $class,"Clase hostil incorrecta: {$case}");
+    r1bAssert(method_exists($exception,'reason')&&$exception->reason()===$reason,"Reason hostil incorrecto: {$case}");
+    $markers=['PII_SENTINEL_EMAIL','PII_SENTINEL_RUT','RAW_KEY_SENTINEL','SQL_SENTINEL','PAYLOAD_SENTINEL','HASH_SENTINEL','INTERNAL_PATH_SENTINEL'];
+    $depth=0;
+    for($current=$exception;$current!==null;$current=$current->getPrevious()){
+        $depth++;
+        $observable=$current::class.'|'.$current->getMessage().'|'.$current->getCode().'|'.json_encode(get_object_vars($current));
+        foreach($markers as $marker)r1bAssert(!str_contains($observable,$marker),"Contenido prohibido detectado: {$case}");
+    }
+    r1bAssert($depth===1,"Cadena hostil conservada: {$case}");
+}
+function r1bHostile():RuntimeException{return new RuntimeException('PII_SENTINEL_EMAIL PII_SENTINEL_RUT RAW_KEY_SENTINEL SQL_SENTINEL PAYLOAD_SENTINEL HASH_SENTINEL INTERNAL_PATH_SENTINEL');}
 
 r1bAssert(class_exists(StartStoreOnboarding::class)&&interface_exists(StoreOnboardingApplicationWriter::class),'Autoload PSR-4 fallo.');
 $emails=new OnboardingEmailNormalizer();
@@ -51,6 +65,11 @@ foreach([' OWNER@EXAMPLE.COM '=>'owner@example.com','first.last+tag@example-doma
 foreach(['','bad','owner @example.com','owñer@example.com','owner@example..com',str_repeat('a',180).'@example.com'] as $invalid)r1bReason(static fn()=>$emails->normalize($invalid),OnboardingInputException::class,'invalid_email');
 r1bAssert(sanitize_email('owner (x)@example.com')==='ownerx@example.com','Fixture no reproduce transformacion sanitize_email.');
 r1bReason(static fn()=>$emails->normalize('owner (x)@example.com'),OnboardingInputException::class,'invalid_email');
+$email190=str_repeat('a',64).'@'.str_repeat('b',63).'.'.str_repeat('c',57).'.com';
+$email191=str_repeat('a',64).'@'.str_repeat('b',63).'.'.str_repeat('c',58).'.com';
+r1bAssert(strlen($email190)===190&&$emails->normalize($email190)===$email190,'Email de 190 bytes valido fallo.');
+r1bAssert(strlen($email191)===191,'Fixture email 191 bytes incorrecto.');
+r1bReason(static fn()=>$emails->normalize($email191),OnboardingInputException::class,'invalid_email');
 
 $ruts=new ChileanRutNormalizer();
 foreach(['12.345.678-5','12345678-5','12 345 678 5'] as $input)r1bAssert($ruts->normalizeAndValidate($input)==='12345678-5','RUT numerico valido fallo.');
@@ -71,7 +90,7 @@ final class R1bWriter implements StoreOnboardingApplicationWriter
         return new StoreOnboardingApplication(['id'=>'1']+$data+['user_id'=>null,'status'=>'provisioning','store_id'=>null,'failure_code'=>null,'attempt_count'=>'0','last_attempt_at'=>null,'abandoned_at'=>null]);
     }
 }
-function r1bService(R1bWriter $writer,R1bClock $clock,R1bIds $ids,string $terms='2026-08'):StartStoreOnboarding{return new StartStoreOnboarding($writer,$clock,$ids,new R1bTerms($terms),new OnboardingEmailNormalizer(),new ChileanRutNormalizer());}
+function r1bService(StoreOnboardingApplicationWriter $writer,R1bClock $clock,R1bIds $ids,string $terms='2026-08'):StartStoreOnboarding{return new StartStoreOnboarding($writer,$clock,$ids,new R1bTerms($terms),new OnboardingEmailNormalizer(),new ChileanRutNormalizer());}
 function r1bCommand(string $email='Owner@Example.com',string $rut='12.345.678-5',string $key='',bool $accepted=true):StartStoreOnboardingCommand{return new StartStoreOnboardingCommand($email,$rut,$key!==''?$key:str_repeat('A',32),$accepted);}
 
 foreach([
@@ -101,24 +120,26 @@ r1bAssert(preg_match('/\Aonb_[a-f0-9]{40}\z/',(new RandomOnboardingPublicIdGener
 
 final class R1bRepositoryWpdb
 {
-    public string $prefix='iso_';public string $users='iso_users';public string $last_error='';public int $insert_id=0;public array $rows=[];public array $existingUsers=[7=>true];public array $stores=[10=>7];public ?string $forcedInsertError=null;private array $values=[];private int $sequence=0;
+    public string $prefix='iso_';public string $users='iso_users';public string $last_error='';public int $insert_id=0;public int $insertCalls=0;public int $getRowCalls=0;public array $rows=[];public array $existingUsers=[7=>true];public array $stores=[10=>7];public ?string $forcedInsertError=null;public ?Throwable $insertException=null;public ?int $throwGetRowAt=null;public bool $throwGetVar=false;private array $values=[];private int $sequence=0;
     public function suppress_errors(bool $suppress):bool{return false;}
     public function prepare(string $query,mixed ...$values):string{$this->values=$values;return $query;}
     public function insert(string $table,array $row):int|false
     {
+        $this->insertCalls++;if($this->insertException!==null)throw $this->insertException;
         if($this->forcedInsertError!==null){$this->last_error=$this->forcedInsertError;return false;}
         foreach($this->rows as $existing){if($existing['idempotency_key_hash']===$row['idempotency_key_hash']||$existing['public_id']===$row['public_id']){$this->last_error='Duplicate key';return false;}}
         $this->last_error='';$this->insert_id=++$this->sequence;$this->rows[$this->insert_id]=['id'=>(string)$this->insert_id]+$row;return 1;
     }
     public function get_row(string $query,string $format):?array
     {
+        $this->getRowCalls++;if($this->throwGetRowAt===$this->getRowCalls)throw r1bHostile();
         if(str_contains($query,'FROM iso_va_stores')){$id=(int)($this->values[0]??0);return isset($this->stores[$id])?['id'=>(string)$id,'owner_user_id'=>(string)$this->stores[$id]]:null;}
         $value=$this->values[0]??null;$column=str_contains($query,'idempotency_key_hash=')?'idempotency_key_hash':(str_contains($query,'public_id=')?'public_id':'id');
         foreach($this->rows as $row)if((string)$row[$column]===(string)$value)return $row;return null;
     }
     public function update(string $table,array $set,array $where):int|false{return false;}
     public function query(string $query):int|false{return false;}
-    public function get_var(string $query):mixed{if(str_contains($query,'SELECT ID FROM')){$id=(int)($this->values[0]??0);return isset($this->existingUsers[$id])?$id:null;}return null;}
+    public function get_var(string $query):mixed{if($this->throwGetVar)throw r1bHostile();if(str_contains($query,'SELECT ID FROM')){$id=(int)($this->values[0]??0);return isset($this->existingUsers[$id])?$id:null;}return null;}
 }
 function r1bRow(string $public,string $hash,string $email='owner@example.com',string $rut='12345678-5',string $status='provisioning'):array{return ['public_id'=>$public,'account_email'=>$email,'owner_rut_normalized'=>$rut,'idempotency_key_hash'=>$hash,'terms_version'=>'2026-08','terms_accepted_at'=>'2026-08-21 16:00:00','created_at'=>'2026-08-21 16:00:00','updated_at'=>'2026-08-21 16:00:00','user_id'=>null,'status'=>$status,'store_id'=>null,'failure_code'=>null,'attempt_count'=>0,'last_attempt_at'=>null,'abandoned_at'=>null];}
 
@@ -131,8 +152,72 @@ $wpdb=new R1bRepositoryWpdb();$wpdb->rows[9]=['id'=>'9']+r1bRow('onb_'.str_repea
 $wpdb=new R1bRepositoryWpdb();$repo=new StoreOnboardingApplicationRepository();$service1=new StartStoreOnboarding($repo,new R1bClock('2026-08-21 12:00:00'),new R1bIds(['onb_'.str_repeat('5',40)]),new R1bTerms('2026-08'),new OnboardingEmailNormalizer(),new ChileanRutNormalizer());$service2=new StartStoreOnboarding($repo,new R1bClock('2026-08-22 12:00:00'),new R1bIds(['onb_'.str_repeat('6',40)]),new R1bTerms('2026-08'),new OnboardingEmailNormalizer(),new ChileanRutNormalizer());$firstService=$service1->execute(r1bCommand());$replayService=$service2->execute(r1bCommand());r1bAssert($replayService==$firstService,'Servicio+repositorio no preservo identidad/timestamps en replay.');
 foreach([['database failure','onboarding_create_failed'],['','onboarding_create_uncertain']] as [$sqlError,$expected]){$wpdb=new R1bRepositoryWpdb();$wpdb->forcedInsertError=$sqlError;try{(new StoreOnboardingApplicationRepository())->createProvisioning($retryInput);throw new RuntimeException("No produjo {$expected}");}catch(RuntimeException $exception){r1bAssert($exception->getMessage()===$expected,"Clasificacion SQL incorrecta: {$exception->getMessage()}");}}
 
+// Every dependency boundary must discard an arbitrary hostile cause completely.
+$hostileCases=[];
+$hostileWriters=['terms'=>new R1bWriter(),'clock'=>new R1bWriter(),'generator'=>new R1bWriter(),'writer'=>new R1bWriter()];$hostileWriters['writer']->outcomes=[r1bHostile()];
+$hostileGenerator=new class implements OnboardingPublicIdGenerator{public int $calls=0;public function generate():string{$this->calls++;throw r1bHostile();}};
+$hostileCases['terms']=static function()use($hostileWriters):void{$service=new StartStoreOnboarding($hostileWriters['terms'],new R1bClock(),new R1bIds(['onb_'.str_repeat('a',40)]),new class implements CurrentOnboardingTerms{public function version():string{throw r1bHostile();}},new OnboardingEmailNormalizer(),new ChileanRutNormalizer());$service->execute(r1bCommand());};
+$hostileCases['clock']=static function()use($hostileWriters):void{$service=new StartStoreOnboarding($hostileWriters['clock'],new class implements OnboardingClock{public function nowUtc():DateTimeImmutable{throw r1bHostile();}},new R1bIds(['onb_'.str_repeat('a',40)]),new R1bTerms('2026-08'),new OnboardingEmailNormalizer(),new ChileanRutNormalizer());$service->execute(r1bCommand());};
+$hostileCases['generator']=static function()use($hostileWriters,$hostileGenerator):void{$service=new StartStoreOnboarding($hostileWriters['generator'],new R1bClock(),$hostileGenerator,new R1bTerms('2026-08'),new OnboardingEmailNormalizer(),new ChileanRutNormalizer());$service->execute(r1bCommand());};
+$hostileCases['writer']=static function()use($hostileWriters):void{r1bService($hostileWriters['writer'],new R1bClock(),new R1bIds(['onb_'.str_repeat('a',40)]))->execute(r1bCommand());};
+foreach($hostileCases as $case=>$call){try{$call();throw new RuntimeException("Fallo hostil no rechazado: {$case}");}catch(Throwable $exception){$reason=$case==='terms'?'terms_version_unavailable':($case==='generator'?'identity_generation_failed':'persistence_failed');$class=$case==='terms'?OnboardingInputException::class:OnboardingPersistenceException::class;r1bAssertSanitized($exception,$class,$reason,$case);}}
+r1bAssert($hostileWriters['terms']->inputs===[]&&$hostileWriters['clock']->inputs===[]&&$hostileWriters['generator']->inputs===[],'Fallo previo al writer expuso la clave o escribio.');
+r1bAssert(count($hostileWriters['writer']->inputs)===1&&$hostileGenerator->calls===1,'Fallo hostil consumio intentos adicionales.');
+
+// Hostile failures from INSERT, hash re-read, public-id re-read and hydration.
+foreach(['insert'=>0,'hash_read'=>1,'public_read'=>2,'duplicate_classifier'=>2,'hydration'=>1,'select'=>0] as $case=>$readAt){
+    $wpdb=new R1bRepositoryWpdb();
+    if($case==='insert')$wpdb->insertException=r1bHostile();
+    elseif($case==='select'){$key=str_repeat('A',32);$wpdb->rows[1]=['id'=>'1']+array_replace(r1bRow('onb_'.str_repeat('7',40),hash('sha256','minimarket-onboarding-v1|'.$key),status:'account_created'),['user_id'=>'7']);$wpdb->throwGetVar=true;}
+    elseif($case==='hydration')$wpdb->throwGetRowAt=$readAt;
+    else{$wpdb->forcedInsertError='duplicate';$wpdb->throwGetRowAt=$readAt;}
+    $ids=new R1bIds(['onb_'.str_repeat('d',40),'onb_'.str_repeat('e',40)]);
+    try{r1bService(new StoreOnboardingApplicationRepository(),new R1bClock(),$ids)->execute(r1bCommand());throw new RuntimeException("Fallo wpdb no rechazado: {$case}");}
+    catch(Throwable $exception){r1bAssertSanitized($exception,OnboardingPersistenceException::class,'persistence_failed',$case);r1bAssert($ids->calls===1,"Fallo hostil consumio retry: {$case}");r1bAssert($wpdb->insertCalls===1,"Fallo hostil produjo segunda escritura: {$case}");}
+}
+
+// Independent intent conflicts preserve the original row and never insert twice.
+foreach(['email','rut','terms'] as $case){
+    $key=str_repeat('Q',32);$hash=hash('sha256','minimarket-onboarding-v1|'.$key);$wpdb=new R1bRepositoryWpdb();
+    $wpdb->rows[1]=['id'=>'1']+r1bRow('onb_'.str_repeat('1',40),$hash);$before=$wpdb->rows[1];
+    $email=$case==='email'?'other@example.com':'owner@example.com';$rut=$case==='rut'?'1.000.005-K':'12.345.678-5';$terms=$case==='terms'?'2026-09':'2026-08';
+    try{r1bService(new StoreOnboardingApplicationRepository(),new R1bClock(),new R1bIds(['onb_'.str_repeat('2',40)]),$terms)->execute(r1bCommand($email,$rut,$key));throw new RuntimeException("Conflicto no rechazado: {$case}");}
+    catch(Throwable $exception){r1bAssertSanitized($exception,OnboardingConflictException::class,'idempotency_conflict',"intent_{$case}");r1bAssert($wpdb->insertCalls===1&&count($wpdb->rows)===1&&$wpdb->rows[1]===$before,"Conflicto altero Application: {$case}");}
+}
+
+// Every catalog state is replayable only with its structural invariants.
+$stateFixtures=[
+    'provisioning'=>[],
+    'account_created'=>['user_id'=>'7'],
+    'profile_incomplete'=>['user_id'=>'7'],
+    'ready_to_materialize'=>['user_id'=>'7'],
+    'provisioning_failed'=>['failure_code'=>'account_provisioning_failed'],
+    'store_materialized'=>['user_id'=>'7','store_id'=>'10'],
+    'abandoned'=>['abandoned_at'=>'2026-08-22 01:00:00'],
+];
+foreach($stateFixtures as $status=>$changes){
+    $key=str_repeat('S',32);$hash=hash('sha256','minimarket-onboarding-v1|'.$key);$wpdb=new R1bRepositoryWpdb();$row=['id'=>'1']+r1bRow('onb_'.str_repeat('3',40),$hash,status:$status);$row=array_replace($row,$changes);$row['updated_at']='2026-08-23 02:00:00';$wpdb->rows[1]=$row;
+    $result=r1bService(new StoreOnboardingApplicationRepository(),new R1bClock('2026-08-24 12:00:00'),new R1bIds(['onb_'.str_repeat('4',40)]))->execute(r1bCommand(key:$key));
+    r1bAssert($result->publicId===$row['public_id']&&$result->createdAt===$row['created_at']&&$result->updatedAt===$row['updated_at']&&$wpdb->rows[1]['terms_accepted_at']===$row['terms_accepted_at'],"Replay de estado fallo: {$status}");
+    r1bAssert($wpdb->insertCalls===1&&count($wpdb->rows)===1&&!str_contains(json_encode($result),'owner@example.com'),"Replay de estado altero datos: {$status}");
+}
+
+$invalidStates=[
+    'user_missing'=>['status'=>'account_created'],
+    'store_missing'=>['status'=>'store_materialized','user_id'=>'7'],
+    'foreign_owner'=>['status'=>'store_materialized','user_id'=>'7','store_id'=>'10','foreign_owner'=>true],
+    'failure_missing'=>['status'=>'provisioning_failed'],
+    'abandoned_at_missing'=>['status'=>'abandoned'],
+    'unknown'=>['status'=>'unknown_state'],
+];
+foreach($invalidStates as $case=>$changes){
+    $key=str_repeat('T',32);$hash=hash('sha256','minimarket-onboarding-v1|'.$key);$wpdb=new R1bRepositoryWpdb();$row=['id'=>'1']+r1bRow('onb_'.str_repeat('5',40),$hash,status:$changes['status']);foreach(['user_id','store_id'] as $field)if(isset($changes[$field]))$row[$field]=$changes[$field];if($case==='foreign_owner')$wpdb->stores[10]=8;$wpdb->rows[1]=$row;
+    try{r1bService(new StoreOnboardingApplicationRepository(),new R1bClock(),new R1bIds(['onb_'.str_repeat('6',40)]))->execute(r1bCommand(key:$key));throw new RuntimeException("Estado invalido aceptado: {$case}");}
+    catch(Throwable $exception){r1bAssertSanitized($exception,OnboardingPersistenceException::class,'persistence_failed',"state_{$case}");}
+}
+
 $source=file_get_contents(dirname(__DIR__,2).'/app/Modules/Minimarket/Onboarding/Application/StartStoreOnboarding.php');
 r1bAssert(is_string($source)&&!preg_match('/add_action|add_filter|register_rest_route|add_shortcode/',$source),'Servicio registro superficie publica.');
 r1bAssert(!str_contains($source,'wp_insert_user')&&!str_contains($source,'wp_create_user')&&!str_contains($source,'owner_user_id')&&!str_contains($source,'_veciahorra_store_id'),'Servicio escribio autoridad diferida.');
 
-echo "R1B_AUTOLOAD=PASS\nR1B_EMAIL=PASS cases=9\nR1B_RUT=PASS cases=12\nR1B_INPUT_PRECEDENCE=PASS\nR1B_TERMS_IDEMPOTENCY=PASS\nR1B_PUBLIC_ID=PASS\nR1B_CREATE_REPLAY=PASS\nR1B_REPOSITORY_ADAPTER=PASS\nR1B_NO_COMPOSITION=PASS\n";
+echo "R1B_AUTOLOAD=PASS\nR1B_EMAIL=PASS cases=11\nR1B_RUT=PASS cases=12\nR1B_INPUT_PRECEDENCE=PASS\nR1B_TERMS_IDEMPOTENCY=PASS\nR1B_PUBLIC_ID=PASS\nR1B_CREATE_REPLAY=PASS\nR1B_REPOSITORY_ADAPTER=PASS\nR1B_PRIVACY_BOUNDARIES=PASS cases=10\nR1B_INTENT_CONFLICTS=PASS cases=3\nR1B_REPLAY_STATES=PASS cases=13\nR1B_NO_COMPOSITION=PASS\n";

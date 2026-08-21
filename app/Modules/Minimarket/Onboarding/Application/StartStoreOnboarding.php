@@ -51,7 +51,7 @@ final class StartStoreOnboarding
             $instant = $this->clock->nowUtc();
             $timestamp = $instant->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
         } catch (Throwable $exception) {
-            throw new OnboardingPersistenceException('persistence_failed', $exception);
+            throw new OnboardingPersistenceException('persistence_failed');
         }
         $idempotencyHash = hash('sha256', 'minimarket-onboarding-v1|' . $command->idempotencyKey);
 
@@ -60,7 +60,7 @@ final class StartStoreOnboarding
             try {
                 $publicId = $this->publicIds->generate();
             } catch (Throwable $exception) {
-                throw new OnboardingPersistenceException('identity_generation_failed', $exception);
+                throw new OnboardingPersistenceException('identity_generation_failed');
             }
             if (preg_match('/\Aonb_[a-f0-9]{40}\z/', $publicId) !== 1) {
                 throw new OnboardingPersistenceException('identity_generation_failed');
@@ -88,16 +88,16 @@ final class StartStoreOnboarding
                 );
             } catch (OnboardingPublicIdCollisionException $exception) {
                 if ($attempt === 3) {
-                    throw new OnboardingPersistenceException('identity_generation_failed', $exception);
+                    throw new OnboardingPersistenceException('identity_generation_failed');
                 }
             } catch (\RuntimeException $exception) {
                 throw match ($exception->getMessage()) {
                     'onboarding_idempotency_conflict' => new OnboardingConflictException('idempotency_conflict'),
-                    'onboarding_create_uncertain' => new OnboardingPersistenceException('outcome_uncertain', $exception),
-                    default => new OnboardingPersistenceException('persistence_failed', $exception),
+                    'onboarding_create_uncertain' => new OnboardingPersistenceException('outcome_uncertain'),
+                    default => new OnboardingPersistenceException('persistence_failed'),
                 };
             } catch (Throwable $exception) {
-                throw new OnboardingPersistenceException('persistence_failed', $exception);
+                throw new OnboardingPersistenceException('persistence_failed');
             }
         }
         throw new OnboardingPersistenceException('identity_generation_failed');
