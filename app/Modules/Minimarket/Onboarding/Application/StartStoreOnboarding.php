@@ -30,8 +30,20 @@ final class StartStoreOnboarding
 
     public function execute(StartStoreOnboardingCommand $command): StartStoreOnboardingResult
     {
-        $email = $this->emails->normalize($command->accountEmail);
-        $rut = $this->ruts->normalizeAndValidate($command->ownerRut);
+        try {
+            $email = $this->emails->normalize($command->accountEmail);
+        } catch (OnboardingInputException $exception) {
+            throw new OnboardingInputException('invalid_email');
+        } catch (Throwable $exception) {
+            throw new OnboardingInputException('invalid_email');
+        }
+        try {
+            $rut = $this->ruts->normalizeAndValidate($command->ownerRut);
+        } catch (OnboardingInputException $exception) {
+            throw new OnboardingInputException('invalid_rut');
+        } catch (Throwable $exception) {
+            throw new OnboardingInputException('invalid_rut');
+        }
         if ($command->termsAccepted !== true) {
             throw new OnboardingInputException('terms_not_accepted');
         }

@@ -4,19 +4,30 @@ declare(strict_types=1);
 
 const ARRAY_A = 'ARRAY_A';
 
-function apply_filters(string $hook, mixed $value, mixed ...$args): mixed { return $value; }
+$r1bFilterState=['calls'=>[],'throw'=>null,'transform'=>null];
+function r1bResetFilters():void{global $r1bFilterState;$r1bFilterState=['calls'=>[],'throw'=>null,'transform'=>null];}
+function apply_filters(string $hook, mixed $value, mixed ...$args): mixed
+{
+    global $r1bFilterState;
+    $r1bFilterState['calls'][]=$hook;
+    if($r1bFilterState['throw']===$hook)throw r1bHostile();
+    if(is_array($r1bFilterState['transform'])&&$r1bFilterState['transform'][0]===$hook)return $r1bFilterState['transform'][1];
+    return $value;
+}
 function sanitize_email(string $email): string
 {
-    if (strlen($email) < 6 || strpos($email, '@', 1) === false) return '';
+    if (strlen($email) < 6 || strpos($email, '@', 1) === false) return apply_filters('sanitize_email','',$email,'email_too_short');
     [$local,$domain]=explode('@',$email,2);
     $local=preg_replace('/[^a-zA-Z0-9!#$%&\'*+\/=\?\^_`{|}~\.-]/','',$local)??'';
     $domain=preg_replace('/\.{2,}/','',$domain)??'';
     $domain=trim($domain," \t\n\r\0\x0B.");
-    return $local!==''&&str_contains($domain,'.')?$local.'@'.$domain:'';
+    $sanitized=$local!==''&&str_contains($domain,'.')?$local.'@'.$domain:'';
+    return apply_filters('sanitize_email',$sanitized,$email,$sanitized===''?'domain_no_valid_subs':null);
 }
 function is_email(string $email): string|false
 {
-    return filter_var($email,FILTER_VALIDATE_EMAIL)!==false?$email:false;
+    $valid=filter_var($email,FILTER_VALIDATE_EMAIL)!==false?$email:false;
+    return apply_filters('is_email',$valid,$email,$valid===false?'invalid':null);
 }
 
 require_once dirname(__DIR__,2).'/vendor/autoload.php';
@@ -78,7 +89,7 @@ foreach(['123456-0','123456789-0','12A34567-5','12345678-4','6812766-X',''] as $
 
 final class R1bClock implements OnboardingClock{public int $calls=0;public function __construct(private string $time='2026-08-21 12:00:00'){}public function nowUtc():DateTimeImmutable{$this->calls++;return new DateTimeImmutable($this->time,new DateTimeZone('America/Santiago'));}}
 final class R1bIds implements OnboardingPublicIdGenerator{public int $calls=0;public function __construct(private array $ids){}public function generate():string{$this->calls++;return array_shift($this->ids)??'';}}
-final class R1bTerms implements CurrentOnboardingTerms{public function __construct(private string $value){}public function version():string{return $this->value;}}
+final class R1bTerms implements CurrentOnboardingTerms{public int $calls=0;public function __construct(private string $value){}public function version():string{$this->calls++;return $this->value;}}
 final class R1bWriter implements StoreOnboardingApplicationWriter
 {
     public array $inputs=[];public array $outcomes=[];
@@ -92,6 +103,19 @@ final class R1bWriter implements StoreOnboardingApplicationWriter
 }
 function r1bService(StoreOnboardingApplicationWriter $writer,R1bClock $clock,R1bIds $ids,string $terms='2026-08'):StartStoreOnboarding{return new StartStoreOnboarding($writer,$clock,$ids,new R1bTerms($terms),new OnboardingEmailNormalizer(),new ChileanRutNormalizer());}
 function r1bCommand(string $email='Owner@Example.com',string $rut='12.345.678-5',string $key='',bool $accepted=true):StartStoreOnboardingCommand{return new StartStoreOnboardingCommand($email,$rut,$key!==''?$key:str_repeat('A',32),$accepted);}
+
+foreach(['sanitize_email'=>['sanitize_email'],'is_email'=>['sanitize_email','is_email']] as $tag=>$expectedCalls){
+    r1bResetFilters();global $r1bFilterState;$r1bFilterState['throw']=$tag;
+    $writer=new R1bWriter();$clock=new R1bClock();$ids=new R1bIds(['onb_'.str_repeat('a',40)]);$terms=new R1bTerms('2026-08');
+    $service=new StartStoreOnboarding($writer,$clock,$ids,$terms,new OnboardingEmailNormalizer(),new ChileanRutNormalizer());
+    try{$service->execute(r1bCommand(rut:'bad'));throw new RuntimeException("Filtro hostil no rechazado: {$tag}");}
+    catch(Throwable $exception){r1bAssertSanitized($exception,OnboardingInputException::class,'invalid_email',"filter_{$tag}");}
+    r1bAssert($r1bFilterState['calls']===$expectedCalls,"Orden de filtros incorrecto: {$tag}");
+    r1bAssert($terms->calls===0&&$clock->calls===0&&$ids->calls===0&&$writer->inputs===[],"Filtro hostil alcanzo dependencias posteriores: {$tag}");
+}
+r1bResetFilters();$r1bFilterState['transform']=['sanitize_email','changed@example.com'];
+r1bReason(static fn()=>r1bService(new R1bWriter(),new R1bClock(),new R1bIds(['onb_'.str_repeat('a',40)]))->execute(r1bCommand()),OnboardingInputException::class,'invalid_email');
+r1bResetFilters();
 
 foreach([
     [r1bCommand('', 'bad',str_repeat('!',31),false),'invalid_email'],
@@ -120,7 +144,7 @@ r1bAssert(preg_match('/\Aonb_[a-f0-9]{40}\z/',(new RandomOnboardingPublicIdGener
 
 final class R1bRepositoryWpdb
 {
-    public string $prefix='iso_';public string $users='iso_users';public string $last_error='';public int $insert_id=0;public int $insertCalls=0;public int $getRowCalls=0;public array $rows=[];public array $existingUsers=[7=>true];public array $stores=[10=>7];public ?string $forcedInsertError=null;public ?Throwable $insertException=null;public ?int $throwGetRowAt=null;public bool $throwGetVar=false;private array $values=[];private int $sequence=0;
+    public string $prefix='iso_';public string $users='iso_users';public string $last_error='';public int $insert_id=0;public int $insertCalls=0;public int $getRowCalls=0;public array $lookupLog=[];public array $rows=[];public array $existingUsers=[7=>true];public array $stores=[10=>7];public ?string $forcedInsertError=null;public ?Throwable $insertException=null;public ?string $throwLookup=null;public ?string $corruptLookup=null;public bool $throwGetVar=false;private array $values=[];private int $sequence=0;
     public function suppress_errors(bool $suppress):bool{return false;}
     public function prepare(string $query,mixed ...$values):string{$this->values=$values;return $query;}
     public function insert(string $table,array $row):int|false
@@ -132,10 +156,11 @@ final class R1bRepositoryWpdb
     }
     public function get_row(string $query,string $format):?array
     {
-        $this->getRowCalls++;if($this->throwGetRowAt===$this->getRowCalls)throw r1bHostile();
-        if(str_contains($query,'FROM iso_va_stores')){$id=(int)($this->values[0]??0);return isset($this->stores[$id])?['id'=>(string)$id,'owner_user_id'=>(string)$this->stores[$id]]:null;}
-        $value=$this->values[0]??null;$column=str_contains($query,'idempotency_key_hash=')?'idempotency_key_hash':(str_contains($query,'public_id=')?'public_id':'id');
-        foreach($this->rows as $row)if((string)$row[$column]===(string)$value)return $row;return null;
+        $this->getRowCalls++;$lookup=str_contains($query,'FROM iso_va_stores')?'store':(str_contains($query,'idempotency_key_hash=')?'idempotency_hash':(str_contains($query,'public_id=')?'public_id':'id'));$this->lookupLog[]=$lookup;
+        if($this->throwLookup===$lookup)throw r1bHostile();
+        if($lookup==='store'){$id=(int)($this->values[0]??0);return isset($this->stores[$id])?['id'=>(string)$id,'owner_user_id'=>(string)$this->stores[$id]]:null;}
+        $value=$this->values[0]??null;$column=$lookup==='idempotency_hash'?'idempotency_key_hash':($lookup==='public_id'?'public_id':'id');
+        foreach($this->rows as $row)if((string)$row[$column]===(string)$value){if($this->corruptLookup===$lookup)$row['updated_at']='not-a-timestamp';return $row;}return null;
     }
     public function update(string $table,array $set,array $where):int|false{return false;}
     public function query(string $query):int|false{return false;}
@@ -164,17 +189,23 @@ foreach($hostileCases as $case=>$call){try{$call();throw new RuntimeException("F
 r1bAssert($hostileWriters['terms']->inputs===[]&&$hostileWriters['clock']->inputs===[]&&$hostileWriters['generator']->inputs===[],'Fallo previo al writer expuso la clave o escribio.');
 r1bAssert(count($hostileWriters['writer']->inputs)===1&&$hostileGenerator->calls===1,'Fallo hostil consumio intentos adicionales.');
 
-// Hostile failures from INSERT, hash re-read, public-id re-read and hydration.
-foreach(['insert'=>0,'hash_read'=>1,'public_read'=>2,'duplicate_classifier'=>2,'hydration'=>1,'select'=>0] as $case=>$readAt){
-    $wpdb=new R1bRepositoryWpdb();
-    if($case==='insert')$wpdb->insertException=r1bHostile();
-    elseif($case==='select'){$key=str_repeat('A',32);$wpdb->rows[1]=['id'=>'1']+array_replace(r1bRow('onb_'.str_repeat('7',40),hash('sha256','minimarket-onboarding-v1|'.$key),status:'account_created'),['user_id'=>'7']);$wpdb->throwGetVar=true;}
-    elseif($case==='hydration')$wpdb->throwGetRowAt=$readAt;
-    else{$wpdb->forcedInsertError='duplicate';$wpdb->throwGetRowAt=$readAt;}
-    $ids=new R1bIds(['onb_'.str_repeat('d',40),'onb_'.str_repeat('e',40)]);
+// Query-aware seams distinguish INSERT, each lookup, hydration and duplicate classification.
+$queryCases=[
+    'insert'=>['persistence_failed',[],static function(R1bRepositoryWpdb $db):void{$db->insertException=r1bHostile();}],
+    'hash_read'=>['persistence_failed',['idempotency_hash'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='duplicate';$db->throwLookup='idempotency_hash';}],
+    'public_read'=>['persistence_failed',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='duplicate';$db->throwLookup='public_id';}],
+    'hydration'=>['persistence_failed',['id'],static function(R1bRepositoryWpdb $db):void{$db->corruptLookup='id';}],
+    'duplicate_absent'=>['outcome_uncertain',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='';}],
+    'sql_known'=>['persistence_failed',['idempotency_hash','public_id'],static function(R1bRepositoryWpdb $db):void{$db->forcedInsertError='database failure';}],
+    'reference_select'=>['persistence_failed',['idempotency_hash'],static function(R1bRepositoryWpdb $db):void{$key=str_repeat('A',32);$db->rows[1]=['id'=>'1']+array_replace(r1bRow('onb_'.str_repeat('7',40),hash('sha256','minimarket-onboarding-v1|'.$key),status:'account_created'),['user_id'=>'7']);$db->throwGetVar=true;}],
+];
+foreach($queryCases as $case=>[$reason,$expectedLookups,$configure]){
+    $wpdb=new R1bRepositoryWpdb();$configure($wpdb);$ids=new R1bIds(['onb_'.str_repeat('d',40),'onb_'.str_repeat('e',40)]);
     try{r1bService(new StoreOnboardingApplicationRepository(),new R1bClock(),$ids)->execute(r1bCommand());throw new RuntimeException("Fallo wpdb no rechazado: {$case}");}
-    catch(Throwable $exception){r1bAssertSanitized($exception,OnboardingPersistenceException::class,'persistence_failed',$case);r1bAssert($ids->calls===1,"Fallo hostil consumio retry: {$case}");r1bAssert($wpdb->insertCalls===1,"Fallo hostil produjo segunda escritura: {$case}");}
+    catch(Throwable $exception){r1bAssertSanitized($exception,OnboardingPersistenceException::class,$reason,$case);r1bAssert($ids->calls===1,"Fallo hostil consumio retry: {$case}");r1bAssert($wpdb->insertCalls===1,"Fallo hostil produjo segunda escritura: {$case}");r1bAssert($wpdb->lookupLog===$expectedLookups,"Lookup incorrecto: {$case}");}
 }
+$wpdb=new R1bRepositoryWpdb();$collisionKey=str_repeat('C',32);$wpdb->rows[9]=['id'=>'9']+r1bRow('onb_'.str_repeat('8',40),str_repeat('9',64));$ids=new R1bIds(['onb_'.str_repeat('8',40),'onb_'.str_repeat('9',40)]);$result=r1bService(new StoreOnboardingApplicationRepository(),new R1bClock(),$ids)->execute(r1bCommand(key:$collisionKey));
+r1bAssert($ids->calls===2&&$wpdb->insertCalls===2&&$wpdb->lookupLog===['idempotency_hash','public_id','id'],'Clasificador duplicate no regenero exclusivamente public ID.');
 
 // Independent intent conflicts preserve the original row and never insert twice.
 foreach(['email','rut','terms'] as $case){
@@ -220,4 +251,4 @@ $source=file_get_contents(dirname(__DIR__,2).'/app/Modules/Minimarket/Onboarding
 r1bAssert(is_string($source)&&!preg_match('/add_action|add_filter|register_rest_route|add_shortcode/',$source),'Servicio registro superficie publica.');
 r1bAssert(!str_contains($source,'wp_insert_user')&&!str_contains($source,'wp_create_user')&&!str_contains($source,'owner_user_id')&&!str_contains($source,'_veciahorra_store_id'),'Servicio escribio autoridad diferida.');
 
-echo "R1B_AUTOLOAD=PASS\nR1B_EMAIL=PASS cases=11\nR1B_RUT=PASS cases=12\nR1B_INPUT_PRECEDENCE=PASS\nR1B_TERMS_IDEMPOTENCY=PASS\nR1B_PUBLIC_ID=PASS\nR1B_CREATE_REPLAY=PASS\nR1B_REPOSITORY_ADAPTER=PASS\nR1B_PRIVACY_BOUNDARIES=PASS cases=10\nR1B_INTENT_CONFLICTS=PASS cases=3\nR1B_REPLAY_STATES=PASS cases=13\nR1B_NO_COMPOSITION=PASS\n";
+echo "R1B_AUTOLOAD=PASS\nR1B_EMAIL=PASS cases=11\nR1B_RUT=PASS cases=12\nR1B_INPUT_PRECEDENCE=PASS\nR1B_TERMS_IDEMPOTENCY=PASS\nR1B_PUBLIC_ID=PASS\nR1B_CREATE_REPLAY=PASS\nR1B_REPOSITORY_ADAPTER=PASS\nR1B_PRIVACY_BOUNDARIES=PASS cases=13\nR1B_QUERY_SEAMS=PASS cases=8\nR1B_INTENT_CONFLICTS=PASS cases=3\nR1B_REPLAY_STATES=PASS cases=13\nR1B_NO_COMPOSITION=PASS\n";
