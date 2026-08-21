@@ -147,7 +147,7 @@ try {
     r1aThrows(static fn()=>$repo->createProvisioning($invalidOrder),'onboarding_invalid_timestamp_order');
     $app=$repo->createProvisioning($input); $applicationIds[]=(int)$app->data['id'];
     r1aAssert($repo->createProvisioning($input)->data['id']===$app->data['id'],'Replay idempotente fallo.');
-    $conflicting=$input; $conflicting['public_id']='onb_'.wp_generate_password(24,false);
+    $conflicting=$input; $conflicting['account_email']='different-owner@example.test';
     r1aThrows(static fn()=>$repo->createProvisioning($conflicting),'onboarding_idempotency_conflict'); $wpdb->last_error='';
     r1aThrows(static fn()=>$repo->attachUser((int)$app->data['id'],$historicalUser,$now,$now),'onboarding_updated_at_must_advance');
     r1aThrows(static fn()=>$repo->attachUser((int)$app->data['id'],PHP_INT_MAX,$now,$later),'onboarding_user_missing');

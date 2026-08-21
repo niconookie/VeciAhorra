@@ -355,6 +355,8 @@ final class R1aOnboardingWpdb
 }
 
 require_once dirname(__DIR__,2).'/app/Modules/Minimarket/Onboarding/StoreOnboardingApplication.php';
+require_once dirname(__DIR__,2).'/app/Modules/Minimarket/Onboarding/Contracts/StoreOnboardingApplicationWriter.php';
+require_once dirname(__DIR__,2).'/app/Modules/Minimarket/Onboarding/Exceptions/OnboardingPublicIdCollisionException.php';
 require_once dirname(__DIR__,2).'/app/Modules/Minimarket/Onboarding/StoreOnboardingApplicationRepository.php';
 $onboarding=new VeciAhorra\Modules\Minimarket\Onboarding\StoreOnboardingApplicationRepository();
 $wpdb=new R1aOnboardingWpdb();

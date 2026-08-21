@@ -9,8 +9,10 @@ use DateTimeZone;
 use InvalidArgumentException;
 use RuntimeException;
 use VeciAhorra\Core\Config;
+use VeciAhorra\Modules\Minimarket\Onboarding\Contracts\StoreOnboardingApplicationWriter;
+use VeciAhorra\Modules\Minimarket\Onboarding\Exceptions\OnboardingPublicIdCollisionException;
 
-final class StoreOnboardingApplicationRepository
+final class StoreOnboardingApplicationRepository implements StoreOnboardingApplicationWriter
 {
     public function createProvisioning(array $data): StoreOnboardingApplication
     {
@@ -27,7 +29,7 @@ final class StoreOnboardingApplicationRepository
             || strtolower((string) $data['account_email']) !== (string) $data['account_email']) {
             throw new InvalidArgumentException('onboarding_invalid_account_email');
         }
-        if (preg_match('/^[0-9]{7,8}[0-9K]$/', (string) $data['owner_rut_normalized']) !== 1) {
+        if (preg_match('/^(?:[0-9]{7,8}[0-9K]|[0-9]{7,8}-[0-9K])$/', (string) $data['owner_rut_normalized']) !== 1) {
             throw new InvalidArgumentException('onboarding_invalid_owner_rut_normalized');
         }
         if (preg_match('/^[a-f0-9]{64}$/', (string) $data['idempotency_key_hash']) !== 1) {
@@ -46,12 +48,21 @@ final class StoreOnboardingApplicationRepository
         global $wpdb;
         $previousSuppression = $wpdb->suppress_errors(true);
         $inserted = $wpdb->insert($this->table(), $row);
+        $insertError = (string) ($wpdb->last_error ?? '');
         $wpdb->suppress_errors($previousSuppression);
         if ($inserted !== 1) {
             $existing = $this->findByIdempotencyHash((string) $data['idempotency_key_hash']);
-            if ($existing !== null && $this->sameCreationIntent($existing->data, $data)) return $existing;
-            if ($existing !== null) throw new RuntimeException('onboarding_idempotency_conflict');
-            throw new RuntimeException('onboarding_create_failed');
+            if ($existing !== null) {
+                $this->assertReplayCompatible($existing->data);
+                if ($this->sameCreationIntent($existing->data, $data)) return $existing;
+                throw new RuntimeException('onboarding_idempotency_conflict');
+            }
+            if ($this->findByPublicId((string) $data['public_id']) !== null) {
+                throw new OnboardingPublicIdCollisionException();
+            }
+            throw new RuntimeException($insertError !== ''
+                ? 'onboarding_create_failed'
+                : 'onboarding_create_uncertain');
         }
         return $this->findById((int) $wpdb->insert_id) ?? throw new RuntimeException('onboarding_create_uncertain');
     }
@@ -218,10 +229,46 @@ final class StoreOnboardingApplicationRepository
     }
     private function sameCreationIntent(array $existing, array $input): bool
     {
-        foreach (['public_id','account_email','owner_rut_normalized','idempotency_key_hash','terms_version','terms_accepted_at'] as $field) {
+        foreach (['account_email','owner_rut_normalized','terms_version'] as $field) {
             if ((string)$existing[$field] !== (string)$input[$field]) return false;
         }
         return true;
+    }
+
+    private function assertReplayCompatible(array $data): void
+    {
+        $status = (string) $data['status'];
+        $userId = $data['user_id'] === null ? null : (int) $data['user_id'];
+        $storeId = $data['store_id'] === null ? null : (int) $data['store_id'];
+        $failureCode = $data['failure_code'];
+        $validUserReference = $userId === null || $userId > 0;
+        $compatible = match ($status) {
+            StoreOnboardingApplication::PROVISIONING => $userId === null && $storeId === null && $failureCode === null,
+            StoreOnboardingApplication::ACCOUNT_CREATED,
+            StoreOnboardingApplication::PROFILE_INCOMPLETE,
+            StoreOnboardingApplication::READY_TO_MATERIALIZE => $userId !== null && $userId > 0 && $storeId === null && $failureCode === null,
+            StoreOnboardingApplication::PROVISIONING_FAILED => $validUserReference && $storeId === null && is_string($failureCode),
+            StoreOnboardingApplication::STORE_MATERIALIZED => $userId !== null && $userId > 0 && $storeId !== null && $storeId > 0 && $failureCode === null,
+            StoreOnboardingApplication::ABANDONED => $validUserReference && $storeId === null && $failureCode === null && $data['abandoned_at'] !== null,
+            default => false,
+        };
+        if (! $compatible) throw new RuntimeException('onboarding_replay_incompatible');
+        global $wpdb;
+        if ($userId !== null && (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT ID FROM {$wpdb->users} WHERE ID=%d",
+            $userId
+        )) !== $userId) {
+            throw new RuntimeException('onboarding_replay_incompatible');
+        }
+        if ($status === StoreOnboardingApplication::STORE_MATERIALIZED) {
+            $store = $wpdb->get_row($wpdb->prepare(
+                "SELECT id,owner_user_id FROM {$this->storesTable()} WHERE id=%d",
+                $storeId
+            ), ARRAY_A);
+            if (! is_array($store) || $store['owner_user_id'] === null || (int) $store['owner_user_id'] !== $userId) {
+                throw new RuntimeException('onboarding_replay_incompatible');
+            }
+        }
     }
 
     private function requireForwardTimestamp(string $expectedUpdatedAt, string $updatedAt): void
