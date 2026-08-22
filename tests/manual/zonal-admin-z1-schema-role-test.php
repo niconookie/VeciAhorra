@@ -33,7 +33,7 @@ $assignmentIndexes = array_column($wpdb->get_results("SHOW INDEX FROM {$prefix}z
 $historyIndexes = array_column($wpdb->get_results("SHOW INDEX FROM {$prefix}store_decision_history", ARRAY_A), 'Key_name');
 foreach (['zonal_admin_service_zones_unique','zonal_admin_service_zones_user_index','zonal_admin_service_zones_zone_index'] as $index) { z1Assert(in_array($index, $assignmentIndexes, true), "Falta indice {$index}."); }
 foreach (['store_decision_history_store_order','store_decision_history_actor_index','store_decision_history_zone_index'] as $index) { z1Assert(in_array($index, $historyIndexes, true), "Falta indice {$index}."); }
-z1Assert(get_option('veciahorra_db_version') === '0.29.0', 'Version de esquema incorrecta.');
+z1Assert(get_option('veciahorra_db_version') === '0.31.0', 'Version de esquema incorrecta.');
 $rolesOptionBefore = get_option($wpdb->prefix . 'user_roles');
 $migration = new CreateZonalAdminFoundationTables();
 $migration->up(); $migration->up();

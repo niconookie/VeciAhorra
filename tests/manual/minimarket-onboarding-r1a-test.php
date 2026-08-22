@@ -58,7 +58,7 @@ try {
     $actualIndexes=array_values(array_unique(array_column($wpdb->get_results("SHOW INDEX FROM {$applications}",ARRAY_A),'Key_name'))); sort($actualIndexes); sort($expectedIndexes);
     r1aAssert($actualIndexes===$expectedIndexes,'Indices onboarding invalidos.');
     r1aAssert(Application::statuses()===['provisioning','account_created','profile_incomplete','ready_to_materialize','provisioning_failed','store_materialized','abandoned'],'Estados cerrados invalidos.');
-    r1aAssert(Application::failureCodes()===['account_provisioning_failed','application_persistence_failed','store_materialization_failed','technical_outcome_uncertain'],'Codigos de fallo cerrados invalidos.');
+    r1aAssert(Application::failureCodes()===['account_provisioning_failed','account_provisioning_uncertain','email_delivery_failed','email_delivery_uncertain','application_persistence_failed','store_materialization_failed','technical_outcome_uncertain'],'Codigos de fallo cerrados invalidos.');
     r1aThrows(static fn()=>Application::assertStatus('admin'),'onboarding_invalid_status');
     foreach(['',' account_provisioning_failed','ACCOUNT_PROVISIONING_FAILED','future_failure'] as $invalidFailureCode) {
         r1aThrows(static fn()=>Application::assertFailureCode($invalidFailureCode),'onboarding_invalid_failure_code');
@@ -179,7 +179,7 @@ try {
     foreach(['password','nonce','captcha','payload','idempotency_key'] as $secret) r1aAssert(!in_array($secret,$expectedColumns,true),"Columna secreta {$secret}.");
 
     $migration->up();
-    r1aAssert((string)get_option('veciahorra_db_version')==='0.30.0','Version instalada invalida.');
+    r1aAssert((string)get_option('veciahorra_db_version')==='0.31.0','Version instalada invalida.');
     echo "R1A_SCHEMA=PASS\nR1A_OWNERSHIP=PASS\nR1A_BACKFILL_ADVERSARIAL=6/6\nR1A_ONBOARDING=PASS\nR1A_IDEMPOTENCY=PASS\nR1A_CAS=PASS\n";
 } finally {
     foreach($applicationIds as $id)$wpdb->delete($applications,['id'=>$id]);

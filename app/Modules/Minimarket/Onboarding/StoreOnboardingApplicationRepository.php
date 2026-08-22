@@ -107,6 +107,7 @@ final class StoreOnboardingApplicationRepository implements StoreOnboardingAppli
     public function findByPublicId(string $publicId): ?StoreOnboardingApplication { return $this->findOne('public_id', $publicId); }
     public function findByUserId(int $userId): ?StoreOnboardingApplication { return $this->findOne('user_id', $userId); }
     public function findByIdempotencyHash(string $hash): ?StoreOnboardingApplication { return $this->findOne('idempotency_key_hash', $hash); }
+    public function findByApplicationId(int $id): ?StoreOnboardingApplication { if($id<1)throw new InvalidArgumentException('onboarding_invalid_id');return $this->findById($id); }
 
     public function attachUser(int $id, int $userId, string $expectedUpdatedAt, string $updatedAt): StoreOnboardingApplication
     {

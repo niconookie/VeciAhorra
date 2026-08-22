@@ -111,6 +111,20 @@ final class StoreOnboardingEmailVerificationRepository
         }, fn($v, $before) => $v->failedAttempts >= $before->failedAttempts && $v->failedAttempts <= 5);
     }
 
+    public function bindCandidateUser(int $applicationId,int $generation,int $userId,string $expectedUpdatedAt,string $now):StoreOnboardingEmailVerification
+    {
+        if($userId<1)throw new InvalidArgumentException('verification_invalid_user');$this->advance($expectedUpdatedAt,$now);
+        return $this->transaction(function()use($applicationId,$generation,$userId,$expectedUpdatedAt,$now){
+            $this->eligibleApplication($applicationId);$v=$this->findLockedByApplication($applicationId)??throw new RuntimeException('verification_not_found');
+            if($v->generation!==$generation||$v->consumedAt!==null)throw new RuntimeException('verification_concurrent_modification');
+            if($v->candidateUserId===$userId)return $v;if($v->candidateUserId!==null)throw new RuntimeException('verification_conflict');
+            global $wpdb;if((int)$wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->users} WHERE ID=%d FOR UPDATE",$userId))!==$userId)throw new RuntimeException('verification_reference_invalid');
+            if($v->updatedAt!==$expectedUpdatedAt)throw new RuntimeException('verification_concurrent_modification');
+            if($wpdb->update($this->table(),['candidate_user_id'=>$userId,'updated_at'=>$now],['id'=>$v->id,'generation'=>$generation,'candidate_user_id'=>null,'updated_at'=>$expectedUpdatedAt])!==1)throw new VerificationAmbiguousWrite();
+            return $this->findAfterWriteOrAmbiguous($applicationId);
+        },function()use($applicationId,$generation,$userId,$now){$v=$this->freshByApplication($applicationId);if($v!==null&&$v->generation===$generation&&$v->candidateUserId===$userId&&$v->attachedUserId===null&&$v->consumedAt===null&&$v->updatedAt===$now)return $v;throw new VerificationClosedOutcome($v===null?'verification_persistence_failed':'verification_conflict');});
+    }
+
     public function consumeAndAttach(int $applicationId, int $generation, string $tokenHash, int $userId, string $expectedApplicationUpdatedAt, string $expectedVerificationUpdatedAt, string $now, callable $compatible): StoreOnboardingEmailVerification
     {
         $this->hash($tokenHash); if ($userId <= 0) throw new InvalidArgumentException('verification_invalid_user'); StoreOnboardingEmailVerification::timestamp($now);

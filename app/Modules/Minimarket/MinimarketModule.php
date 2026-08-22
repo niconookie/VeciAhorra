@@ -6,6 +6,7 @@ namespace VeciAhorra\Modules\Minimarket;
 
 use VeciAhorra\Core\Config;
 use VeciAhorra\Modules\Minimarket\Identity\MinimarketRole;
+use VeciAhorra\Modules\Minimarket\Identity\PendingMinimarketRole;
 use VeciAhorra\Modules\Minimarket\Onboarding\Application\StartStoreOnboarding;
 use VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\ConfiguredCurrentOnboardingTerms;
 use VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake\HmacRateLimitKeyDeriver;
@@ -41,6 +42,7 @@ final class MinimarketModule
     public function register(): void
     {
         (new MinimarketRole())->register();
+        (new PendingMinimarketRole())->register();
         $routes = new MinimarketRoutes();
         add_action('rest_api_init', [$routes, 'register']);
         add_shortcode(self::SHORTCODE, [$this, 'render']);
