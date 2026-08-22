@@ -9,6 +9,7 @@ function r1dbFingerprintReject(callable $operation,string $reason):void{r1dbExpe
 function r1dbColumn(int $ordinal,string $name,string $declared,string $key='',bool $nullable=false,?string $collation=null,mixed $default=null):array{return R1dbHistoricalFingerprint::schemaColumn(['Field'=>$name,'Type'=>$declared,'Collation'=>$collation,'Null'=>$nullable?'YES':'NO','Key'=>$key,'Default'=>$default,'Extra'=>''],$ordinal);}
 function r1dbSchema(string $idType='bigint',string $valueType='varchar(64)',bool $nullable=true,?string $collation='utf8mb4_unicode_ci',mixed $default=null):array{return [r1dbColumn(1,'id',$idType,'PRI',false,str_contains($idType,'char')?$collation:null),r1dbColumn(2,'value',$valueType,'',$nullable,$collation,$default),r1dbColumn(3,'binary_value','varbinary(32)'),r1dbColumn(4,'nullable','varchar(32)','',true,$collation)];}
 function r1dbRequireFailedComparison(callable $comparison,R1dbComparisonLedger $ledger,string $reason):void{r1dbExpectExactRuntimeException($comparison,$reason);r1dbFingerprintReject(fn()=>$ledger->seal(),'r1db_comparison_ledger_incomplete');}
+final class R1dbExactExceptionCaseRegistry{private array $expected=[];private array $executed=[];private array $passed=[];private array $failed=[];public function __construct(array $expected){foreach($expected as $id){r1dbFingerprintAssert(is_string($id)&&$id!=='','exact_case_id_invalid');r1dbFingerprintAssert(!isset($this->expected[$id]),'exact_case_id_duplicate');$this->expected[$id]=true;}}public function run(string $id,callable $case):void{r1dbFingerprintAssert(isset($this->expected[$id]),'exact_case_id_unexpected');r1dbFingerprintAssert(!isset($this->executed[$id]),'exact_case_id_already_executed');$this->executed[$id]=true;try{$case();$this->passed[$id]=true;}catch(Throwable $exception){$this->failed[$id]=get_class($exception);throw $exception;}}public function seal():array{r1dbFingerprintAssert($this->failed===[],'exact_case_failed');r1dbFingerprintAssert(array_keys($this->executed)===array_keys($this->expected),'exact_case_not_executed');r1dbFingerprintAssert(array_keys($this->passed)===array_keys($this->expected),'exact_case_not_passed');return array_keys($this->passed);}}
 
 $primary=['id'];
 $rows=[['id'=>'1','value'=>'alpha','binary_value'=>"a\0b",'nullable'=>null],['id'=>'2','value'=>'beta','binary_value'=>"c\0d",'nullable'=>'']];
@@ -43,17 +44,28 @@ r1dbFingerprintAssert(count(array_unique($binaryFingerprints))===5,'binary finge
 r1dbFingerprintAssert($binarySchemas['varchar-modifier'][1]['semantic_kind']==='string'&&$binarySchemas['binary-storage'][1]['semantic_kind']==='binary','binary modifier confused with storage');
 echo 'R1DB_SQL_BINARY_SEMANTICS='.$binaryProofs.'/PASS'.PHP_EOL;
 
-$exactClassCases=0;$reason='r1db_historical_fingerprint_changed_surface';
-r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException($reason,0),$reason,0);$exactClassCases++;
-r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new class($reason) extends RuntimeException{},$reason),'exception_class_not_exact');$exactClassCases++;
-r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new LogicException($reason),$reason),'exception_class_not_exact');$exactClassCases++;
-foreach([new Error($reason),new TypeError($reason)] as $unexpected)r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw $unexpected,$reason),'exception_class_not_exact');$exactClassCases++;
-r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException('different_reason'),$reason),'exception_reason_not_exact');r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException($reason,9),$reason),'exception_code_not_exact');$exactClassCases++;
-r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException($reason,0,new RuntimeException('cause')),$reason),'exception_previous_not_null');$exactClassCases++;
-r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>null,$reason),'exception_missing');$exactClassCases++;
-r1dbExpectHarnessReject(static fn()=>r1dbRequireFailedComparison(static fn()=>null,new R1dbComparisonLedger(['one']),$reason),'exception_missing');$exactClassCases++;
-r1dbFingerprintAssert($exactClassCases===8,'exact class case total');
-echo 'R1DB_EXACT_LEDGER_EXCEPTION_CLASS='.$exactClassCases.'/PASS'.PHP_EOL;
+$exactCaseIds=['EXC-01-EXACT-RUNTIME','EXC-02-RUNTIME-SUBCLASS','EXC-03-LOGIC-EXCEPTION','EXC-04-ERROR','EXC-05-WRONG-MESSAGE','EXC-06-WRONG-CODE','EXC-07-PREVIOUS-NOT-NULL','EXC-08-NO-EXCEPTION'];
+$reason='r1db_historical_fingerprint_changed_surface';$subclassRejected=false;$exactRegistry=new R1dbExactExceptionCaseRegistry($exactCaseIds);
+$exactRegistry->run('EXC-01-EXACT-RUNTIME',static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException($reason,0),$reason,0));
+$exactRegistry->run('EXC-02-RUNTIME-SUBCLASS',static function()use($reason,&$subclassRejected):void{r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new class($reason,0) extends RuntimeException{},$reason,0),'exception_class_not_exact');$subclassRejected=true;});
+$exactRegistry->run('EXC-03-LOGIC-EXCEPTION',static fn()=>r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new LogicException($reason),$reason),'exception_class_not_exact'));
+$exactRegistry->run('EXC-04-ERROR',static fn()=>r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new Error($reason),$reason),'exception_class_not_exact'));
+$exactRegistry->run('EXC-05-WRONG-MESSAGE',static fn()=>r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException('different_reason',0),$reason,0),'exception_reason_not_exact'));
+$exactRegistry->run('EXC-06-WRONG-CODE',static fn()=>r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException($reason,9),$reason,0),'exception_code_not_exact'));
+$exactRegistry->run('EXC-07-PREVIOUS-NOT-NULL',static fn()=>r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException($reason,0,new RuntimeException('cause')),$reason,0),'exception_previous_not_null'));
+$exactRegistry->run('EXC-08-NO-EXCEPTION',static fn()=>r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>null,$reason,0),'exception_missing'));
+$approvedExactCaseIds=$exactRegistry->seal();r1dbFingerprintAssert($subclassRejected,'runtime_subclass_not_rejected');
+$antiFalsePass=0;$firstId=$exactCaseIds[0];
+$omitted=new R1dbExactExceptionCaseRegistry($exactCaseIds);foreach(array_slice($exactCaseIds,0,7) as $id)$omitted->run($id,static fn()=>null);r1dbFingerprintReject(fn()=>$omitted->seal(),'exact_case_not_executed');$antiFalsePass++;
+$duplicate=new R1dbExactExceptionCaseRegistry([$firstId]);$duplicate->run($firstId,static fn()=>null);r1dbFingerprintReject(fn()=>$duplicate->run($firstId,static fn()=>null),'exact_case_id_already_executed');$antiFalsePass++;
+$unexpected=new R1dbExactExceptionCaseRegistry([$firstId]);r1dbFingerprintReject(fn()=>$unexpected->run('EXC-99-UNEXPECTED',static fn()=>null),'exact_case_id_unexpected');$antiFalsePass++;
+$permissive=static function(callable $operation):void{try{$operation();}catch(Throwable){}};$subclassMutation=new R1dbExactExceptionCaseRegistry(['EXC-02-RUNTIME-SUBCLASS']);r1dbFingerprintReject(fn()=>$subclassMutation->run('EXC-02-RUNTIME-SUBCLASS',static function()use($permissive,$reason):void{$permissive(static fn()=>throw new class($reason,0) extends RuntimeException{});r1dbFingerprintAssert(false,'subclass_mutation_accepted');}),'subclass_mutation_accepted');$antiFalsePass++;
+$noExceptionMutation=new R1dbExactExceptionCaseRegistry(['EXC-08-NO-EXCEPTION']);r1dbFingerprintReject(fn()=>$noExceptionMutation->run('EXC-08-NO-EXCEPTION',static function()use($permissive):void{$permissive(static fn()=>null);r1dbFingerprintAssert(false,'no_exception_mutation_accepted');}),'no_exception_mutation_accepted');$antiFalsePass++;
+$expectationMutation=new R1dbExactExceptionCaseRegistry([$firstId]);r1dbFingerprintReject(fn()=>$expectationMutation->run($firstId,static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException('actual'), 'mutated')),'exception_reason_not_exact');$antiFalsePass++;
+r1dbFingerprintAssert($antiFalsePass===6,'anti_false_pass_total');
+echo 'R1DB_EXACT_LEDGER_EXCEPTION_CASE_IDS='.implode(',',$approvedExactCaseIds).PHP_EOL;
+echo 'R1DB_EXACT_LEDGER_EXCEPTION_CLASS='.count($approvedExactCaseIds).'/PASS'.PHP_EOL;
+echo "UNEXPECTED_RUNTIME_SUBCLASS_REJECTED=PASS\nR1DB_EXACT_LEDGER_EXCEPTION_ANTI_FALSE_PASS={$antiFalsePass}/PASS\n";
 
 $guards=0;
 r1dbFingerprintReject(fn()=>new R1dbComparisonLedger(['one','one']),'r1db_comparison_ledger_invalid');$guards++;
