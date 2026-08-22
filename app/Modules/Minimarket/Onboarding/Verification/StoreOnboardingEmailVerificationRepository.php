@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 use VeciAhorra\Core\Config;
+use VeciAhorra\Modules\Minimarket\Onboarding\OnboardingAmbiguousWrite;
 use VeciAhorra\Modules\Minimarket\Onboarding\StoreOnboardingApplication;
 use VeciAhorra\Modules\Minimarket\Onboarding\StoreOnboardingApplicationRepository;
 
@@ -46,7 +47,7 @@ final class StoreOnboardingEmailVerificationRepository
             global $wpdb;
             $ok = $wpdb->insert($this->table(), ['application_id'=>$applicationId, 'purpose'=>$purpose, 'generation'=>1, 'candidate_user_id'=>$candidateUserId, 'attached_user_id'=>null, 'email_binding_hash'=>$emailHash, 'token_hash'=>$tokenHash, 'expires_at'=>$expiresAt, 'consumed_at'=>null, 'failed_attempts'=>0, 'resend_count'=>0, 'last_sent_at'=>null, 'delivery_state'=>StoreOnboardingEmailVerification::PENDING, 'delivery_attempt_count'=>0, 'last_error_code'=>null, 'created_at'=>$now, 'updated_at'=>$now]);
             if ($ok !== 1) throw new VerificationAmbiguousWrite();
-            return $this->findLockedByApplication($applicationId) ?? throw new VerificationAmbiguousWrite();
+            return $this->findAfterWriteOrAmbiguous($applicationId);
         }, $reconcile);
     }
 
@@ -68,7 +69,7 @@ final class StoreOnboardingEmailVerificationRepository
             global $wpdb;
             $changed = $wpdb->update($this->table(), ['generation'=>$expected['generation'], 'token_hash'=>$tokenHash, 'expires_at'=>$expiresAt, 'consumed_at'=>null, 'attached_user_id'=>null, 'failed_attempts'=>0, 'resend_count'=>$expected['resend'], 'last_sent_at'=>null, 'delivery_state'=>StoreOnboardingEmailVerification::PENDING, 'delivery_attempt_count'=>0, 'last_error_code'=>null, 'updated_at'=>$now], ['id'=>$v->id, 'generation'=>$expectedGeneration, 'updated_at'=>$expectedUpdatedAt]);
             if ($changed !== 1) throw new VerificationAmbiguousWrite();
-            return $this->findLockedByApplication($applicationId) ?? throw new VerificationAmbiguousWrite();
+            return $this->findAfterWriteOrAmbiguous($applicationId);
         }, function () use ($applicationId, $tokenHash, $expiresAt, $now, &$expected) {
             if (!is_array($expected)) throw new VerificationClosedOutcome('verification_persistence_failed');
             $v = $this->freshByApplication($applicationId);
@@ -133,10 +134,11 @@ final class StoreOnboardingEmailVerificationRepository
             if ((int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->users} WHERE ID=%d FOR UPDATE", $userId)) !== $userId
                 || (string) $app['account_email'] !== (string) $compatibilityApplication['account_email']
                 || $v->candidateUserId !== $compatibilityVerification->candidateUserId) throw new RuntimeException('verification_user_incompatible');
-            $application = (new StoreOnboardingApplicationRepository())->attachUserInTransaction($applicationId, $userId, $expectedApplicationUpdatedAt, $now);
+            try { $application = (new StoreOnboardingApplicationRepository())->attachUserInTransaction($applicationId, $userId, $expectedApplicationUpdatedAt, $now); }
+            catch (OnboardingAmbiguousWrite) { throw new VerificationAmbiguousWrite(); }
             $changed = $wpdb->update($this->table(), ['consumed_at'=>$now, 'attached_user_id'=>$userId, 'last_error_code'=>null, 'updated_at'=>$now], ['id'=>$v->id, 'generation'=>$generation, 'updated_at'=>$expectedVerificationUpdatedAt, 'consumed_at'=>null]);
             if ($changed !== 1 || (int) $application->data['user_id'] !== $userId) throw new VerificationAmbiguousWrite();
-            return $this->findLockedByApplication($applicationId) ?? throw new VerificationAmbiguousWrite();
+            return $this->findAfterWriteOrAmbiguous($applicationId);
         }, function () use ($applicationId, $generation, $tokenHash, $userId) {
             $v = $this->freshByApplication($applicationId); $app = $this->freshApplication($applicationId);
             if ($v === null || $app === null) throw new VerificationClosedOutcome('verification_persistence_failed');
@@ -170,7 +172,7 @@ final class StoreOnboardingEmailVerificationRepository
             $before = $v; $data = $change($v); if ($data === []) return $v;
             global $wpdb; $data['updated_at'] = $now;
             if ($wpdb->update($this->table(), $data, ['id'=>$v->id, 'generation'=>$g, 'updated_at'=>$e]) !== 1) throw new VerificationAmbiguousWrite();
-            return $this->findLockedByApplication($a) ?? throw new VerificationAmbiguousWrite();
+            return $this->findAfterWriteOrAmbiguous($a);
         }, function () use ($a, $g, $now, $replay, &$before) {
             if (!$before instanceof StoreOnboardingEmailVerification) throw new VerificationClosedOutcome('verification_persistence_failed');
             $v = $this->freshByApplication($a);
@@ -184,10 +186,10 @@ final class StoreOnboardingEmailVerificationRepository
         global $wpdb;
         if ($wpdb->query('START TRANSACTION') === false) throw new RuntimeException('verification_persistence_failed');
         try { $result = $work(); }
-        catch (VerificationAmbiguousWrite) { $wpdb->query('ROLLBACK'); return $this->reconcile($reconcile); }
+        catch (VerificationAmbiguousWrite) { $this->requireCleanConnectionForReconciliation(); return $this->reconcile($reconcile); }
         catch (Throwable $e) { $wpdb->query('ROLLBACK'); throw $e; }
         if ($wpdb->query('COMMIT') !== false) return $result;
-        $wpdb->query('ROLLBACK');
+        $this->requireCleanConnectionForReconciliation();
         return $this->reconcile($reconcile);
     }
 
@@ -196,6 +198,18 @@ final class StoreOnboardingEmailVerificationRepository
         try { return $reconcile(); }
         catch (VerificationClosedOutcome $e) { throw new RuntimeException($e->reason); }
         catch (Throwable) { throw new RuntimeException('verification_outcome_uncertain'); }
+    }
+
+    private function requireCleanConnectionForReconciliation(): void
+    {
+        global $wpdb;
+        $wpdb->query('ROLLBACK');
+        $wpdb->last_error = '';
+        $state = $wpdb->get_var('SELECT @@in_transaction');
+        $stateError = (string) ($wpdb->last_error ?? '');
+        if ($stateError !== '' || !($state === 0 || $state === '0')) {
+            throw new RuntimeException('verification_outcome_uncertain');
+        }
     }
 
     private function reconcileCreate(int $a, string $p, ?int $u, string $eh, string $th, string $x): StoreOnboardingEmailVerification
@@ -209,9 +223,10 @@ final class StoreOnboardingEmailVerificationRepository
     private function sameDeliveryResult(StoreOnboardingEmailVerification $v, string $state, ?string $error, ?string $sentAt, int $attempts): bool { return $v->deliveryState === $state && $v->lastErrorCode === $error && $v->lastSentAt === $sentAt && $v->deliveryAttemptCount === $attempts; }
     private function eligibleApplication(int $id): array { global $wpdb; $r=$wpdb->get_row($wpdb->prepare("SELECT id,status,user_id,store_id FROM {$this->applicationsTable()} WHERE id=%d FOR UPDATE",$id),ARRAY_A); if(!is_array($r)||$wpdb->last_error!==''||$r['status']!==StoreOnboardingApplication::PROVISIONING||$r['user_id']!==null||$r['store_id']!==null) throw new RuntimeException('verification_application_ineligible'); return $r; }
     private function findLockedByApplication(int $id): ?StoreOnboardingEmailVerification { return $this->find('application_id', $id, true); }
+    private function findAfterWriteOrAmbiguous(int $id): StoreOnboardingEmailVerification { try{$verification=$this->findLockedByApplication($id);}catch(Throwable){throw new VerificationAmbiguousWrite();} return $verification??throw new VerificationAmbiguousWrite(); }
     private function freshByApplication(int $id): ?StoreOnboardingEmailVerification { return $this->find('application_id', $id); }
-    private function freshApplication(int $id): ?array { global $wpdb; $wpdb->last_error=''; $r=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$this->applicationsTable()} WHERE id=%d",$id),ARRAY_A); if($wpdb->last_error!=='') throw new RuntimeException('verification_read_failed'); return is_array($r)?$r:null; }
-    private function find(string $column, string|int $value, bool $lock=false): ?StoreOnboardingEmailVerification { if(!in_array($column,['id','application_id','token_hash'],true)) throw new InvalidArgumentException('verification_invalid_lookup'); global $wpdb; $p=is_int($value)?'%d':'%s'; $wpdb->last_error=''; $r=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$this->table()} WHERE {$column}={$p} LIMIT 1".($lock?' FOR UPDATE':''),$value),ARRAY_A); if($wpdb->last_error!=='') throw new RuntimeException('verification_read_failed'); if(!is_array($r)) return null; $v=StoreOnboardingEmailVerification::fromRow($r); $app=$wpdb->get_row($wpdb->prepare("SELECT user_id FROM {$this->applicationsTable()} WHERE id=%d",$v->applicationId),ARRAY_A); if(!is_array($app)||$wpdb->last_error!==''||$v->attachedUserId!==null&&(int)($app['user_id']??0)!==$v->attachedUserId) throw new RuntimeException('verification_reference_invalid'); return $v; }
+    private function freshApplication(int $id): ?array { global $wpdb; $wpdb->last_error=''; $r=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$this->applicationsTable()} WHERE id=%d",$id),ARRAY_A); $error=(string)($wpdb->last_error??''); if($error!=='') throw new RuntimeException('verification_read_failed'); return is_array($r)?$r:null; }
+    private function find(string $column, string|int $value, bool $lock=false): ?StoreOnboardingEmailVerification { if(!in_array($column,['id','application_id','token_hash'],true)) throw new InvalidArgumentException('verification_invalid_lookup'); global $wpdb; $p=is_int($value)?'%d':'%s'; $wpdb->last_error=''; $r=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$this->table()} WHERE {$column}={$p} LIMIT 1".($lock?' FOR UPDATE':''),$value),ARRAY_A); $readError=(string)($wpdb->last_error??''); if($readError!=='') throw new RuntimeException('verification_read_failed'); if(!is_array($r)) return null; try{$v=StoreOnboardingEmailVerification::fromRow($r);}catch(Throwable){throw new RuntimeException('verification_read_failed');} $wpdb->last_error=''; $app=$wpdb->get_row($wpdb->prepare("SELECT user_id FROM {$this->applicationsTable()} WHERE id=%d",$v->applicationId),ARRAY_A); $referenceError=(string)($wpdb->last_error??''); if(!is_array($app)||$referenceError!==''||$v->attachedUserId!==null&&(int)($app['user_id']??0)!==$v->attachedUserId) throw new RuntimeException('verification_reference_invalid'); return $v; }
     private function intent(int $a,string $p,?int $u,string $eh,string $th,string $x,string $n):void { if($a<=0||$u!==null&&$u<=0||$p!==StoreOnboardingEmailVerification::PURPOSE) throw new InvalidArgumentException('verification_invalid_intent'); $this->hash($eh);$this->hash($th);StoreOnboardingEmailVerification::timestamp($x);StoreOnboardingEmailVerification::timestamp($n);if($x<=$n)throw new InvalidArgumentException('verification_invalid_expiry'); }
     private function hash(string $h):void { if(strlen($h)!==32)throw new InvalidArgumentException('verification_invalid_hash'); }
     private function advance(string $old,string $new):void { StoreOnboardingEmailVerification::timestamp($old);StoreOnboardingEmailVerification::timestamp($new);if($new<=$old)throw new InvalidArgumentException('verification_timestamp_must_advance'); }

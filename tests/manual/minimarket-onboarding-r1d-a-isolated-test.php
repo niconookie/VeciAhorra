@@ -61,6 +61,19 @@ r1da(is_string($repo)&&str_contains($repo,'START TRANSACTION')&&str_contains($re
 r1da(!str_contains($repo,'wp_mail')&&!str_contains($repo,'owner_user_id')&&!str_contains($repo,'_veciahorra_store_id')&&!str_contains($repo,'wp_insert_user'),'R1D-A invadio superficie prohibida.');
 r1da(is_string($appRepo)&&str_contains($appRepo,'attachUserInTransaction')&&str_contains($appRepo,'onboarding_user_conflict')&&str_contains($appRepo,'recoverProvisioningFailure'),'Contrato Application incompleto.');
 
+final class R1daTransactionStateWpdb
+{
+    public string $last_error='';public mixed $state='0';public bool $stateFails=false;public bool $rollbackFails=false;public int $durableReads=0;
+    public function query(string $query):int|false{return $query==='ROLLBACK'&&$this->rollbackFails?false:0;}
+    public function get_var(string $query):mixed{r1da($query==='SELECT @@in_transaction','Consulta transaccional inesperada.');if($this->stateFails){$this->last_error='hostile';return null;}return $this->state;}
+}
+$productionWpdb=$GLOBALS['wpdb'];$stateGuard=new ReflectionMethod(VerificationRepository::class,'requireCleanConnectionForReconciliation');$stateGuard->setAccessible(true);
+foreach([['0',false,false,true],[0,false,true,true],['1',false,true,false],[null,false,true,false],[false,false,true,false],['00',false,true,false],['0',true,true,false]] as [$state,$queryFails,$rollbackFails,$accepted]){
+    $GLOBALS['wpdb']=new R1daTransactionStateWpdb();$GLOBALS['wpdb']->state=$state;$GLOBALS['wpdb']->stateFails=$queryFails;$GLOBALS['wpdb']->rollbackFails=$rollbackFails;
+    try{$stateGuard->invoke(new VerificationRepository());r1da($accepted,'Estado transaccional hostil aceptado.');}catch(ReflectionException $e){throw $e;}catch(RuntimeException $e){r1da(!$accepted&&$e->getMessage()==='verification_outcome_uncertain'&&$e->getPrevious()===null,'Guard transaccional mal clasificado.');}
+}
+$GLOBALS['wpdb']=$productionWpdb;
+
 $database=(string)getenv('VA_R1DA_DISPOSABLE_DATABASE');
 if($database!==''){
     r1da(preg_match('/\A[a-z0-9_]+\z/',$database)===1&&$database!==DB_NAME,'Base desechable invalida.');
