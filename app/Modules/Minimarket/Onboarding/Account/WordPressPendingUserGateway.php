@@ -12,7 +12,10 @@ final class WordPressPendingUserGateway implements PendingUserGateway
     public function isLoginOccupied(string $login):bool{return username_exists($login)!==false;}
     public function create(string $login,string $email,SensitivePassword $password):PendingUser
     {
-        $id=$password->exposeTo(static fn(string $raw):int|\WP_Error=>wp_insert_user(['user_login'=>$login,'user_email'=>$email,'user_pass'=>$raw,'display_name'=>'Minimarket pendiente','role'=>PendingMinimarketRole::ROLE]));
+        global $wpdb;$secret=defined('AUTH_SALT')?(string)AUTH_SALT:'closed';$lock='va-r1db-ul-'.substr(hash_hmac('sha256',"r1db-user-login\0".$login,$secret),0,48);$wpdb->last_error='';$acquired=$wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %f)',$lock,2.0));if($wpdb->last_error!==''||(string)$acquired!=='1')throw new PendingAccountException('pending_account_outcome_uncertain');$id=null;$failure=null;$releaseFailed=false;
+        try{if(username_exists($login)!==false)throw new PendingAccountException('pending_account_identity_collision');$id=$password->exposeTo(static fn(string $raw):int|\WP_Error=>wp_insert_user(['user_login'=>$login,'user_email'=>$email,'user_pass'=>$raw,'display_name'=>'Minimarket pendiente','role'=>PendingMinimarketRole::ROLE]));}catch(PendingAccountException $exception){$failure=$exception->reason;}catch(\Throwable){$failure='pending_account_creation_failed';}finally{try{$wpdb->last_error='';$released=$wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)',$lock));$releaseFailed=$wpdb->last_error!==''||(string)$released!=='1';}catch(\Throwable){$releaseFailed=true;}}
+        if($releaseFailed)throw new PendingAccountException('pending_account_outcome_uncertain');
+        if($failure!==null)throw new PendingAccountException($failure);
         if(is_wp_error($id)){$codes=$id->get_error_codes();if(in_array('existing_user_login',$codes,true))throw new PendingAccountException('pending_account_identity_collision');throw new PendingAccountException('pending_account_creation_failed');}
         $user=$this->find((int)$id);if($user===null)throw new PendingAccountException('pending_account_outcome_uncertain');return $user;
     }

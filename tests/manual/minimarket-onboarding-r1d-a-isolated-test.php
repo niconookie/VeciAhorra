@@ -77,13 +77,14 @@ $GLOBALS['wpdb']=$productionWpdb;
 $database=(string)getenv('VA_R1DA_DISPOSABLE_DATABASE');
 if($database!==''){
     r1da(preg_match('/\A[a-z0-9_]+\z/',$database)===1&&$database!==DB_NAME,'Base desechable invalida.');
-    global $wpdb;$production=$wpdb;
+    global $wpdb;$production=$wpdb;$runId=bin2hex(random_bytes(8));$fixtureApplicationIds=[];$cleanupPassed=false;
     try{
         $wpdb=new wpdb(DB_USER,DB_PASSWORD,$database,DB_HOST);$wpdb->set_prefix('wp_');
+        $beforeCounts=[(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users}"),(int)$wpdb->get_var('SELECT COUNT(*) FROM wp_va_stores'),(int)$wpdb->get_var('SELECT COUNT(*) FROM wp_va_store_onboarding_applications'),(int)$wpdb->get_var('SELECT COUNT(*) FROM wp_va_store_onboarding_email_verifications')];r1da($beforeCounts===[18,348,0,0],'Base desechable no limpia.');
         (new CreateStoreOnboardingEmailVerificationFoundation())->up();
         $apps=new StoreOnboardingApplicationRepository();$verifications=new VerificationRepository();
         $userIds=array_map('intval',$wpdb->get_col("SELECT ID FROM {$wpdb->users} ORDER BY ID LIMIT 3"));r1da(count($userIds)===3,'Usuarios fixture insuficientes.');[$userA,$userB,$userC]=$userIds;
-        $create=function(string $suffix,string $now)use($apps){return $apps->createProvisioning(['public_id'=>'onb_r1da_'.$suffix,'account_email'=>'r1da.'.$suffix.'@example.test','owner_rut_normalized'=>'12345678-5','idempotency_key_hash'=>hash('sha256','r1da-'.$suffix),'terms_version'=>'R1C-LEGAL-2026-07-30-V1','terms_accepted_at'=>$now,'created_at'=>$now,'updated_at'=>$now]);};
+        $create=function(string $suffix,string $now)use($apps,$runId,&$fixtureApplicationIds){$application=$apps->createProvisioning(['public_id'=>'onb_r1da_'.$runId.'_'.$suffix,'account_email'=>'r1da.'.$runId.'.'.$suffix.'@example.test','owner_rut_normalized'=>'12345678-5','idempotency_key_hash'=>hash('sha256','r1da-'.$runId.'-'.$suffix),'terms_version'=>'R1C-LEGAL-2026-07-30-V1','terms_accepted_at'=>$now,'created_at'=>$now,'updated_at'=>$now]);$fixtureApplicationIds[]=(int)$application->data['id'];return $application;};
         $t0='2026-09-01 00:00:00';$t1='2026-09-01 00:01:00';$t2='2026-09-01 00:02:00';$t3='2026-09-01 00:03:00';$t4='2026-09-01 00:04:00';$t5='2026-09-01 00:05:00';
         $a=$create('consume',$t0);$aid=(int)$a->data['id'];$email=str_repeat('e',32);$token=str_repeat('a',32);
         $v=$verifications->create($aid,V::PURPOSE,null,$email,$token,'2026-09-01 01:00:00',$t0);
@@ -154,8 +155,12 @@ if($database!==''){
         $hostileSchema("ALTER TABLE {$table} CONVERT TO CHARACTER SET latin1 COLLATE latin1_swedish_ci","ALTER TABLE {$table} CONVERT TO CHARACTER SET utf8mb4 COLLATE {$expectedCollation}",'charset-collation');
         r1da($wpdb->query("ALTER TABLE {$table} DROP INDEX onboarding_email_verification_token_unique, ADD UNIQUE KEY onboarding_email_verification_token_unique (token_hash(16))")!==false,'No se creo indice hostil.');
         try{(new CreateStoreOnboardingEmailVerificationFoundation())->assertStructure();throw new RuntimeException('Indice prefijado aceptado.');}catch(RuntimeException $e){r1da(str_starts_with($e->getMessage(),'r1da_schema_invalid:index.'),'Error de indice incorrecto.');}
-        echo "R1DB_CANDIDATE_MATRIX=19/PASS real=7 isolated=12\nR1DB_CONSUME_ATTACH_MATRIX=21/PASS real=10 isolated=11\nR1DA_DISPOSABLE=PASS migration=PASS create=PASS rotate=PASS attempts=PASS delivery=PASS consume=PASS attach=PASS recovery=PASS schema_guard=PASS\n";
-    }finally{$wpdb=$production;}
+        r1da($wpdb->query("ALTER TABLE {$table} DROP INDEX onboarding_email_verification_token_unique, ADD UNIQUE KEY onboarding_email_verification_token_unique (token_hash)")!==false,'No se restauro indice token.');$schemaGuard->assertStructure();
+        echo "R1DA_DISPOSABLE=PASS migration=PASS create=PASS rotate=PASS attempts=PASS delivery=PASS consume=PASS attach=PASS recovery=PASS schema_guard=PASS\n";
+    }finally{
+        if($wpdb!==$production){$cleanupOk=true;foreach(array_reverse(array_values(array_unique($fixtureApplicationIds))) as $fixtureApplicationId){$wpdb->last_error='';$wpdb->delete('wp_va_store_onboarding_email_verifications',['application_id'=>$fixtureApplicationId]);$cleanupOk=$cleanupOk&&$wpdb->last_error==='';$wpdb->last_error='';$wpdb->delete('wp_va_store_onboarding_applications',['id'=>$fixtureApplicationId]);$cleanupOk=$cleanupOk&&$wpdb->last_error==='';}$afterCounts=[(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users}"),(int)$wpdb->get_var('SELECT COUNT(*) FROM wp_va_stores'),(int)$wpdb->get_var('SELECT COUNT(*) FROM wp_va_store_onboarding_applications'),(int)$wpdb->get_var('SELECT COUNT(*) FROM wp_va_store_onboarding_email_verifications')];$locks=(int)$wpdb->get_var("SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE ID=CONNECTION_ID() AND STATE LIKE '%lock%'");$cleanupPassed=$cleanupOk&&$afterCounts===[18,348,0,0]&&$locks===0;}$wpdb=$production;
+    }
+    r1da($cleanupPassed,'Cleanup desechable fallo IDs='.implode(',',$fixtureApplicationIds));echo "R1DA_DISPOSABLE_CLEANUP=PASS\n";
 }
 
 echo "R1DA_ISOLATED=PASS table=PASS entity=PASS invariants=PASS repository=PASS atomicity=PASS boundaries=PASS\n";

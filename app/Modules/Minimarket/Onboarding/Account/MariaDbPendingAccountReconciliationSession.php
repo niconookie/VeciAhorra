@@ -9,21 +9,23 @@ final class MariaDbPendingAccountReconciliationSession implements PendingAccount
     public function __construct(private \wpdb $database,private PendingAccountReconciliationReader $reader){}
     public function reconcile(array $lockNames,PendingAccountActivationReceipt $receipt):PendingAccountActivationReceipt
     {
-        $acquired=[];$transaction=false;$snapshot=null;$releaseFailed=false;
+        $acquired=[];$transaction=false;$snapshot=null;$primaryReason=null;$transactionUncertain=false;$releaseFailed=false;
         try{
             $locks=array_values(array_unique($lockNames));sort($locks,SORT_STRING);if(count($locks)<3||count($locks)>4)throw new PendingAccountException('pending_account_outcome_uncertain');
             foreach($locks as $lock){if(!is_string($lock)||!str_starts_with($lock,'va-r1db-'))throw new PendingAccountException('pending_account_outcome_uncertain');$this->database->last_error='';$value=$this->database->get_var($this->database->prepare('SELECT GET_LOCK(%s, %f)',$lock,1.0));if($this->database->last_error!==''||(string)$value!=='1')throw new PendingAccountException('pending_account_outcome_uncertain');$acquired[]=$lock;}
             $this->database->last_error='';$state=$this->database->get_var('SELECT @@in_transaction');if($this->database->last_error!==''||(string)$state!=='0')throw new PendingAccountException('pending_account_outcome_uncertain');
-            if($this->database->query('SET TRANSACTION READ ONLY')===false||$this->database->query('START TRANSACTION WITH CONSISTENT SNAPSHOT')===false||$this->database->last_error!=='')throw new PendingAccountException('pending_account_outcome_uncertain');$transaction=true;
+            $this->database->last_error='';if($this->database->query('SET TRANSACTION READ ONLY')===false||$this->database->last_error!=='')throw new PendingAccountException('pending_account_outcome_uncertain');
+            $transaction=true;$this->database->last_error='';if($this->database->query('START TRANSACTION WITH CONSISTENT SNAPSHOT')===false||$this->database->last_error!=='')throw new PendingAccountException('pending_account_outcome_uncertain');
             $snapshot=$this->reader->read($receipt->applicationId(),$receipt->result()->userId);$this->assertExact($snapshot,$receipt);
             if($this->database->query('COMMIT')===false||$this->database->last_error!=='')throw new PendingAccountException('pending_account_outcome_uncertain');$transaction=false;
-        }catch(PendingAccountException $exception){throw new PendingAccountException($exception->reason);}catch(\Throwable){throw new PendingAccountException('pending_account_outcome_uncertain');}
-        finally{
-            if($transaction){try{$this->database->query('ROLLBACK');}catch(\Throwable){}}
-            foreach(array_reverse($acquired) as $lock){try{$this->database->last_error='';$released=$this->database->get_var($this->database->prepare('SELECT RELEASE_LOCK(%s)',$lock));if($this->database->last_error!==''||(string)$released!=='1')$releaseFailed=true;}catch(\Throwable){$releaseFailed=true;}}
-            try{$this->database->close();}catch(\Throwable){}
-        }
-        if($releaseFailed||!$snapshot instanceof PendingAccountReconciliationSnapshot)throw new PendingAccountException('pending_account_outcome_uncertain');return $receipt;
+        }catch(PendingAccountException $exception){$primaryReason=$exception->reason;unset($exception);}catch(\Throwable $throwable){$primaryReason='pending_account_outcome_uncertain';unset($throwable);}
+        if($transaction){try{$this->database->last_error='';$rolledBack=$this->database->query('ROLLBACK');if($rolledBack===false||$this->database->last_error!=='')$transactionUncertain=true;}catch(\Throwable){$transactionUncertain=true;}}
+        foreach(array_reverse($acquired) as $lock){try{$this->database->last_error='';$released=$this->database->get_var($this->database->prepare('SELECT RELEASE_LOCK(%s)',$lock));if($this->database->last_error!==''||(string)$released!=='1')$releaseFailed=true;}catch(\Throwable){$releaseFailed=true;}}
+        try{$this->database->close();}catch(\Throwable){}
+        if($transactionUncertain||$releaseFailed)throw new PendingAccountException('pending_account_outcome_uncertain');
+        if($primaryReason!==null)throw new PendingAccountException($primaryReason);
+        if(!$snapshot instanceof PendingAccountReconciliationSnapshot)throw new PendingAccountException('pending_account_outcome_uncertain');
+        return $receipt;
     }
     private function assertExact(PendingAccountReconciliationSnapshot $snapshot,PendingAccountActivationReceipt $receipt):void
     {
