@@ -17,12 +17,18 @@ final readonly class StoreOnboardingApplication
     public const ABANDONED = 'abandoned';
 
     public const ACCOUNT_PROVISIONING_FAILED = 'account_provisioning_failed';
+    public const ACCOUNT_PROVISIONING_UNCERTAIN = 'account_provisioning_uncertain';
+    public const EMAIL_DELIVERY_FAILED = 'email_delivery_failed';
+    public const EMAIL_DELIVERY_UNCERTAIN = 'email_delivery_uncertain';
     public const APPLICATION_PERSISTENCE_FAILED = 'application_persistence_failed';
     public const STORE_MATERIALIZATION_FAILED = 'store_materialization_failed';
     public const TECHNICAL_OUTCOME_UNCERTAIN = 'technical_outcome_uncertain';
 
     private const FAILURE_CODES = [
         self::ACCOUNT_PROVISIONING_FAILED,
+        self::ACCOUNT_PROVISIONING_UNCERTAIN,
+        self::EMAIL_DELIVERY_FAILED,
+        self::EMAIL_DELIVERY_UNCERTAIN,
         self::APPLICATION_PERSISTENCE_FAILED,
         self::STORE_MATERIALIZATION_FAILED,
         self::TECHNICAL_OUTCOME_UNCERTAIN,
