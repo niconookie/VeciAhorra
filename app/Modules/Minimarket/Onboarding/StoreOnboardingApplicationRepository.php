@@ -12,6 +12,8 @@ use VeciAhorra\Core\Config;
 use VeciAhorra\Modules\Minimarket\Onboarding\Contracts\StoreOnboardingApplicationWriter;
 use VeciAhorra\Modules\Minimarket\Onboarding\Exceptions\OnboardingPublicIdCollisionException;
 
+final class OnboardingAmbiguousWrite extends RuntimeException {}
+
 final class StoreOnboardingApplicationRepository implements StoreOnboardingApplicationWriter
 {
     public function classify(string $idempotencyHash, string $accountEmail, string $ownerRutNormalized, string $termsVersion): string
@@ -110,10 +112,16 @@ final class StoreOnboardingApplicationRepository implements StoreOnboardingAppli
         }
         try {
             $result = $this->attachUserInTransaction($id, $userId, $expectedUpdatedAt, $updatedAt);
-            if ($wpdb->query('COMMIT') === false) throw new RuntimeException('onboarding_attach_user_commit_failed');
+            if ($wpdb->query('COMMIT') === false) {
+                $wpdb->query('ROLLBACK');
+                return $this->reconcileAttachedUser($id, $userId, $updatedAt);
+            }
             return $result;
         } catch (\Throwable $exception) {
             $wpdb->query('ROLLBACK');
+            if ($exception instanceof OnboardingAmbiguousWrite) {
+                return $this->reconcileAttachedUser($id, $userId, $updatedAt);
+            }
             throw $exception;
         }
     }
@@ -144,12 +152,27 @@ final class StoreOnboardingApplicationRepository implements StoreOnboardingAppli
         if ($status!==StoreOnboardingApplication::PROVISIONING) throw new RuntimeException('onboarding_state_incompatible');
         if ($attached!==null) throw new RuntimeException('onboarding_corrupt_user_reference');
         if ((string)$application['updated_at']!==$expectedUpdatedAt) throw new RuntimeException('onboarding_concurrent_modification');
-        return $this->transition($id,StoreOnboardingApplication::PROVISIONING,StoreOnboardingApplication::ACCOUNT_CREATED,$expectedUpdatedAt,$updatedAt,['user_id'=>$userId]);
+        return $this->transition($id,StoreOnboardingApplication::PROVISIONING,StoreOnboardingApplication::ACCOUNT_CREATED,$expectedUpdatedAt,$updatedAt,['user_id'=>$userId],true);
     }
 
     public function recoverProvisioningFailure(int $id, string $expectedUpdatedAt, string $updatedAt, callable $userCompatible): StoreOnboardingApplication
     {
         $this->requireForwardTimestamp($expectedUpdatedAt,$updatedAt);
+        $compatibilitySnapshot = $this->findById($id) ?? throw new RuntimeException('onboarding_not_found');
+        $snapshotUserId = $compatibilitySnapshot->data['user_id'] === null ? null : (int) $compatibilitySnapshot->data['user_id'];
+        if ($snapshotUserId !== null && !$this->userCompatible($userCompatible, $snapshotUserId, (string) $compatibilitySnapshot->data['account_email'])) {
+            throw new RuntimeException('onboarding_recovery_user_incompatible');
+        }
+        if (in_array($compatibilitySnapshot->data['status'], [StoreOnboardingApplication::PROVISIONING, StoreOnboardingApplication::ACCOUNT_CREATED], true)) {
+            $target = $snapshotUserId === null ? StoreOnboardingApplication::PROVISIONING : StoreOnboardingApplication::ACCOUNT_CREATED;
+            if ($compatibilitySnapshot->data['status'] === $target && $compatibilitySnapshot->data['failure_code'] === null
+                && $compatibilitySnapshot->data['store_id'] === null && $compatibilitySnapshot->data['updated_at'] === $updatedAt) {
+                if ($target === StoreOnboardingApplication::ACCOUNT_CREATED) $this->assertConsumedVerificationReference($id, $snapshotUserId, false);
+                else $this->assertUnconsumedVerificationReference($id, false);
+                return $compatibilitySnapshot;
+            }
+            throw new RuntimeException('onboarding_recovery_conflict');
+        }
         global $wpdb;
         if($wpdb->query('START TRANSACTION')===false)throw new RuntimeException('onboarding_recovery_transaction_failed');
         try {
@@ -158,16 +181,20 @@ final class StoreOnboardingApplicationRepository implements StoreOnboardingAppli
             $recoverable=[StoreOnboardingApplication::ACCOUNT_PROVISIONING_FAILED,StoreOnboardingApplication::ACCOUNT_PROVISIONING_UNCERTAIN,StoreOnboardingApplication::EMAIL_DELIVERY_FAILED,StoreOnboardingApplication::EMAIL_DELIVERY_UNCERTAIN];
             if($application['status']!==StoreOnboardingApplication::PROVISIONING_FAILED||!in_array($application['failure_code'],$recoverable,true)||$application['store_id']!==null||(string)$application['updated_at']!==$expectedUpdatedAt)throw new RuntimeException('onboarding_recovery_forbidden');
             $userId=$application['user_id']===null?null:(int)$application['user_id'];$target=StoreOnboardingApplication::PROVISIONING;
+            if ($userId === null) $this->assertUnconsumedVerificationReference($id, true);
             if($userId!==null){
-                $verification=$wpdb->get_row($wpdb->prepare("SELECT consumed_at,attached_user_id FROM {$this->verificationTable()} WHERE application_id=%d FOR UPDATE",$id),ARRAY_A);
-                if(!is_array($verification)||$verification['consumed_at']===null||(int)$verification['attached_user_id']!==$userId)throw new RuntimeException('onboarding_recovery_reference_invalid');
-                if((int)$wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->users} WHERE ID=%d FOR UPDATE",$userId))!==$userId||!$this->userCompatible($userCompatible,$userId,(string)$application['account_email']))throw new RuntimeException('onboarding_recovery_user_incompatible');
+                $verification=$wpdb->get_row($wpdb->prepare("SELECT purpose,generation,consumed_at,attached_user_id FROM {$this->verificationTable()} WHERE application_id=%d FOR UPDATE",$id),ARRAY_A);
+                if(!is_array($verification)||$verification['consumed_at']===null||(int)$verification['attached_user_id']!==$userId
+                    ||(string)$verification['purpose']!=='minimarket_account_activation'||(int)$verification['generation']<1)throw new RuntimeException('onboarding_recovery_reference_invalid');
+                if((int)$wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->users} WHERE ID=%d FOR UPDATE",$userId))!==$userId
+                    ||$userId!==$snapshotUserId||(string)$application['account_email']!==(string)$compatibilitySnapshot->data['account_email'])throw new RuntimeException('onboarding_recovery_user_incompatible');
                 $target=StoreOnboardingApplication::ACCOUNT_CREATED;
             }
+            StoreOnboardingApplication::assertRecoveryTransition(StoreOnboardingApplication::PROVISIONING_FAILED, $target);
             $changed=$wpdb->update($this->table(),['status'=>$target,'failure_code'=>null,'updated_at'=>$updatedAt],['id'=>$id,'status'=>StoreOnboardingApplication::PROVISIONING_FAILED,'updated_at'=>$expectedUpdatedAt]);
-            if($changed!==1)throw new RuntimeException('onboarding_concurrent_modification');
-            $result=$this->findById($id)??throw new RuntimeException('onboarding_update_uncertain');
-            if($wpdb->query('COMMIT')===false)throw new RuntimeException('onboarding_recovery_commit_failed');return $result;
+            if($changed!==1){$wpdb->query('ROLLBACK');return $this->reconcileRecovery($id,$target,$userId,$updatedAt);}
+            $result=$this->findById($id);if($result===null){$wpdb->query('ROLLBACK');return $this->reconcileRecovery($id,$target,$userId,$updatedAt);}
+            if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return $this->reconcileRecovery($id,$target,$userId,$updatedAt);}return $result;
         }catch(\Throwable $e){$wpdb->query('ROLLBACK');throw $e;}
     }
     public function markProfileIncomplete(int $id, string $expectedUpdatedAt, string $updatedAt): StoreOnboardingApplication
@@ -261,7 +288,7 @@ final class StoreOnboardingApplicationRepository implements StoreOnboardingAppli
         return $this->findById($id) ?? throw new RuntimeException('onboarding_update_uncertain');
     }
 
-    private function transition(int $id, string $from, string $to, string $expectedUpdatedAt, string $updatedAt, array $extra = []): StoreOnboardingApplication
+    private function transition(int $id, string $from, string $to, string $expectedUpdatedAt, string $updatedAt, array $extra = [], bool $ambiguousWrite = false): StoreOnboardingApplication
     {
         StoreOnboardingApplication::assertTransition($from, $to);
         $this->requireForwardTimestamp($expectedUpdatedAt, $updatedAt);
@@ -273,11 +300,59 @@ final class StoreOnboardingApplicationRepository implements StoreOnboardingAppli
         }
         global $wpdb;
         $changed = $wpdb->update($this->table(), $set, ['id'=>$id,'status'=>$from,'updated_at'=>$expectedUpdatedAt]);
-        if ($changed !== 1) throw new RuntimeException('onboarding_concurrent_modification');
-        return $this->findById($id) ?? throw new RuntimeException('onboarding_update_uncertain');
+        if ($changed !== 1) throw $ambiguousWrite ? new OnboardingAmbiguousWrite() : new RuntimeException('onboarding_concurrent_modification');
+        $result = $this->findById($id);
+        if ($result === null) throw $ambiguousWrite ? new OnboardingAmbiguousWrite() : new RuntimeException('onboarding_update_uncertain');
+        return $result;
     }
 
     private function findById(int $id): ?StoreOnboardingApplication { return $this->findOne('id', $id); }
+
+    private function reconcileAttachedUser(int $id, int $userId, string $updatedAt): StoreOnboardingApplication
+    {
+        try { $application = $this->findById($id); }
+        catch (\Throwable) { throw new RuntimeException('onboarding_attach_user_outcome_uncertain'); }
+        if ($application !== null && (int) ($application->data['user_id'] ?? 0) === $userId
+            && ($application->data['status'] ?? null) === StoreOnboardingApplication::ACCOUNT_CREATED
+            && ($application->data['updated_at'] ?? null) === $updatedAt) return $application;
+        throw new RuntimeException($application === null ? 'onboarding_attach_user_persistence_failed' : 'onboarding_attach_user_conflict');
+    }
+
+    private function reconcileRecovery(int $id, string $target, ?int $userId, string $updatedAt): StoreOnboardingApplication
+    {
+        try { $application = $this->findById($id); }
+        catch (\Throwable) { throw new RuntimeException('onboarding_recovery_outcome_uncertain'); }
+        if ($application !== null && ($application->data['status'] ?? null) === $target
+            && ($application->data['failure_code'] ?? null) === null
+            && ($application->data['updated_at'] ?? null) === $updatedAt
+            && ($userId === null || (int) ($application->data['user_id'] ?? 0) === $userId)) return $application;
+        throw new RuntimeException($application === null ? 'onboarding_recovery_persistence_failed' : 'onboarding_recovery_conflict');
+    }
+
+    private function assertConsumedVerificationReference(int $id, int $userId, bool $lock): void
+    {
+        global $wpdb;
+        $suffix = $lock ? ' FOR UPDATE' : '';
+        $verification = $wpdb->get_row($wpdb->prepare(
+            "SELECT purpose,generation,consumed_at,attached_user_id FROM {$this->verificationTable()} WHERE application_id=%d{$suffix}", $id
+        ), ARRAY_A);
+        if (!is_array($verification) || (string) ($wpdb->last_error ?? '') !== '' || $verification['consumed_at'] === null
+            || (int) $verification['attached_user_id'] !== $userId || (string) $verification['purpose'] !== 'minimarket_account_activation'
+            || (int) $verification['generation'] < 1) throw new RuntimeException('onboarding_recovery_reference_invalid');
+    }
+
+    private function assertUnconsumedVerificationReference(int $id, bool $lock): void
+    {
+        global $wpdb;
+        $suffix = $lock ? ' FOR UPDATE' : '';
+        $verification = $wpdb->get_row($wpdb->prepare(
+            "SELECT consumed_at,attached_user_id FROM {$this->verificationTable()} WHERE application_id=%d{$suffix}", $id
+        ), ARRAY_A);
+        if ((string) ($wpdb->last_error ?? '') !== '') throw new RuntimeException('onboarding_recovery_reference_invalid');
+        if (is_array($verification) && ($verification['consumed_at'] !== null || $verification['attached_user_id'] !== null)) {
+            throw new RuntimeException('onboarding_recovery_reference_invalid');
+        }
+    }
     private function findOne(string $column, string|int $value): ?StoreOnboardingApplication
     {
         if (! in_array($column, ['id','public_id','user_id','idempotency_key_hash'], true)) throw new InvalidArgumentException('onboarding_invalid_lookup');

@@ -28,10 +28,19 @@ final class CreateStoreOnboardingEmailVerificationFoundation
         $table = $wpdb->prefix . Config::TABLE_PREFIX . 'store_onboarding_email_verifications';
         $found = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table)));
         if ($found !== $table || $wpdb->last_error !== '') throw new RuntimeException('r1da_schema_missing:table');
-        $engine = $wpdb->get_var($wpdb->prepare(
-            'SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s', $table
+        $tableMetadata = $wpdb->get_row($wpdb->prepare(
+            'SELECT ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s', $table
+        ), ARRAY_A);
+        if (!is_array($tableMetadata) || $wpdb->last_error !== '' || strtoupper((string) ($tableMetadata['ENGINE'] ?? '')) !== 'INNODB') throw new RuntimeException('r1da_schema_invalid:engine');
+        $charsetCollate = (string) $wpdb->get_charset_collate();
+        if (!preg_match('/CHARACTER SET\s+([^\s]+)/i', $charsetCollate, $charsetMatch)
+            || !preg_match('/COLLATE\s+([^\s]+)/i', $charsetCollate, $collationMatch)) throw new RuntimeException('r1da_schema_invalid:charset_contract');
+        $actualCollation = strtolower((string) ($tableMetadata['TABLE_COLLATION'] ?? ''));
+        $actualCharset = $wpdb->get_var($wpdb->prepare(
+            'SELECT CHARACTER_SET_NAME FROM information_schema.COLLATIONS WHERE COLLATION_NAME=%s', $actualCollation
         ));
-        if (strtoupper((string) $engine) !== 'INNODB' || $wpdb->last_error !== '') throw new RuntimeException('r1da_schema_invalid:engine');
+        if ($wpdb->last_error !== '' || strtolower((string) $actualCharset) !== strtolower($charsetMatch[1])
+            || $actualCollation !== strtolower($collationMatch[1])) throw new RuntimeException('r1da_schema_invalid:charset_collation');
         $rows = $wpdb->get_results("SHOW COLUMNS FROM {$table}", ARRAY_A);
         if (! is_array($rows) || $wpdb->last_error !== '') throw new RuntimeException('r1da_schema_inspection_failed:columns');
         $actual=[]; foreach($rows as $row) $actual[(string)$row['Field']]=$row;
@@ -48,11 +57,9 @@ final class CreateStoreOnboardingEmailVerificationFoundation
         ];
         if (array_keys($actual)!==array_keys($expected)) throw new RuntimeException('r1da_schema_invalid:columns');
         foreach($expected as $name=>[$type,$null,$default,$extra]) {
-            $row=$actual[$name]; $normalized=preg_replace('/\(\d+\)/','',strtolower((string)$row['Type']));
-            $expectedType=preg_replace('/\(\d+\)/','',strtolower($type));
-            if ($normalized!==$expectedType || ($row['Null']??'')!==$null || ($row['Default']??null)!==$default
+            $row=$actual[$name];
+            if (!$this->typeMatches((string) $row['Type'], $type) || ($row['Null']??'')!==$null || ($row['Default']??null)!==$default
                 || strtolower((string)($row['Extra']??''))!==$extra) throw new RuntimeException('r1da_schema_invalid:column.'.$name);
-            if (str_contains($type,'(32)') && strtolower((string)$row['Type'])!==$type) throw new RuntimeException('r1da_schema_invalid:column.'.$name);
         }
         $expectedIndexes=[
             'PRIMARY'=>[['id'],true],
@@ -69,6 +76,17 @@ final class CreateStoreOnboardingEmailVerificationFoundation
         $names=array_values(array_unique(array_map(static fn(array $row):string=>(string)$row['Key_name'],$all)));sort($names);
         $expectedNames=array_keys($expectedIndexes);sort($expectedNames);
         if($names!==$expectedNames)throw new RuntimeException('r1da_schema_invalid:indexes');
+    }
+
+    private function typeMatches(string $actual, string $expected): bool
+    {
+        $actual = strtolower(trim($actual));
+        $expected = strtolower($expected);
+        if (in_array($expected, ['bigint unsigned', 'int unsigned', 'smallint unsigned'], true)) {
+            $base = preg_quote(strtok($expected, ' '), '/');
+            return preg_match('/^' . $base . '(?:\([0-9]+\))? unsigned$/D', $actual) === 1;
+        }
+        return $actual === $expected;
     }
 
     private function assertIndex(string $table,string $name,array $columns,bool $unique): void

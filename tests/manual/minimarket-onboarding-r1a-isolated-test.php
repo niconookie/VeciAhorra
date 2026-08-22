@@ -333,11 +333,11 @@ final class R1aOnboardingWpdb
     public string $prefix='iso_';public string $users='iso_users';public string $usermeta='iso_usermeta';
     public array $stores=[10=>1,11=>null,12=>2];
     public array $application;
-    public bool $failUpdate=false; public array $events=[];
+    public bool $failUpdate=false;public bool $commitReturnsFalse=false;public bool $commitApplies=true; public array $events=[];
     private array $values=[];private ?array $snapshot=null;
     public function __construct(){ $this->application=['id'=>'50','public_id'=>'onb_iso','user_id'=>'1','account_email'=>'owner@example.test','owner_rut_normalized'=>'123456785','status'=>'ready_to_materialize','idempotency_key_hash'=>str_repeat('a',64),'terms_version'=>'2026-08','terms_accepted_at'=>'2026-08-01 00:00:00','store_id'=>null,'failure_code'=>null,'attempt_count'=>'0','last_attempt_at'=>null,'created_at'=>'2026-08-01 00:00:00','updated_at'=>'2026-08-01 00:00:03','abandoned_at'=>null]; }
     public function prepare(string $query,mixed ...$values):string{$this->values=$values;return $query;}
-    public function query(string $query):int|false{$this->events[]=$query;if($query==='START TRANSACTION'){$this->snapshot=$this->application;return 0;}if($query==='COMMIT'){$this->snapshot=null;return 0;}if($query==='ROLLBACK'){if($this->snapshot!==null)$this->application=$this->snapshot;$this->snapshot=null;return 0;}return false;}
+    public function query(string $query):int|false{$this->events[]=$query;if($query==='START TRANSACTION'){$this->snapshot=$this->application;return 0;}if($query==='COMMIT'){if($this->commitApplies)$this->snapshot=null;return $this->commitReturnsFalse?false:0;}if($query==='ROLLBACK'){if($this->snapshot!==null)$this->application=$this->snapshot;$this->snapshot=null;return 0;}return false;}
     public function get_var(string $query):mixed{$this->events[]=$query;return str_contains($query,'SELECT ID FROM')&&isset($GLOBALS['r1aExistingUsers'][(int)$this->values[0]])?(string)$this->values[0]:null;}
     public function get_row(string $query,string $format):?array
     {
@@ -370,12 +370,18 @@ catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='on
 $wpdb->application['updated_at']='2026-08-01 00:00:00';
 $wpdb->failUpdate=true;
 try{$onboarding->attachUser(50,1,'2026-08-01 00:00:00','2026-08-01 00:00:01');throw new RuntimeException('Acepto fallo UPDATE.');}
-catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='onboarding_concurrent_modification','Fallo UPDATE incorrecto.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='onboarding_attach_user_conflict','Fallo UPDATE incorrecto.');}
 isolatedAssert($wpdb->application['status']==='provisioning'&&$wpdb->application['user_id']===null,'Rollback attachUser incompleto.');
 $wpdb->failUpdate=false;$wpdb->events=[];
 $attached=$onboarding->attachUser(50,1,'2026-08-01 00:00:00','2026-08-01 00:00:01');
 isolatedAssert($attached->data['status']==='account_created'&&(int)$attached->data['user_id']===1,'attachUser atomico fallo.');
 isolatedAssert(array_search('UPDATE',$wpdb->events,true)>array_search('SELECT ID FROM iso_users WHERE ID=%d FOR UPDATE',$wpdb->events,true),'Usuario no fue bloqueado antes del UPDATE.');
+$wpdb=new R1aOnboardingWpdb();$wpdb->application['status']='provisioning';$wpdb->application['user_id']=null;$wpdb->application['updated_at']='2026-08-01 00:00:00';$wpdb->commitReturnsFalse=true;$wpdb->commitApplies=true;
+$ambiguousApplied=$onboarding->attachUser(50,1,'2026-08-01 00:00:00','2026-08-01 00:00:01');
+isolatedAssert($ambiguousApplied->data['status']==='account_created'&&in_array('ROLLBACK',$wpdb->events,true),'Commit aplicado/false no reconcilio replay.');
+$wpdb=new R1aOnboardingWpdb();$wpdb->application['status']='provisioning';$wpdb->application['user_id']=null;$wpdb->application['updated_at']='2026-08-01 00:00:00';$wpdb->commitReturnsFalse=true;$wpdb->commitApplies=false;
+try{$onboarding->attachUser(50,1,'2026-08-01 00:00:00','2026-08-01 00:00:01');throw new LogicException('Commit no aplicado aceptado.');}
+catch(RuntimeException $exception){isolatedAssert($exception->getMessage()==='onboarding_attach_user_conflict'&&$exception->getPrevious()===null,'Commit no aplicado/false mal clasificado.');}
 $wpdb=new R1aOnboardingWpdb();
 foreach([[999,'onboarding_store_missing'],[11,'onboarding_store_owner_missing'],[12,'onboarding_store_owner_conflict']] as [$store,$error]){
     try{$onboarding->attachMaterializedStore(50,$store,'2026-08-01 00:00:03','2026-08-01 00:00:04');throw new RuntimeException('Acepto referencia invalida.');}

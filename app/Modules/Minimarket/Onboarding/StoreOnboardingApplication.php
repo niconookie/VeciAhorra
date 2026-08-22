@@ -44,6 +44,10 @@ final readonly class StoreOnboardingApplication
         self::ABANDONED => [],
     ];
 
+    private const RECOVERY_TRANSITIONS = [
+        self::PROVISIONING_FAILED => [self::PROVISIONING, self::ACCOUNT_CREATED],
+    ];
+
     public function __construct(public array $data)
     {
         $status = (string) ($data['status'] ?? '');
@@ -88,6 +92,15 @@ final readonly class StoreOnboardingApplication
         self::assertStatus($to);
         if (! in_array($to, self::TRANSITIONS[$from], true)) {
             throw new InvalidArgumentException('onboarding_invalid_transition');
+        }
+    }
+
+    public static function assertRecoveryTransition(string $from, string $to): void
+    {
+        self::assertStatus($from);
+        self::assertStatus($to);
+        if (!in_array($to, self::RECOVERY_TRANSITIONS[$from] ?? [], true)) {
+            throw new InvalidArgumentException('onboarding_invalid_recovery_transition');
         }
     }
 }

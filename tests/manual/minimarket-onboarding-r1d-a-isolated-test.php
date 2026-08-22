@@ -13,6 +13,7 @@ use VeciAhorra\Modules\Minimarket\Onboarding\Verification\StoreOnboardingEmailVe
 
 function r1da(bool $ok,string $message):void{if(!$ok)throw new RuntimeException($message);}
 function r1daReject(callable $case):void{try{$case();throw new RuntimeException('Caso incoherente aceptado.');}catch(InvalidArgumentException){}}
+function r1daRejectAny(callable $case):void{try{$case();throw new LogicException('Caso hostil aceptado.');}catch(LogicException $e){throw $e;}catch(Throwable){}}
 
 $sql=(new StoreOnboardingEmailVerificationsTable())->sql('iso_va_store_onboarding_email_verifications','DEFAULT CHARACTER SET utf8mb4');
 foreach([
@@ -38,6 +39,22 @@ foreach([
 $sent=array_replace($base,[12=>'2026-09-01 00:02:00',13=>V::SENT,14=>1,17=>'2026-09-01 00:02:00']);new V(...$sent);
 $consumed=array_replace($sent,[5=>9,9=>'2026-09-01 00:03:00',17=>'2026-09-01 00:03:00']);new V(...$consumed);
 
+$row=['id'=>'1','application_id'=>'2','purpose'=>V::PURPOSE,'generation'=>'1','candidate_user_id'=>null,'attached_user_id'=>null,'email_binding_hash'=>str_repeat("\0",32),'token_hash'=>str_repeat("t\0",16),'expires_at'=>'2026-09-01 01:00:00','consumed_at'=>null,'failed_attempts'=>'0','resend_count'=>'0','last_sent_at'=>null,'delivery_state'=>V::PENDING,'delivery_attempt_count'=>'0','last_error_code'=>null,'created_at'=>'2026-09-01 00:00:00','updated_at'=>'2026-09-01 00:00:00'];
+r1da(V::fromRow($row)->tokenHash===str_repeat("t\0",16),'Hydration binaria NUL fallo.');
+foreach([
+    $row+['unknown_column'=>'x'], array_diff_key($row,['id'=>true]), array_replace($row,['id'=>'01']),
+    array_replace($row,['id'=>'+1']), array_replace($row,['id'=>' 1']), array_replace($row,['id'=>'1 ']),
+    array_replace($row,['id'=>'1e2']), array_replace($row,['id'=>1.0]), array_replace($row,['id'=>true]),
+    array_replace($row,['id'=>str_repeat('9',80)]), array_replace($row,['token_hash'=>str_repeat('x',31)]),
+    array_replace($row,['token_hash'=>str_repeat('x',33)]), array_replace($row,['expires_at'=>1]),
+    array_replace($row,['delivery_state'=>1]),
+] as $hostileRow) r1daRejectAny(static fn()=>V::fromRow($hostileRow));
+V::assertOrdinaryDeliveryTransition(V::PENDING,V::SENT);
+V::assertUncertainResolution(V::UNCERTAIN,V::FAILED);
+foreach([[V::SENT,V::FAILED],[V::FAILED,V::SENT],[V::UNCERTAIN,V::SENT]] as [$from,$to])r1daRejectAny(static fn()=>V::assertOrdinaryDeliveryTransition($from,$to));
+$migration=new CreateStoreOnboardingEmailVerificationFoundation();$types=new ReflectionMethod($migration,'typeMatches');$types->setAccessible(true);
+foreach([['varchar(64)','varchar(64)',true],['varchar(63)','varchar(64)',false],['varchar(31)','varchar(32)',false],['binary(31)','binary(32)',false],['varbinary(32)','binary(32)',false],['int','int unsigned',false],['smallint','smallint unsigned',false],['bigint(20) unsigned','bigint unsigned',true]] as [$actual,$expected,$accepted])r1da($types->invoke($migration,$actual,$expected)===$accepted,'Comparacion de tipo incorrecta: '.$actual);
+
 $repo=file_get_contents(dirname(__DIR__,2).'/app/Modules/Minimarket/Onboarding/Verification/StoreOnboardingEmailVerificationRepository.php');
 $appRepo=file_get_contents(dirname(__DIR__,2).'/app/Modules/Minimarket/Onboarding/StoreOnboardingApplicationRepository.php');
 r1da(is_string($repo)&&str_contains($repo,'START TRANSACTION')&&str_contains($repo,'FOR UPDATE')&&str_contains($repo,'ROLLBACK')&&str_contains($repo,'consumeAndAttach'),'Repositorio sin atomicidad cerrada.');
@@ -62,22 +79,48 @@ if($database!==''){
         r1da($v->attachedUserId===$userA&&$v->consumedAt===$t3,'Consumo atomico fallo.');
         $replay=$verifications->consumeAndAttach($aid,1,$token,$userA,$t0,$t2,$t4,static fn()=>true);r1da($replay->updatedAt===$t3,'Replay consumo escribio.');
 
-        $b=$create('rotate',$t0);$bid=(int)$b->data['id'];$v=$verifications->create($bid,V::PURPOSE,null,$email,str_repeat('b',32),'2026-09-01 01:00:00',$t0);
+        $b=$create('rotate',$t0);$bid=(int)$b->data['id'];$nulToken=str_repeat("b\0",16);$v=$verifications->create($bid,V::PURPOSE,null,$email,$nulToken,'2026-09-01 01:00:00',$t0);
+        $rotationSnapshot=[$v->generation,$v->expiresAt,$v->updatedAt,$v->resendCount];
+        try{$verifications->rotate($bid,1,$t0,$nulToken,'2026-09-01 02:00:00',$t1);throw new LogicException('Rotacion acepto el mismo token.');}catch(RuntimeException $e){r1da($e->getMessage()==='verification_conflict','Clasificacion same-token incorrecta.');}
+        $afterSame=$verifications->findByApplicationId($bid);r1da($afterSame!==null&&[$afterSame->generation,$afterSame->expiresAt,$afterSame->updatedAt,$afterSame->resendCount]===$rotationSnapshot,'Same-token altero estado durable.');
+        $occupiedApplication=$create('occupied-token',$t0);$occupiedId=(int)$occupiedApplication->data['id'];$occupiedToken=str_repeat("o\0",16);$verifications->create($occupiedId,V::PURPOSE,null,$email,$occupiedToken,'2026-09-01 01:00:00',$t0);
+        try{$verifications->rotate($bid,1,$t0,$occupiedToken,'2026-09-01 02:00:00',$t1);throw new LogicException('Rotacion acepto token ocupado.');}catch(RuntimeException $e){r1da($e->getMessage()==='verification_conflict','Clasificacion token ocupado incorrecta.');}
+        $callbackApplication=$create('hostile-callback',$t0);$callbackId=(int)$callbackApplication->data['id'];$callbackOutsideTransaction=false;
+        try{$verifications->create($callbackId,V::PURPOSE,$userA,$email,str_repeat('h',32),'2026-09-01 01:00:00',$t0,function()use($wpdb,&$callbackOutsideTransaction){$callbackOutsideTransaction=(int)$wpdb->get_var('SELECT @@in_transaction')===0;throw new RuntimeException('hostile-secret');});throw new LogicException('Callback hostil aceptado.');}
+        catch(RuntimeException $e){r1da($e->getMessage()==='verification_candidate_user_incompatible'&&$e->getPrevious()===null&&$callbackOutsideTransaction,'Callback hostil no cerro privacidad/locks.');}
         $v=$verifications->rotate($bid,1,$t0,str_repeat('c',32),'2026-09-01 02:00:00',$t1);r1da($v->generation===2&&$v->resendCount===1,'Rotacion fallo.');
         $rotationReplay=$verifications->rotate($bid,1,$t0,str_repeat('c',32),'2026-09-01 02:00:00',$t2);r1da($rotationReplay->updatedAt===$t1,'Replay rotacion escribio.');
         $v=$verifications->markDeliveryAttempt($bid,2,$v->updatedAt,$t2);$v=$verifications->markSent($bid,2,$v->updatedAt,$t3);
+        $sentReplay=$verifications->markSent($bid,2,$t2,$t3);r1da($sentReplay->updatedAt===$t3,'Replay sent escribio.');
+        try{$verifications->markFailed($bid,2,$t3,$t4);throw new LogicException('Transicion sent->failed aceptada.');}catch(RuntimeException $e){r1da($e->getMessage()==='verification_conflict','Transicion terminal mal clasificada.');}
         foreach(['2026-09-01 00:04:00','2026-09-01 00:05:00','2026-09-01 00:06:00','2026-09-01 00:07:00','2026-09-01 00:08:00'] as $time)$v=$verifications->recordInvalidAttempt($bid,2,$v->updatedAt,$time);
         $before=$v->updatedAt;$v=$verifications->recordInvalidAttempt($bid,2,$v->updatedAt,'2026-09-01 00:09:00');r1da($v->failedAttempts===5&&$v->updatedAt===$before,'Limite de intentos fallo.');
         $v=$verifications->rotate($bid,2,$v->updatedAt,str_repeat('d',32),'2026-09-01 03:00:00','2026-09-01 00:10:00');$v=$verifications->markDeliveryAttempt($bid,3,$v->updatedAt,'2026-09-01 00:11:00');$v=$verifications->markFailed($bid,3,$v->updatedAt,'2026-09-01 00:12:00');r1da($v->deliveryState===V::FAILED&&$v->lastErrorCode===V::DELIVERY_FAILED,'Entrega failed fallo.');
         $v=$verifications->rotate($bid,3,$v->updatedAt,str_repeat('f',32),'2026-09-01 04:00:00','2026-09-01 00:13:00');$v=$verifications->markDeliveryAttempt($bid,4,$v->updatedAt,'2026-09-01 00:14:00');$v=$verifications->markUncertain($bid,4,$v->updatedAt,'2026-09-01 00:15:00');r1da($v->deliveryState===V::UNCERTAIN&&$v->lastErrorCode===V::DELIVERY_UNCERTAIN,'Entrega uncertain fallo.');
+        $resolved=$verifications->resolveUncertainDelivery($bid,4,$v->updatedAt,'2026-09-01 00:16:00',V::FAILED);r1da($resolved->deliveryState===V::FAILED&&$resolved->deliveryAttemptCount===$v->deliveryAttemptCount,'Resolucion uncertain fallo.');
+        $resolvedReplay=$verifications->resolveUncertainDelivery($bid,4,$v->updatedAt,'2026-09-01 00:16:00',V::FAILED);r1da($resolvedReplay->updatedAt===$resolved->updatedAt,'Replay resolucion escribio.');
 
         $c=$create('attach',$t0);$cid=(int)$c->data['id'];$attached=$apps->attachUser($cid,$userB,$t0,$t1);r1da($attached->data['status']===StoreOnboardingApplication::ACCOUNT_CREATED,'Attach normal fallo.');
         $same=$apps->attachUser($cid,$userB,$t1,$t2);r1da($same->data['updated_at']===$t1,'Replay attach escribio.');
         try{$apps->attachUser($cid,$userC,$t1,$t2);throw new RuntimeException('Conflicto User aceptado.');}catch(RuntimeException $e){r1da($e->getMessage()==='onboarding_user_conflict','Error conflicto incorrecto.');}
 
         $d=$create('recover-empty',$t0);$did=(int)$d->data['id'];$failed=$apps->markProvisioningFailed($did,StoreOnboardingApplication::EMAIL_DELIVERY_FAILED,$t0,$t1);$recovered=$apps->recoverProvisioningFailure($did,$t1,$t2,static fn()=>true);r1da($recovered->data['status']===StoreOnboardingApplication::PROVISIONING&&$recovered->data['user_id']===null,'Recovery provisioning fallo.');
+        $recoveryReplay=$apps->recoverProvisioningFailure($did,$t1,$t2,static fn()=>true);r1da($recoveryReplay->data['updated_at']===$t2,'Replay recovery escribio.');
         $failed=$apps->markProvisioningFailed($aid,StoreOnboardingApplication::ACCOUNT_PROVISIONING_UNCERTAIN,$t3,$t4);$recovered=$apps->recoverProvisioningFailure($aid,$t4,$t5,static fn()=>true);r1da($recovered->data['status']===StoreOnboardingApplication::ACCOUNT_CREATED&&(int)$recovered->data['user_id']===$userA,'Recovery account fallo.');
-        $table='wp_va_store_onboarding_email_verifications';r1da($wpdb->query("ALTER TABLE {$table} DROP INDEX onboarding_email_verification_token_unique, ADD UNIQUE KEY onboarding_email_verification_token_unique (token_hash(16))")!==false,'No se creo indice hostil.');
+        $table='wp_va_store_onboarding_email_verifications';$schemaGuard=new CreateStoreOnboardingEmailVerificationFoundation();
+        $hostileSchema=function(string $mutation,string $restore,string $label)use($wpdb,$schemaGuard):void{
+            r1da($wpdb->query($mutation)!==false,'No se creo schema hostil: '.$label);
+            try{$schemaGuard->assertStructure();throw new LogicException('Schema hostil aceptado: '.$label);}catch(RuntimeException $e){r1da(str_starts_with($e->getMessage(),'r1da_schema_invalid:'),'Clasificacion schema incorrecta: '.$label);}
+            r1da($wpdb->query($restore)!==false,'No se restauro schema: '.$label);$schemaGuard->assertStructure();
+        };
+        $hostileSchema("ALTER TABLE {$table} MODIFY last_error_code VARCHAR(63) NULL","ALTER TABLE {$table} MODIFY last_error_code VARCHAR(64) NULL",'varchar63');
+        $hostileSchema("ALTER TABLE {$table} MODIFY purpose VARCHAR(31) NOT NULL","ALTER TABLE {$table} MODIFY purpose VARCHAR(32) NOT NULL",'purpose31');
+        $hostileSchema("ALTER TABLE {$table} MODIFY email_binding_hash BINARY(31) NOT NULL","ALTER TABLE {$table} MODIFY email_binding_hash BINARY(32) NOT NULL",'binary31');
+        $hostileSchema("ALTER TABLE {$table} MODIFY email_binding_hash VARBINARY(32) NOT NULL","ALTER TABLE {$table} MODIFY email_binding_hash BINARY(32) NOT NULL",'varbinary32');
+        $hostileSchema("ALTER TABLE {$table} MODIFY generation INT NOT NULL DEFAULT 1","ALTER TABLE {$table} MODIFY generation INT UNSIGNED NOT NULL DEFAULT 1",'unsigned');
+        $expectedCollation=(string)$wpdb->get_var($wpdb->prepare('SELECT TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s',$table));
+        $hostileSchema("ALTER TABLE {$table} CONVERT TO CHARACTER SET latin1 COLLATE latin1_swedish_ci","ALTER TABLE {$table} CONVERT TO CHARACTER SET utf8mb4 COLLATE {$expectedCollation}",'charset-collation');
+        r1da($wpdb->query("ALTER TABLE {$table} DROP INDEX onboarding_email_verification_token_unique, ADD UNIQUE KEY onboarding_email_verification_token_unique (token_hash(16))")!==false,'No se creo indice hostil.');
         try{(new CreateStoreOnboardingEmailVerificationFoundation())->assertStructure();throw new RuntimeException('Indice prefijado aceptado.');}catch(RuntimeException $e){r1da(str_starts_with($e->getMessage(),'r1da_schema_invalid:index.'),'Error de indice incorrecto.');}
         echo "R1DA_DISPOSABLE=PASS migration=PASS create=PASS rotate=PASS attempts=PASS delivery=PASS consume=PASS attach=PASS recovery=PASS schema_guard=PASS\n";
     }finally{$wpdb=$production;}
