@@ -3,10 +3,12 @@ declare(strict_types=1);
 require_once __DIR__.'/minimarket-onboarding-r1d-b-historical-fingerprint.php';
 
 function r1dbFingerprintAssert(bool $condition,string $message):void{if(!$condition)throw new RuntimeException($message);}
-function r1dbFingerprintReject(callable $operation,string $reason):void{try{$operation();throw new RuntimeException('negative_not_rejected');}catch(RuntimeException $exception){if($exception->getPrevious()!==null||$exception->getMessage()==='negative_not_rejected'||$exception->getMessage()!==$reason)throw $exception;}}
+function r1dbExpectExactRuntimeException(callable $operation,string $reason,int $code=0):RuntimeException{$caught=null;try{$operation();}catch(Throwable $exception){$caught=$exception;}r1dbFingerprintAssert($caught!==null,'exception_missing');r1dbFingerprintAssert(get_class($caught)===RuntimeException::class,'exception_class_not_exact');r1dbFingerprintAssert($caught->getMessage()===$reason,'exception_reason_not_exact');r1dbFingerprintAssert($caught->getCode()===$code,'exception_code_not_exact');r1dbFingerprintAssert($caught->getPrevious()===null,'exception_previous_not_null');return $caught;}
+function r1dbExpectHarnessReject(callable $operation,string $reason):void{r1dbExpectExactRuntimeException($operation,$reason);}
+function r1dbFingerprintReject(callable $operation,string $reason):void{r1dbExpectExactRuntimeException($operation,$reason);}
 function r1dbColumn(int $ordinal,string $name,string $declared,string $key='',bool $nullable=false,?string $collation=null,mixed $default=null):array{return R1dbHistoricalFingerprint::schemaColumn(['Field'=>$name,'Type'=>$declared,'Collation'=>$collation,'Null'=>$nullable?'YES':'NO','Key'=>$key,'Default'=>$default,'Extra'=>''],$ordinal);}
 function r1dbSchema(string $idType='bigint',string $valueType='varchar(64)',bool $nullable=true,?string $collation='utf8mb4_unicode_ci',mixed $default=null):array{return [r1dbColumn(1,'id',$idType,'PRI',false,str_contains($idType,'char')?$collation:null),r1dbColumn(2,'value',$valueType,'',$nullable,$collation,$default),r1dbColumn(3,'binary_value','varbinary(32)'),r1dbColumn(4,'nullable','varchar(32)','',true,$collation)];}
-function r1dbRequireFailedComparison(callable $comparison,R1dbComparisonLedger $ledger,string $reason):void{$thrown=false;try{$comparison();}catch(RuntimeException $exception){r1dbFingerprintAssert($exception->getPrevious()===null,'comparison_previous_not_null');r1dbFingerprintAssert($exception->getMessage()===$reason,'comparison_reason_not_closed');$thrown=true;}r1dbFingerprintAssert($thrown,'comparison_did_not_fail');r1dbFingerprintReject(fn()=>$ledger->seal(),'r1db_comparison_ledger_incomplete');}
+function r1dbRequireFailedComparison(callable $comparison,R1dbComparisonLedger $ledger,string $reason):void{r1dbExpectExactRuntimeException($comparison,$reason);r1dbFingerprintReject(fn()=>$ledger->seal(),'r1db_comparison_ledger_incomplete');}
 
 $primary=['id'];
 $rows=[['id'=>'1','value'=>'alpha','binary_value'=>"a\0b",'nullable'=>null],['id'=>'2','value'=>'beta','binary_value'=>"c\0d",'nullable'=>'']];
@@ -41,13 +43,25 @@ r1dbFingerprintAssert(count(array_unique($binaryFingerprints))===5,'binary finge
 r1dbFingerprintAssert($binarySchemas['varchar-modifier'][1]['semantic_kind']==='string'&&$binarySchemas['binary-storage'][1]['semantic_kind']==='binary','binary modifier confused with storage');
 echo 'R1DB_SQL_BINARY_SEMANTICS='.$binaryProofs.'/PASS'.PHP_EOL;
 
+$exactClassCases=0;$reason='r1db_historical_fingerprint_changed_surface';
+r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException($reason,0),$reason,0);$exactClassCases++;
+r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new class($reason) extends RuntimeException{},$reason),'exception_class_not_exact');$exactClassCases++;
+r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new LogicException($reason),$reason),'exception_class_not_exact');$exactClassCases++;
+foreach([new Error($reason),new TypeError($reason)] as $unexpected)r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw $unexpected,$reason),'exception_class_not_exact');$exactClassCases++;
+r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException('different_reason'),$reason),'exception_reason_not_exact');r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException($reason,9),$reason),'exception_code_not_exact');$exactClassCases++;
+r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>throw new RuntimeException($reason,0,new RuntimeException('cause')),$reason),'exception_previous_not_null');$exactClassCases++;
+r1dbExpectHarnessReject(static fn()=>r1dbExpectExactRuntimeException(static fn()=>null,$reason),'exception_missing');$exactClassCases++;
+r1dbExpectHarnessReject(static fn()=>r1dbRequireFailedComparison(static fn()=>null,new R1dbComparisonLedger(['one']),$reason),'exception_missing');$exactClassCases++;
+r1dbFingerprintAssert($exactClassCases===8,'exact class case total');
+echo 'R1DB_EXACT_LEDGER_EXCEPTION_CLASS='.$exactClassCases.'/PASS'.PHP_EOL;
+
 $guards=0;
 r1dbFingerprintReject(fn()=>new R1dbComparisonLedger(['one','one']),'r1db_comparison_ledger_invalid');$guards++;
 $ledger=new R1dbComparisonLedger(['one']);$ledger->record('one');r1dbFingerprintReject(fn()=>$ledger->record('one'),'r1db_comparison_ledger_unexpected_one');$guards++;
 $ledger=new R1dbComparisonLedger(['one']);r1dbFingerprintReject(fn()=>$ledger->record('other'),'r1db_comparison_ledger_unexpected_other');$guards++;
 $ledger=new R1dbComparisonLedger(['one','two']);$ledger->record('one');r1dbFingerprintReject(fn()=>$ledger->seal(),'r1db_comparison_ledger_incomplete');$guards++;
 $ledger=new R1dbComparisonLedger(['one']);r1dbRequireFailedComparison(fn()=>(new R1dbHistoricalBaseline(['surface'=>$baseline]))->assertAll(['surface'=>R1dbHistoricalFingerprint::fromRows($rows,r1dbSchema('int'),$primary,'fixture')]),$ledger,'r1db_historical_fingerprint_changed_surface');$guards++;
-r1dbFingerprintReject(fn()=>r1dbRequireFailedComparison(static fn()=>null,new R1dbComparisonLedger(['one']),'r1db_historical_fingerprint_changed_surface'),'comparison_did_not_fail');$guards++;
+r1dbFingerprintReject(fn()=>r1dbRequireFailedComparison(static fn()=>null,new R1dbComparisonLedger(['one']),'r1db_historical_fingerprint_changed_surface'),'exception_missing');$guards++;
 $ledger=new R1dbComparisonLedger(['one','two']);r1dbFingerprintReject(fn()=>$ledger->seal(),'r1db_comparison_ledger_incomplete');$guards++;
 $ledger=new R1dbComparisonLedger(['one']);r1dbFingerprintReject(fn()=>$ledger->seal(),'r1db_comparison_ledger_incomplete');$ledger->record('one');r1dbFingerprintAssert($ledger->seal()===1,'completed ledger failed');$guards++;
 echo 'R1DB_HISTORICAL_LEDGER_GUARDS='.$guards.'/PASS'.PHP_EOL;
