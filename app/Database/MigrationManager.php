@@ -31,6 +31,8 @@ use VeciAhorra\Database\Migrations\CreateServiceZonesTables;
 use VeciAhorra\Database\Migrations\CreateZonalAdminFoundationTables;
 use VeciAhorra\Database\Migrations\CreateStoreOnboardingFoundation;
 use VeciAhorra\Database\Migrations\CreateStoreOnboardingEmailVerificationFoundation;
+use VeciAhorra\Database\Migrations\CreateStoreOnboardingActivationSessionFoundation;
+use VeciAhorra\Database\Migrations\CreateStoreOnboardingRateLimitFoundation;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -125,6 +127,8 @@ final class MigrationManager
             new CreateZonalAdminFoundationTables(),
             new CreateStoreOnboardingFoundation(),
             new CreateStoreOnboardingEmailVerificationFoundation(),
+            new CreateStoreOnboardingActivationSessionFoundation(),
+            new CreateStoreOnboardingRateLimitFoundation(),
         ];
     }
 }
