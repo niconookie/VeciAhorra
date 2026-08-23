@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/minimarket-onboarding-r1d-c-a-manifest-channel.php';
 
 final class R1dcaCaseRegistry
 {
@@ -41,7 +42,7 @@ final class R1dcaCaseRegistry
             $assertions($context, $operationResult, $operationFailure);
         } finally {
             try {
-                $cleanup($context);
+                $cleanup($context ?? $operationResult);
             } catch (Throwable $exception) {
                 $cleanupFailure = $exception;
             }
@@ -60,8 +61,7 @@ final class R1dcaCaseRegistry
         $count = count($this->executed);
         echo $this->idsLabel ?? $this->label.'_CASE_IDS', '=', implode(',', array_keys($this->executed)), PHP_EOL;
         echo $this->label, '=', $count, '/PASS', PHP_EOL;
-        $secret=(string)getenv('VA_R1DCA_MANIFEST_SECRET');
-        if($secret!==''){$payload=json_encode(['label'=>$this->label,'ids'=>array_keys($this->executed),'count'=>$count],JSON_THROW_ON_ERROR);echo'R1DCA_MANIFEST=',base64_encode($payload),'.',hash_hmac('sha256',$payload,$secret),PHP_EOL;}
+        R1dcaManifestChannel::collect(array_keys($this->executed));
         return $count;
     }
 }
