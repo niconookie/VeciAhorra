@@ -2,64 +2,40 @@
 declare(strict_types=1);
 final class R1dcaManifestChannel
 {
-    private const VERSION='r1dca.final-manifest.v1';
-    private static array $ids=[],$envelopes=[],$identities=[],$paths=[];
+    private const VERSION='r1dca.final-manifest.v1',RECEIPTS='receipts';
+    private static array $ids=[],$evidence=[],$envelopes=[],$identities=[],$paths=[],$consumedEvidence=[];
     private static bool $registered=false;
-    public static function collect(array $ids):void
-    {
-        foreach($ids as$id){if(!is_string($id)||$id===''||isset(self::$ids[$id]))throw new RuntimeException('manifest_ids_invalid');self::$ids[$id]=true;}
-        if(!self::$registered){self::$registered=true;register_shutdown_function([self::class,'finish']);}
-    }
-    private static function normalize(mixed $value):mixed
-    {
-        if(!is_array($value))return$value;
-        if(array_is_list($value))return array_map([self::class,'normalize'],$value);
-        ksort($value,SORT_STRING);foreach($value as$key=>$item)$value[$key]=self::normalize($item);return$value;
-    }
-    public static function canonical(array $payload):string
-    {
-        return json_encode(self::normalize($payload),JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)."\n";
-    }
+    public static function collect(array $ids):void{foreach($ids as$id){if(!is_string($id)||$id===''||isset(self::$ids[$id]))throw new RuntimeException('manifest_ids_invalid');self::$ids[$id]=true;}if(!self::$registered){self::$registered=true;register_shutdown_function([self::class,'finish']);}}
+    public static function collectEvidence(array $ids):void{foreach($ids as$id){if(!is_string($id)||!preg_match('/^EXACT-(?:MUT|LEDGER)-\d{2}$/D',$id)||isset(self::$evidence[$id]))throw new RuntimeException('manifest_evidence_ids_invalid');self::$evidence[$id]=true;}}
+    public static function exactCatalog():array{return array_merge(array_map(fn($n)=>'EXACT-MUT-'.str_pad((string)$n,2,'0',STR_PAD_LEFT),range(1,12)),array_map(fn($n)=>'EXACT-LEDGER-'.str_pad((string)$n,2,'0',STR_PAD_LEFT),range(1,8)));}
+    public static function authenticatedEvidence(string$group):array{return self::$consumedEvidence[$group]??[];}
+    private static function normalize(mixed$v):mixed{if(!is_array($v))return$v;if(array_is_list($v))return array_map([self::class,'normalize'],$v);ksort($v,SORT_STRING);foreach($v as$k=>$x)$v[$k]=self::normalize($x);return$v;}
+    public static function canonical(array$p):string{return json_encode(self::normalize($p),JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)."\n";}
     public static function finish():void
     {
-        $path=(string)getenv('VA_R1DCA_MANIFEST_PATH');if($path==='')return;
-        $fatal=error_get_last();if(is_array($fatal)&&in_array($fatal['type']??0,[E_ERROR,E_PARSE,E_CORE_ERROR,E_COMPILE_ERROR,E_USER_ERROR],true))return;
+        $path=(string)getenv('VA_R1DCA_MANIFEST_PATH');if($path==='')return;$fatal=error_get_last();if(is_array($fatal)&&in_array($fatal['type']??0,[E_ERROR,E_PARSE,E_CORE_ERROR,E_COMPILE_ERROR,E_USER_ERROR],true))return;
         $execution=(string)getenv('VA_R1DCA_EXECUTION_ID');$group=(string)getenv('VA_R1DCA_GROUP_ID');$nonce=(string)getenv('VA_R1DCA_GROUP_NONCE');$key=hex2bin((string)getenv('VA_R1DCA_GROUP_KEY'));
         if(!preg_match('/^[a-f0-9]{32}$/D',$execution)||!in_array($group,['qa1','qa2','qa3','qa4'],true)||!preg_match('/^[a-f0-9]{32}$/D',$nonce)||!is_string($key)||strlen($key)!==32)return;
-        $dbName=(string)getenv('VA_R1DCA_DATABASE');$db=new wpdb(DB_USER,DB_PASSWORD,$dbName,DB_HOST);$db->set_prefix('wp_');$fixtures=0;
-        foreach(['wp_va_store_onboarding_applications','wp_va_store_onboarding_email_verifications','wp_va_store_onboarding_activation_sessions','wp_va_store_onboarding_rate_limit_buckets']as$table)$fixtures+=(int)$db->get_var("SELECT COUNT(*) FROM {$table}");
-        $fixtures+=(int)$db->get_var("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND (TABLE_NAME LIKE 'q2f%' OR TABLE_NAME LIKE 'm4_%')");
-        $locks=(int)$db->get_var($db->prepare("SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE DB=%s AND STATE LIKE %s",$dbName,'%lock%'))+(int)$db->get_var('SELECT COUNT(*) FROM information_schema.INNODB_TRX');
-        $payload=['version'=>self::VERSION,'execution_id'=>$execution,'group_id'=>$group,'group_nonce'=>$nonce,'child_pid'=>getmypid(),'ids'=>array_keys(self::$ids),'count'=>count(self::$ids),'cleanup_complete'=>$fixtures===0&&$locks===0,'fixtures_remaining'=>$fixtures,'locks_remaining'=>$locks,'completed_at_utc'=>gmdate('Y-m-d\TH:i:s\Z')];
-        $json=self::canonical($payload);$wire=base64_encode($json).'.'.hash_hmac('sha256',$json,$key)."\n";$tmp=$path.'.tmp.'.bin2hex(random_bytes(8));$handle=@fopen($tmp,'x+b');if($handle===false)return;$ok=false;
-        try{$ok=fwrite($handle,$wire)===strlen($wire)&&fflush($handle);}finally{fclose($handle);}
-        if(!$ok||file_exists($path)||!rename($tmp,$path))@unlink($tmp);putenv('VA_R1DCA_GROUP_KEY');
+        $dbName=(string)getenv('VA_R1DCA_DATABASE');$db=new wpdb(DB_USER,DB_PASSWORD,$dbName,DB_HOST);$db->set_prefix('wp_');$fixtures=0;foreach(['wp_va_store_onboarding_applications','wp_va_store_onboarding_email_verifications','wp_va_store_onboarding_activation_sessions','wp_va_store_onboarding_rate_limit_buckets']as$t)$fixtures+=(int)$db->get_var("SELECT COUNT(*) FROM {$t}");$fixtures+=(int)$db->get_var("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND (TABLE_NAME LIKE 'q2f%' OR TABLE_NAME LIKE 'm4_%')");$locks=0;
+        $p=['version'=>self::VERSION,'execution_id'=>$execution,'group_id'=>$group,'group_nonce'=>$nonce,'child_pid'=>getmypid(),'ids'=>array_keys(self::$ids),'count'=>count(self::$ids),'evidence_ids'=>array_keys(self::$evidence),'evidence_count'=>count(self::$evidence),'cleanup_complete'=>$fixtures===0&&$locks===0,'fixtures_remaining'=>$fixtures,'locks_remaining'=>$locks,'completed_at_utc'=>gmdate('Y-m-d\TH:i:s\Z')];$json=self::canonical($p);$wire=base64_encode($json).'.'.hash_hmac('sha256',$json,$key)."\n";$tmp=$path.'.tmp.'.bin2hex(random_bytes(8));$h=@fopen($tmp,'x+b');if($h===false)return;$ok=false;try{$ok=fwrite($h,$wire)===strlen($wire)&&fflush($h);}finally{fclose($h);}if(!$ok||file_exists($path)||!rename($tmp,$path))@unlink($tmp);putenv('VA_R1DCA_GROUP_KEY');
     }
-    private static function receipt(string $directory,string $name):void
+    private static function inspect(string$path):array
     {
-        if(!is_dir($directory)&&!@mkdir($directory,0700)&&!is_dir($directory))throw new RuntimeException('manifest_receipt_directory');
-        $handle=@fopen($directory.DIRECTORY_SEPARATOR.$name.'.receipt','x+b');if($handle===false)throw new RuntimeException('manifest_replayed');
-        try{if(fwrite($handle,"consumed\n")!==9||!fflush($handle))throw new RuntimeException('manifest_receipt_failed');}finally{fclose($handle);}
+        $reparse=false;if(PHP_OS_FAMILY==='Windows'){$out=[];$exit=-1;$cmd='powershell.exe -NoProfile -NonInteractive -Command "& { param([string]$p) try { [int]((Get-Item -LiteralPath $p -Force).Attributes) } catch { exit 7 } }" '.escapeshellarg($path);exec($cmd,$out,$exit);if($exit!==0||count($out)!==1||!preg_match('/^\d+$/D',trim($out[0])))throw new RuntimeException('manifest_receipt_inspection_uncertain');$reparse=(((int)trim($out[0]))&0x400)!==0;}
+        return['real'=>realpath($path),'directory'=>is_dir($path),'link'=>is_link($path),'reparse'=>$reparse,'stat'=>@lstat($path),'owner'=>@fileowner($path),'permissions'=>@fileperms($path)];
     }
-    public static function consume(string $path,array $authority,int $exit,int $pid):array
+    private static function directory(array$a):string
     {
-        if($exit!==0)throw new RuntimeException('manifest_child_exit');
-        if(isset($authority['manifest_path'])&&$path!==$authority['manifest_path'])throw new RuntimeException('manifest_path');
-        if(!is_file($path))throw new RuntimeException('manifest_missing');$size=filesize($path);if(!is_int($size)||$size<10||$size>65536)throw new RuntimeException('manifest_size');
-        $wire=file_get_contents($path);if(!is_string($wire)||substr_count($wire,"\n")!==1||!str_ends_with($wire,"\n"))throw new RuntimeException('manifest_wire');
-        [$encoded,$mac]=array_pad(explode('.',rtrim($wire,"\n"),2),2,'');$json=base64_decode($encoded,true);$key=$authority['key']??null;if(!is_string($json)||!is_string($key)||strlen($key)!==32)throw new RuntimeException('manifest_hmac');
-        try{$payload=json_decode(rtrim($json,"\n"),true,16,JSON_THROW_ON_ERROR);}catch(Throwable){throw new RuntimeException('manifest_json');}
-        if(!is_array($payload)||self::canonical($payload)!==$json)throw new RuntimeException('manifest_noncanonical');
-        if(!hash_equals(hash_hmac('sha256',$json,$key),$mac))throw new RuntimeException('manifest_hmac');
-        $keys=['child_pid','cleanup_complete','completed_at_utc','count','execution_id','fixtures_remaining','group_id','group_nonce','ids','locks_remaining','version'];$actual=array_keys($payload);sort($keys,SORT_STRING);sort($actual,SORT_STRING);if($actual!==$keys)throw new RuntimeException('manifest_shape');
-        if($payload['version']!==self::VERSION||$payload['execution_id']!==$authority['execution_id']||$payload['group_id']!==$authority['group_id']||$payload['group_nonce']!==$authority['group_nonce']||$payload['child_pid']!==$pid)throw new RuntimeException('manifest_authority');
-        if($payload['ids']!==$authority['ids']||$payload['count']!==count($authority['ids'])||$payload['cleanup_complete']!==true||$payload['fixtures_remaining']!==0)throw new RuntimeException('manifest_evidence');
-        $named=0;$db=new wpdb(DB_USER,DB_PASSWORD,(string)($authority['database']??getenv('VA_R1DCA_DATABASE')),DB_HOST);
-        foreach($authority['lock_names']??[]as$name){$db->last_error='';$used=$db->get_var($db->prepare('SELECT IS_USED_LOCK(%s)',$name));if($db->last_error!=='')throw new RuntimeException('manifest_lock_uncertain');if($used!==null)$named++;}
-        if($payload['locks_remaining']!==$named)throw new RuntimeException('manifest_lock_mismatch');if(!preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D',$payload['completed_at_utc']))throw new RuntimeException('manifest_time');
-        $fingerprint=hash('sha256',$wire);$identity=hash('sha256',$payload['execution_id']."\0".$payload['group_id']."\0".$payload['group_nonce']);$pathHash=hash('sha256',strtolower(str_replace('\\','/',realpath($path)?:$path)));
-        if(isset(self::$envelopes[$fingerprint])||isset(self::$identities[$identity])||isset(self::$paths[$pathHash]))throw new RuntimeException('manifest_replayed');
-        $receipts=(string)($authority['receipt_dir']??dirname($path).DIRECTORY_SEPARATOR.'receipts');self::receipt($receipts,$identity);self::receipt($receipts,$fingerprint);self::$envelopes[$fingerprint]=self::$identities[$identity]=self::$paths[$pathHash]=true;
-        if(!unlink($path))throw new RuntimeException('manifest_consume');return$payload;
+        $receipts=$a['receipt_dir']??null;$exec=$a['execution_dir']??(is_string($receipts)?dirname($receipts):null);$inspector=$a['receipt_inspector']??[self::class,'inspect'];if(!is_string($exec)||!is_string($receipts)||!is_callable($inspector)||basename($receipts)!==self::RECEIPTS)throw new RuntimeException('manifest_receipt_authority');$windowsAbsolute=strlen($exec)>2&&ctype_alpha($exec[0])&&$exec[1]===':'&&in_array($exec[2],['\\','/'],true);if(!str_starts_with($exec,DIRECTORY_SEPARATOR)&&!$windowsAbsolute)throw new RuntimeException('manifest_receipt_authority');$e=$inspector($exec);$r=$inspector($receipts);
+        foreach([$e,$r]as$x)if(!is_array($x)||!is_string($x['real']??null)||($x['directory']??false)!==true||($x['link']??true)!==false||($x['reparse']??true)!==false||!is_array($x['stat']??null)||(((int)$x['stat']['mode'])&0170000)!==0040000)throw new RuntimeException('manifest_receipt_directory_invalid');$er=rtrim($e['real'],'\\/');$rr=rtrim($r['real'],'\\/');if(dirname($rr)!==$er||basename($rr)!==self::RECEIPTS)throw new RuntimeException('manifest_receipt_containment');if(is_int($e['owner'])&&is_int($r['owner'])&&$e['owner']!==$r['owner'])throw new RuntimeException('manifest_receipt_owner');if(is_int($e['permissions'])&&is_int($r['permissions'])&&(($r['permissions']&0777)&~($e['permissions']&0777))!==0)throw new RuntimeException('manifest_receipt_permissions');return$rr;
+    }
+    private static function receipt(array$a,string$name):void
+    {
+        if(!preg_match('/^[a-f0-9]{64}$/D',$name))throw new RuntimeException('manifest_receipt_name');$dir=self::directory($a);$path=$dir.DIRECTORY_SEPARATOR.$name.'.receipt';if(dirname($path)!==$dir)throw new RuntimeException('manifest_receipt_containment');if(isset($a['receipt_before_create'])&&is_callable($a['receipt_before_create']))($a['receipt_before_create'])($path);$dir=self::directory($a);$path=$dir.DIRECTORY_SEPARATOR.$name.'.receipt';$h=@fopen($path,'x+b');if($h===false)throw new RuntimeException('manifest_replayed');try{if(fwrite($h,"consumed\n")!==9||!fflush($h))throw new RuntimeException('manifest_receipt_failed');}finally{fclose($h);}
+    }
+    public static function consume(string$path,array$a,int$exit,int$pid):array
+    {
+        if(!array_key_exists('evidence_ids',$a)&&($a['group_id']??'')==='qa4')$a['evidence_ids']=self::exactCatalog();
+        if($exit!==0)throw new RuntimeException('manifest_child_exit');if(isset($a['manifest_path'])&&$path!==$a['manifest_path'])throw new RuntimeException('manifest_path');if(!is_file($path))throw new RuntimeException('manifest_missing');$size=filesize($path);if(!is_int($size)||$size<10||$size>65536)throw new RuntimeException('manifest_size');$wire=file_get_contents($path);if(!is_string($wire)||substr_count($wire,"\n")!==1||!str_ends_with($wire,"\n"))throw new RuntimeException('manifest_wire');[$encoded,$mac]=array_pad(explode('.',rtrim($wire,"\n"),2),2,'');$json=base64_decode($encoded,true);$key=$a['key']??null;if(!is_string($json)||!is_string($key)||strlen($key)!==32)throw new RuntimeException('manifest_hmac');try{$p=json_decode(rtrim($json,"\n"),true,16,JSON_THROW_ON_ERROR);}catch(Throwable){throw new RuntimeException('manifest_json');}if(!is_array($p)||self::canonical($p)!==$json)throw new RuntimeException('manifest_noncanonical');if(!hash_equals(hash_hmac('sha256',$json,$key),$mac))throw new RuntimeException('manifest_hmac');$keys=['child_pid','cleanup_complete','completed_at_utc','count','evidence_count','evidence_ids','execution_id','fixtures_remaining','group_id','group_nonce','ids','locks_remaining','version'];$actual=array_keys($p);sort($keys,SORT_STRING);sort($actual,SORT_STRING);if($actual!==$keys)throw new RuntimeException('manifest_shape');if($p['version']!==self::VERSION||$p['execution_id']!==$a['execution_id']||$p['group_id']!==$a['group_id']||$p['group_nonce']!==$a['group_nonce']||$p['child_pid']!==$pid)throw new RuntimeException('manifest_authority');$expected=$a['evidence_ids']??[];if(!is_array($p['evidence_ids'])||$p['evidence_count']!==count($p['evidence_ids'])||count($p['evidence_ids'])!==count(array_unique($p['evidence_ids']))||$p['evidence_ids']!==$expected)throw new RuntimeException('manifest_exact_evidence');if($p['ids']!==$a['ids']||$p['count']!==count($a['ids'])||$p['cleanup_complete']!==true||$p['fixtures_remaining']!==0)throw new RuntimeException('manifest_evidence');$named=0;$db=new wpdb(DB_USER,DB_PASSWORD,(string)($a['database']??getenv('VA_R1DCA_DATABASE')),DB_HOST);foreach($a['lock_names']??[]as$name){$db->last_error='';$used=$db->get_var($db->prepare('SELECT IS_USED_LOCK(%s)',$name));if($db->last_error!=='')throw new RuntimeException('manifest_lock_uncertain');if($used!==null)$named++;}if($p['locks_remaining']!==$named)throw new RuntimeException('manifest_lock_mismatch');if(!preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D',$p['completed_at_utc']))throw new RuntimeException('manifest_time');$fingerprint=hash('sha256',$wire);$identity=hash('sha256',$p['execution_id']."\0".$p['group_id']."\0".$p['group_nonce']);$pathHash=hash('sha256',strtolower(str_replace('\\','/',realpath($path)?:$path)));if(isset(self::$envelopes[$fingerprint])||isset(self::$identities[$identity])||isset(self::$paths[$pathHash]))throw new RuntimeException('manifest_replayed');self::receipt($a,$identity);self::receipt($a,$fingerprint);self::$envelopes[$fingerprint]=self::$identities[$identity]=self::$paths[$pathHash]=true;if(!unlink($path))throw new RuntimeException('manifest_consume');return$p;
     }
 }

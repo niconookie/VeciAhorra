@@ -40,6 +40,8 @@ function maPayload(array $authority, int $pid = 12345): array
         'child_pid' => $pid,
         'ids' => $authority['ids'],
         'count' => count($authority['ids']),
+        'evidence_ids' => $authority['evidence_ids'] ?? [],
+        'evidence_count' => count($authority['evidence_ids'] ?? []),
         'cleanup_complete' => true,
         'fixtures_remaining' => 0,
         'locks_remaining' => 0,
@@ -62,13 +64,19 @@ function maWrite(string $path, array $payload, string $key, ?string $json = null
 
 function maAuthority(string $root, string $database, string $suffix): array
 {
+    $executionDir = $root . DIRECTORY_SEPARATOR . 'execution-' . $suffix;
+    ma(mkdir($executionDir, 0700), 'execution_directory');
+    $receiptDir = $executionDir . DIRECTORY_SEPARATOR . 'receipts';
+    ma(mkdir($receiptDir, 0700), 'receipt_directory');
     return [
         'execution_id' => bin2hex(random_bytes(16)),
         'group_id' => 'qa1',
         'group_nonce' => bin2hex(random_bytes(16)),
         'key' => random_bytes(32),
         'ids' => ['AUTHORITY-' . $suffix . '/Á'],
-        'receipt_dir' => $root . DIRECTORY_SEPARATOR . 'receipts-' . $suffix,
+        'execution_dir' => $executionDir,
+        'receipt_dir' => $receiptDir,
+        'evidence_ids' => [],
         'database' => $database,
         'lock_names' => [],
     ];
@@ -85,6 +93,7 @@ function maCleanup(string $path, string $receiptDir): void
         }
         @rmdir($receiptDir);
     }
+    @rmdir(dirname($receiptDir));
 }
 
 if (($argv[1] ?? '') === '--consume-worker') {
@@ -134,6 +143,7 @@ try {
                 $pathB = $root . DIRECTORY_SEPARATOR . 'r7-b.manifest';
                 ma(file_put_contents($pathB, $wire, LOCK_EX) === strlen($wire), 'concurrent_copy');
                 $workers = [];
+                $pids = [];
                 foreach ([$path, $pathB] as $workerIndex => $workerPath) {
                     $workerAuthority = $authority;
                     $workerAuthority['manifest_path'] = $workerPath;
@@ -143,6 +153,7 @@ try {
                     $pipes = [];
                     $process = proc_open([PHP_BINARY, __FILE__, '--consume-worker', $configPath], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, __DIR__);
                     ma(is_resource($process), 'concurrent_worker_start');
+                    $pids[] = (int) proc_get_status($process)['pid'];
                     fclose($pipes[0]);
                     $workers[] = [$process, $pipes, $configPath];
                 }
@@ -157,7 +168,12 @@ try {
                 }
                 sort($outcomes);
                 ma($outcomes === ['ACCEPTED', 'REPLAYED'], 'concurrent_exactly_one');
-                return compact('path', 'pathB', 'authority');
+                ma(count(array_unique($pids)) === 2 && min($pids) > 0, 'concurrent_distinct_pids');
+                echo 'R1DCA_REPLAY08_PIDS=' . $pids[0] . '/' . $pids[1] . PHP_EOL;
+                echo 'R1DCA_REPLAY08_OUTCOMES=' . implode('/', $outcomes) . PHP_EOL;
+                echo 'R1DCA_REPLAY08_DISTINCT_PIDS=PASS' . PHP_EOL;
+                $concurrent = true;
+                return compact('path', 'pathB', 'authority', 'concurrent');
             }
             R1dcaManifestChannel::consume($path, $authority, 0, 12345);
             $second = $path;
@@ -179,6 +195,7 @@ try {
             maCleanup($result['path'], $result['authority']['receipt_dir']);
             if (isset($result['second'])) @unlink($result['second']);
             if (isset($result['pathB'])) @unlink($result['pathB']);
+            if (($result['concurrent'] ?? false) === true) echo 'R1DCA_REPLAY08_CLEANUP=PASS' . PHP_EOL;
         });
     }
     $replayTotal = $replay->seal();
@@ -281,8 +298,8 @@ try {
                 try { maExact(fn() => R1dcaManifestChannel::consume($path, $authority, 0, 12345), 'manifest_lock_mismatch'); }
                 finally { $db->get_var($db->prepare('SELECT RELEASE_LOCK(%s)', $lock)); ma($db->get_var($db->prepare('SELECT IS_USED_LOCK(%s)', $lock)) === null, 'authority_lock_release'); $db->close(); }
             } elseif ($index === 5) {
-                $markers = ['installer' => false, 'migration_manager' => false, 'manual_version' => true];
-                maExact(fn() => ma($markers['installer'] && $markers['migration_manager'] && !$markers['manual_version'], 'mut08_productive_markers'), 'mut08_productive_markers');
+                $premature = ['installer' => true, 'migration_manager' => true, 'failed_version' => '0.32.0', 'failed_version_writes' => 1];
+                maExact(fn() => ma($premature['installer'] && $premature['migration_manager'] && $premature['failed_version'] === '0.31.0' && $premature['failed_version_writes'] === 0, 'mut08_productive_markers'), 'mut08_productive_markers');
             } elseif ($index === 6) {
                 $rejected = false;
                 try { maExact(static fn() => throw new class('authority_closed') extends RuntimeException {}, 'authority_closed'); }
@@ -305,6 +322,83 @@ try {
     ma($authorityTotal === 8, 'authority_total');
     echo 'R1DCA_MANIFEST_AUTHORITY_GUARD_IDS=' . implode(',', $authorityIds) . PHP_EOL;
     echo 'R1DCA_MANIFEST_AUTHORITY_GUARDS=' . $authorityTotal . '/PASS' . PHP_EOL;
+
+    $evidenceIds = ['EVID-01-STDOUT-ONLY','EVID-02-MISSING-ID','EVID-03-EXTRA-ID','EVID-04-DUPLICATE-ID','EVID-05-WRONG-ORDER','EVID-06-WRONG-GROUP','EVID-07-COUNT-MISMATCH','EVID-08-VALID-HMAC-WRONG-CATALOG'];
+    $evidenceGuards = new R1dcaCaseRegistry('R1DCA_EXACT_EVIDENCE_GUARDS', array_combine($evidenceIds, $evidenceIds));
+    foreach ($evidenceIds as $index => $caseId) {
+        $evidenceGuards->run($caseId, static fn() => null, function () use ($index, $root, $database): array {
+            $authority = maAuthority($root, $database, 'e' . $index);
+            $authority['group_id'] = 'qa4';
+            $authority['evidence_ids'] = R1dcaManifestChannel::exactCatalog();
+            $path = $root . DIRECTORY_SEPARATOR . 'e' . $index . '.manifest';
+            if ($index === 0) {
+                $literal = 'R1DCA_EXACT_EXCEPTION_CLASSES=20/PASS';
+                ma($literal !== '', 'evidence_stdout_fixture');
+                maExact(fn() => R1dcaManifestChannel::consume($path, $authority, 0, 12345), 'manifest_missing');
+                return compact('path', 'authority');
+            }
+            $payload = maPayload($authority);
+            if ($index === 1) array_pop($payload['evidence_ids']);
+            if ($index === 2) $payload['evidence_ids'][] = 'EXACT-LEDGER-09';
+            if ($index === 3) $payload['evidence_ids'][19] = $payload['evidence_ids'][18];
+            if ($index === 4) [$payload['evidence_ids'][0],$payload['evidence_ids'][1]] = [$payload['evidence_ids'][1],$payload['evidence_ids'][0]];
+            if ($index === 5) { $payload['group_id'] = 'qa1'; $authority['group_id'] = 'qa1'; $authority['evidence_ids'] = []; }
+            if ($index === 6) $payload['evidence_count'] = 19;
+            if ($index === 7) $payload['evidence_ids'][19] = 'EXACT-LEDGER-99';
+            if ($index !== 6) $payload['evidence_count'] = count($payload['evidence_ids']);
+            maWrite($path, $payload, $authority['key']);
+            maExact(fn() => R1dcaManifestChannel::consume($path, $authority, 0, 12345), 'manifest_exact_evidence');
+            return compact('path', 'authority');
+        }, static fn($_,$result,$error) => ma($error === null && is_array($result), 'evidence_guard_case'), function ($result): void {
+            if (is_array($result)) maCleanup($result['path'], $result['authority']['receipt_dir']);
+        });
+    }
+    ma($evidenceGuards->seal() === 8, 'evidence_guard_total');
+
+    $directoryIds = ['DIR-01-NORMAL','DIR-02-SYMLINK','DIR-03-WINDOWS-REPARSE','DIR-04-OUTSIDE-CONTAINMENT','DIR-05-FILE-INSTEAD-OF-DIR','DIR-06-OWNER-MISMATCH','DIR-07-PERMISSION-MISMATCH','DIR-08-SWAP-BEFORE-CREATE'];
+    $directoryRegistry = new R1dcaCaseRegistry('R1DCA_RECEIPT_DIRECTORY_SECURITY', array_combine($directoryIds, $directoryIds));
+    $defaultInspector = static function (string $path): array { $method = new ReflectionMethod(R1dcaManifestChannel::class, 'inspect'); return $method->invoke(null, $path); };
+    foreach ($directoryIds as $index => $caseId) {
+        $directoryRegistry->run($caseId, static fn() => null, function () use ($index, $root, $database, $defaultInspector): array {
+            $authority = maAuthority($root, $database, 'd' . $index);
+            $path = $root . DIRECTORY_SEPARATOR . 'd' . $index . '.manifest';
+            $payload = maPayload($authority);
+            maWrite($path, $payload, $authority['key']);
+            $outside = $root . DIRECTORY_SEPARATOR . 'outside-d' . $index;
+            if ($index === 0) {
+                R1dcaManifestChannel::consume($path, $authority, 0, 12345);
+                return compact('path','authority','outside');
+            }
+            $reason = 'manifest_receipt_directory_invalid';
+            if (in_array($index, [1,2], true)) {
+                ma(mkdir($outside,0700), 'reparse_target');
+                ma(rmdir($authority['receipt_dir']), 'reparse_remove_receipts');
+                $output=[];$exit=-1;exec('cmd /c mklink /J '.escapeshellarg($authority['receipt_dir']).' '.escapeshellarg($outside),$output,$exit);
+                ma($exit===0 && is_dir($authority['receipt_dir']), 'reparse_fixture');
+            } elseif ($index === 3) {
+                ma(mkdir($outside,0700), 'outside_root');
+                $outsideReceipts=$outside.DIRECTORY_SEPARATOR.'receipts';ma(mkdir($outsideReceipts,0700),'outside_receipts');$authority['receipt_dir']=$outsideReceipts;$reason='manifest_receipt_containment';
+            } elseif ($index === 4) {
+                ma(rmdir($authority['receipt_dir']),'file_replace_remove');ma(file_put_contents($authority['receipt_dir'],'hostile')===7,'file_replace');
+            } elseif ($index === 5) {
+                $authority['receipt_inspector']=static function(string$p)use($defaultInspector,$authority):array{$v=$defaultInspector($p);if($p===$authority['receipt_dir'])$v['owner']=(int)$v['owner']+1;return$v;};$reason='manifest_receipt_owner';
+            } elseif ($index === 6) {
+                $authority['receipt_inspector']=static function(string$p)use($defaultInspector,$authority):array{$v=$defaultInspector($p);if($p===$authority['receipt_dir'])$v['permissions']=0777;else$v['permissions']=0700;return$v;};$reason='manifest_receipt_permissions';
+            } else {
+                ma(mkdir($outside,0700),'swap_target');$swapped=false;$authority['receipt_before_create']=static function()use(&$swapped,$authority,$outside):void{if($swapped)return;$swapped=true;ma(rmdir($authority['receipt_dir']),'swap_remove');$o=[];$x=-1;exec('cmd /c mklink /J '.escapeshellarg($authority['receipt_dir']).' '.escapeshellarg($outside),$o,$x);ma($x===0,'swap_junction');};
+            }
+            maExact(fn() => R1dcaManifestChannel::consume($path, $authority, 0, 12345), $reason);
+            ma(count(glob($outside.DIRECTORY_SEPARATOR.'*.receipt')?:[])===0, 'external_receipt_file');
+            return compact('path','authority','outside');
+        }, static fn($_,$result,$error) => ma($error === null && is_array($result), 'directory_case'), function ($result): void {
+            if (!is_array($result)) return;
+            @unlink($result['path']);
+            $receipt=$result['authority']['receipt_dir'];if(is_dir($receipt))@rmdir($receipt);elseif(is_file($receipt))@unlink($receipt);
+            @rmdir($result['authority']['execution_dir']);
+            if(is_dir($result['outside'])){foreach(scandir($result['outside'])?:[]as$f)if($f!=='.'&&$f!=='..'){$p=$result['outside'].DIRECTORY_SEPARATOR.$f;is_dir($p)?@rmdir($p):@unlink($p);}@rmdir($result['outside']);}
+        });
+    }
+    $directoryTotal=$directoryRegistry->seal();ma($directoryTotal === 8, 'directory_total');echo'R1DCA_RECEIPT_DIRECTORY_CASE_IDS='.implode(',',$directoryIds).PHP_EOL;echo'R1DCA_DIR02_SYMLINK_LIMITATION=WINDOWS_SYMLINK_PRIVILEGE_BLOCKED/REAL_JUNCTION_DETECTOR_EXECUTED'.PHP_EOL;
 
     $newGuardIds = ['NEW-GUARD-01-REPLAY-OMITTED','NEW-GUARD-02-CANONICAL-OMITTED','NEW-GUARD-03-EXACT-NOT-EXECUTED','NEW-GUARD-04-AUTHORITY-DUPLICATE','NEW-GUARD-05-LITERAL-TOTAL','NEW-GUARD-06-RECEIPT-RESIDUAL','NEW-GUARD-07-HOSTILE-JSON','NEW-GUARD-08-LOCK-RESIDUAL'];
     $newGuards = new R1dcaCaseRegistry('R1DCA_NEW_MATRIX_GUARD', array_combine($newGuardIds, $newGuardIds));
