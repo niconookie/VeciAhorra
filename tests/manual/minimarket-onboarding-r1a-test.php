@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
 use VeciAhorra\Database\Migrations\CreateStoreOnboardingFoundation;
+use VeciAhorra\Core\Config;
 use VeciAhorra\Modules\Minimarket\Identity\MinimarketRole;
 use VeciAhorra\Modules\Minimarket\Onboarding\StoreOnboardingApplication as Application;
 use VeciAhorra\Modules\Minimarket\Onboarding\StoreOnboardingApplicationRepository;
@@ -179,7 +180,7 @@ try {
     foreach(['password','nonce','captcha','payload','idempotency_key'] as $secret) r1aAssert(!in_array($secret,$expectedColumns,true),"Columna secreta {$secret}.");
 
     $migration->up();
-    r1aAssert((string)get_option('veciahorra_db_version')==='0.31.0','Version instalada invalida.');
+    r1aAssert((string)get_option('veciahorra_db_version')===Config::SCHEMA_VERSION,'Version instalada invalida.');
     echo "R1A_SCHEMA=PASS\nR1A_OWNERSHIP=PASS\nR1A_BACKFILL_ADVERSARIAL=6/6\nR1A_ONBOARDING=PASS\nR1A_IDEMPOTENCY=PASS\nR1A_CAS=PASS\n";
 } finally {
     foreach($applicationIds as $id)$wpdb->delete($applications,['id'=>$id]);
