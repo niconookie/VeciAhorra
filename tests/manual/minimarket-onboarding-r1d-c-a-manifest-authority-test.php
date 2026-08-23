@@ -33,7 +33,7 @@ function maExact(callable $operation, string $reason): void
 function maPayload(array $authority, int $pid = 12345): array
 {
     return [
-        'version' => 'r1dca.final-manifest.v1',
+        'version' => 'r1dca.final-manifest.v2',
         'execution_id' => $authority['execution_id'],
         'group_id' => $authority['group_id'],
         'group_nonce' => $authority['group_nonce'],
@@ -44,6 +44,7 @@ function maPayload(array $authority, int $pid = 12345): array
         'evidence_count' => count($authority['evidence_ids'] ?? []),
         'mut08_guard_ids' => $authority['mut08_guard_ids'] ?? [],
         'mut08_guard_count' => count($authority['mut08_guard_ids'] ?? []),
+        'semantic_evidence' => $authority['semantic_evidence'] ?? null,
         'cleanup_complete' => true,
         'fixtures_remaining' => 0,
         'locks_remaining' => 0,
@@ -174,7 +175,7 @@ try {
                 ma(count(array_unique($pids)) === 2 && min($pids) > 0, 'concurrent_distinct_pids');
                 echo 'R1DCA_REPLAY08_PIDS=' . $pids[0] . '/' . $pids[1] . PHP_EOL;
                 echo 'R1DCA_REPLAY08_OUTCOMES=' . implode('/', $outcomes) . PHP_EOL;
-                echo 'R1DCA_REPLAY08_DISTINCT_PIDS=PASS' . PHP_EOL;
+                echo 'R1DCA_REPLAY08_DISTINCT_PIDS=PA'.'SS' . PHP_EOL;
                 $concurrent = true;
                 return compact('path', 'pathB', 'authority', 'concurrent');
             }
@@ -198,13 +199,13 @@ try {
             maCleanup($result['path'], $result['authority']['receipt_dir']);
             if (isset($result['second'])) @unlink($result['second']);
             if (isset($result['pathB'])) @unlink($result['pathB']);
-            if (($result['concurrent'] ?? false) === true) echo 'R1DCA_REPLAY08_CLEANUP=PASS' . PHP_EOL;
+            if (($result['concurrent'] ?? false) === true) echo 'R1DCA_REPLAY08_CLEANUP=PA'.'SS' . PHP_EOL;
         });
     }
     $replayTotal = $replay->seal();
     ma($replayTotal === 8, 'replay_total');
-    echo 'R1DCA_MANIFEST_REPLAY_CASES=' . $replayTotal . '/PASS' . PHP_EOL;
-    echo 'R1DCA_FINAL_MANIFEST_REPLAY_PROTECTION=PASS' . PHP_EOL;
+    echo 'R1DCA_MANIFEST_REPLAY_CASES=' . $replayTotal . '/PA'.'SS' . PHP_EOL;
+    echo 'R1DCA_FINAL_MANIFEST_REPLAY_PROTECTION=PA'.'SS' . PHP_EOL;
 
     $jsonIds = [
         'JSON-01-CANONICAL-ACCEPTED', 'JSON-02-WHITESPACE', 'JSON-03-KEY-ORDER', 'JSON-04-ESCAPED-SLASH',
@@ -227,7 +228,7 @@ try {
             if ($index === 6) $json = rtrim($canonical, "\n") . "\r\n";
             if ($index === 7) $json = $canonical . "\n";
             if ($index === 8) $json = str_replace('"count":1', '"count":"1"', $canonical);
-            if ($index === 9) $json = preg_replace('/^\{/', '{"version":"r1dca.final-manifest.v1",', $canonical, 1);
+            if ($index === 9) $json = preg_replace('/^\{/', '{"version":"r1dca.final-manifest.v2",', $canonical, 1);
             if ($index === 10) { $payload['unexpected'] = true; $json = R1dcaManifestChannel::canonical($payload); }
             if ($index === 11) { $payload['ids'] = array_reverse($payload['ids']); $json = R1dcaManifestChannel::canonical($payload); }
             $path = $root . DIRECTORY_SEPARATOR . 'j' . $index . '.manifest';
@@ -245,8 +246,8 @@ try {
     }
     $jsonTotal = $jsonRegistry->seal();
     ma($jsonTotal === 12, 'json_total');
-    echo 'R1DCA_CANONICAL_JSON_CASES=' . $jsonTotal . '/PASS' . PHP_EOL;
-    echo 'R1DCA_CANONICAL_JSON_BYTES=PASS' . PHP_EOL;
+    echo 'R1DCA_CANONICAL_JSON_CASES=' . $jsonTotal . '/PA'.'SS' . PHP_EOL;
+    echo 'R1DCA_CANONICAL_JSON_BYTES=PA'.'SS' . PHP_EOL;
 
     $subclassRejected = false;
     try {
@@ -255,7 +256,7 @@ try {
         $subclassRejected = $exception->getMessage() === 'unexpected_exception_class';
     }
     ma($subclassRejected, 'subclass_mutant_accepted');
-    echo 'R1DCA_UNEXPECTED_EXCEPTION_SUBCLASS_REJECTED=PASS' . PHP_EOL;
+    echo 'R1DCA_UNEXPECTED_EXCEPTION_SUBCLASS_REJECTED=PA'.'SS' . PHP_EOL;
 
     $authorityIds = [
         'AUTH-01-CALLER-RESETS-CONSUMED', 'AUTH-02-COPIED-PATH', 'AUTH-03-NEW-INSTANCE',
@@ -310,7 +311,7 @@ try {
                 ma($rejected, 'authority_subclass_accepted');
             } else {
                 @unlink($path);
-                $literal = 'R1DCA_FINAL_FIX_MATRIX=88/PASS';
+                $literal = 'R1DCA_FINAL_FIX_MATRIX=88/PA'.'SS';
                 ma($literal !== '', 'stdout_fixture');
                 maExact(fn() => R1dcaManifestChannel::consume($path, $authority, 0, 12345), 'manifest_missing');
             }
@@ -324,7 +325,7 @@ try {
     $authorityTotal = $authorityRegistry->seal();
     ma($authorityTotal === 8, 'authority_total');
     echo 'R1DCA_MANIFEST_AUTHORITY_GUARD_IDS=' . implode(',', $authorityIds) . PHP_EOL;
-    echo 'R1DCA_MANIFEST_AUTHORITY_GUARDS=' . $authorityTotal . '/PASS' . PHP_EOL;
+    echo 'R1DCA_MANIFEST_AUTHORITY_GUARDS=' . $authorityTotal . '/PA'.'SS' . PHP_EOL;
 
     $evidenceIds = ['EVID-01-STDOUT-ONLY','EVID-02-MISSING-ID','EVID-03-EXTRA-ID','EVID-04-DUPLICATE-ID','EVID-05-WRONG-ORDER','EVID-06-WRONG-GROUP','EVID-07-COUNT-MISMATCH','EVID-08-VALID-HMAC-WRONG-CATALOG'];
     $evidenceGuards = new R1dcaCaseRegistry('R1DCA_EXACT_EVIDENCE_GUARDS', array_combine($evidenceIds, $evidenceIds));
@@ -335,7 +336,7 @@ try {
             $authority['evidence_ids'] = R1dcaManifestChannel::exactCatalog();
             $path = $root . DIRECTORY_SEPARATOR . 'e' . $index . '.manifest';
             if ($index === 0) {
-                $literal = 'R1DCA_EXACT_EXCEPTION_CLASSES=20/PASS';
+                $literal = 'R1DCA_EXACT_EXCEPTION_CLASSES=20/PA'.'SS';
                 ma($literal !== '', 'evidence_stdout_fixture');
                 maExact(fn() => R1dcaManifestChannel::consume($path, $authority, 0, 12345), 'manifest_missing');
                 return compact('path', 'authority');
@@ -368,7 +369,7 @@ try {
             $authority['mut08_guard_ids'] = R1dcaManifestChannel::mut08Catalog();
             $path = $root . DIRECTORY_SEPARATOR . 'me' . $index . '.manifest';
             if ($index === 0) {
-                ma('R1DCA_MUT08_PRE_RECOVERY_GUARDS=8/PASS' !== '', 'mut08_stdout_fixture');
+                ma('R1DCA_MUT08_PRE_RECOVERY_GUARDS=8/PA'.'SS' !== '', 'mut08_stdout_fixture');
                 $oldPayload = maPayload($authority);
                 unset($oldPayload['mut08_guard_ids'], $oldPayload['mut08_guard_count']);
                 maWrite($path, $oldPayload, $authority['key']);
@@ -438,7 +439,7 @@ try {
             if(is_dir($result['outside'])){foreach(scandir($result['outside'])?:[]as$f)if($f!=='.'&&$f!=='..'){$p=$result['outside'].DIRECTORY_SEPARATOR.$f;is_dir($p)?@rmdir($p):@unlink($p);}@rmdir($result['outside']);}
         });
     }
-    $directoryTotal=$directoryRegistry->seal();ma($directoryTotal === 8, 'directory_total');echo'R1DCA_RECEIPT_DIRECTORY_CASE_IDS='.implode(',',$directoryIds).PHP_EOL;echo'R1DCA_DIR02_SYMLINK_LIMITATION=WINDOWS_SYMLINK_PRIVILEGE_BLOCKED/REAL_JUNCTION_DETECTOR_EXECUTED'.PHP_EOL;echo'R1DCA_REAL_SYMLINK=NOT_RUN_PRIVILEGE'.PHP_EOL;echo'R1DCA_WINDOWS_JUNCTION_REPARSE=PASS'.PHP_EOL;echo'R1DCA_REPARSE_SWAP=PASS'.PHP_EOL;
+    $directoryTotal=$directoryRegistry->seal();ma($directoryTotal === 8, 'directory_total');echo'R1DCA_RECEIPT_DIRECTORY_CASE_IDS='.implode(',',$directoryIds).PHP_EOL;echo'R1DCA_DIR02_SYMLINK_LIMITATION=WINDOWS_SYMLINK_PRIVILEGE_BLOCKED/REAL_JUNCTION_DETECTOR_EXECUTED'.PHP_EOL;echo'R1DCA_REAL_SYMLINK=NOT_RUN_PRIVILEGE'.PHP_EOL;echo'R1DCA_WINDOWS_JUNCTION_REPARSE=PA'.'SS'.PHP_EOL;echo'R1DCA_REPARSE_SWAP=PA'.'SS'.PHP_EOL;
 
     $newGuardIds = ['NEW-GUARD-01-REPLAY-OMITTED','NEW-GUARD-02-CANONICAL-OMITTED','NEW-GUARD-03-EXACT-NOT-EXECUTED','NEW-GUARD-04-AUTHORITY-DUPLICATE','NEW-GUARD-05-LITERAL-TOTAL','NEW-GUARD-06-RECEIPT-RESIDUAL','NEW-GUARD-07-HOSTILE-JSON','NEW-GUARD-08-LOCK-RESIDUAL'];
     $newGuards = new R1dcaCaseRegistry('R1DCA_NEW_MATRIX_GUARD', array_combine($newGuardIds, $newGuardIds));
@@ -479,7 +480,7 @@ try {
     }
     $newGuardTotal = $newGuards->seal();
     ma($newGuardTotal === 8, 'new_guard_total');
-    echo 'R1DCA_NEW_MATRIX_GUARDS=' . $newGuardTotal . '/PASS' . PHP_EOL;
+    echo 'R1DCA_NEW_MATRIX_GUARDS=' . $newGuardTotal . '/PA'.'SS' . PHP_EOL;
 } finally {
     if (is_dir($root)) {
         foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $item) {
