@@ -42,6 +42,8 @@ function maPayload(array $authority, int $pid = 12345): array
         'count' => count($authority['ids']),
         'evidence_ids' => $authority['evidence_ids'] ?? [],
         'evidence_count' => count($authority['evidence_ids'] ?? []),
+        'mut08_guard_ids' => $authority['mut08_guard_ids'] ?? [],
+        'mut08_guard_count' => count($authority['mut08_guard_ids'] ?? []),
         'cleanup_complete' => true,
         'fixtures_remaining' => 0,
         'locks_remaining' => 0,
@@ -77,6 +79,7 @@ function maAuthority(string $root, string $database, string $suffix): array
         'execution_dir' => $executionDir,
         'receipt_dir' => $receiptDir,
         'evidence_ids' => [],
+        'mut08_guard_ids' => [],
         'database' => $database,
         'lock_names' => [],
     ];
@@ -355,6 +358,43 @@ try {
     }
     ma($evidenceGuards->seal() === 8, 'evidence_guard_total');
 
+    $mut08EvidenceIds = ['MUT08-EVID-01-STDOUT-ONLY','MUT08-EVID-02-MISSING-ID','MUT08-EVID-03-EXTRA-ID','MUT08-EVID-04-DUPLICATE-ID','MUT08-EVID-05-WRONG-ORDER','MUT08-EVID-06-WRONG-GROUP','MUT08-EVID-07-COUNT-MISMATCH','MUT08-EVID-08-VALID-HMAC-WRONG-CATALOG'];
+    $mut08EvidenceGuards = new R1dcaCaseRegistry('R1DCA_MUT08_EVIDENCE_GUARDS', array_combine($mut08EvidenceIds, $mut08EvidenceIds));
+    foreach ($mut08EvidenceIds as $index => $caseId) {
+        $mut08EvidenceGuards->run($caseId, static fn() => null, function () use ($index, $root, $database): array {
+            $authority = maAuthority($root, $database, 'me' . $index);
+            $authority['group_id'] = 'qa4';
+            $authority['evidence_ids'] = R1dcaManifestChannel::exactCatalog();
+            $authority['mut08_guard_ids'] = R1dcaManifestChannel::mut08Catalog();
+            $path = $root . DIRECTORY_SEPARATOR . 'me' . $index . '.manifest';
+            if ($index === 0) {
+                ma('R1DCA_MUT08_PRE_RECOVERY_GUARDS=8/PASS' !== '', 'mut08_stdout_fixture');
+                $oldPayload = maPayload($authority);
+                unset($oldPayload['mut08_guard_ids'], $oldPayload['mut08_guard_count']);
+                maWrite($path, $oldPayload, $authority['key']);
+                maExact(fn() => R1dcaManifestChannel::consume($path, $authority, 0, 12345), 'manifest_shape');
+                @unlink($path);
+                maExact(fn() => R1dcaManifestChannel::consume($path, $authority, 0, 12345), 'manifest_missing');
+                return compact('path', 'authority');
+            }
+            $payload = maPayload($authority);
+            if ($index === 1) array_pop($payload['mut08_guard_ids']);
+            if ($index === 2) $payload['mut08_guard_ids'][] = 'MUT08-G09-HOSTILE';
+            if ($index === 3) $payload['mut08_guard_ids'][7] = $payload['mut08_guard_ids'][6];
+            if ($index === 4) [$payload['mut08_guard_ids'][0],$payload['mut08_guard_ids'][1]] = [$payload['mut08_guard_ids'][1],$payload['mut08_guard_ids'][0]];
+            if ($index === 5) { $payload['group_id'] = 'qa1'; $authority['group_id'] = 'qa1'; $authority['mut08_guard_ids'] = []; }
+            if ($index === 6) $payload['mut08_guard_count'] = 7;
+            if ($index === 7) $payload['mut08_guard_ids'][7] = 'MUT08-G08-HOSTILE';
+            if ($index !== 6) $payload['mut08_guard_count'] = count($payload['mut08_guard_ids']);
+            maWrite($path, $payload, $authority['key']);
+            maExact(fn() => R1dcaManifestChannel::consume($path, $authority, 0, 12345), 'manifest_mut08_guard_evidence');
+            return compact('path', 'authority');
+        }, static fn($_,$result,$error) => ma($error === null && is_array($result), 'mut08_evidence_guard_case'), function ($result): void {
+            if (is_array($result)) maCleanup($result['path'], $result['authority']['receipt_dir']);
+        });
+    }
+    ma($mut08EvidenceGuards->seal() === 8, 'mut08_evidence_guard_total');
+
     $directoryIds = ['DIR-01-NORMAL','DIR-02-SYMLINK','DIR-03-WINDOWS-REPARSE','DIR-04-OUTSIDE-CONTAINMENT','DIR-05-FILE-INSTEAD-OF-DIR','DIR-06-OWNER-MISMATCH','DIR-07-PERMISSION-MISMATCH','DIR-08-SWAP-BEFORE-CREATE'];
     $directoryRegistry = new R1dcaCaseRegistry('R1DCA_RECEIPT_DIRECTORY_SECURITY', array_combine($directoryIds, $directoryIds));
     $defaultInspector = static function (string $path): array { $method = new ReflectionMethod(R1dcaManifestChannel::class, 'inspect'); return $method->invoke(null, $path); };
@@ -398,7 +438,7 @@ try {
             if(is_dir($result['outside'])){foreach(scandir($result['outside'])?:[]as$f)if($f!=='.'&&$f!=='..'){$p=$result['outside'].DIRECTORY_SEPARATOR.$f;is_dir($p)?@rmdir($p):@unlink($p);}@rmdir($result['outside']);}
         });
     }
-    $directoryTotal=$directoryRegistry->seal();ma($directoryTotal === 8, 'directory_total');echo'R1DCA_RECEIPT_DIRECTORY_CASE_IDS='.implode(',',$directoryIds).PHP_EOL;echo'R1DCA_DIR02_SYMLINK_LIMITATION=WINDOWS_SYMLINK_PRIVILEGE_BLOCKED/REAL_JUNCTION_DETECTOR_EXECUTED'.PHP_EOL;
+    $directoryTotal=$directoryRegistry->seal();ma($directoryTotal === 8, 'directory_total');echo'R1DCA_RECEIPT_DIRECTORY_CASE_IDS='.implode(',',$directoryIds).PHP_EOL;echo'R1DCA_DIR02_SYMLINK_LIMITATION=WINDOWS_SYMLINK_PRIVILEGE_BLOCKED/REAL_JUNCTION_DETECTOR_EXECUTED'.PHP_EOL;echo'R1DCA_REAL_SYMLINK=NOT_RUN_PRIVILEGE'.PHP_EOL;echo'R1DCA_WINDOWS_JUNCTION_REPARSE=PASS'.PHP_EOL;echo'R1DCA_REPARSE_SWAP=PASS'.PHP_EOL;
 
     $newGuardIds = ['NEW-GUARD-01-REPLAY-OMITTED','NEW-GUARD-02-CANONICAL-OMITTED','NEW-GUARD-03-EXACT-NOT-EXECUTED','NEW-GUARD-04-AUTHORITY-DUPLICATE','NEW-GUARD-05-LITERAL-TOTAL','NEW-GUARD-06-RECEIPT-RESIDUAL','NEW-GUARD-07-HOSTILE-JSON','NEW-GUARD-08-LOCK-RESIDUAL'];
     $newGuards = new R1dcaCaseRegistry('R1DCA_NEW_MATRIX_GUARD', array_combine($newGuardIds, $newGuardIds));
