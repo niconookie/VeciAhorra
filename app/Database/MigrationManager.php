@@ -44,13 +44,45 @@ final class MigrationManager
      */
     private const OPTION_NAME = 'veciahorra_db_version';
 
+    /** @var null|\Closure(string, array<string, scalar|null>): void */
+    private static ?\Closure $processObserver = null;
+
+    /**
+     * Instala observaciÃ³n efÃ­mera del proceso para harnesses de migraciÃ³n.
+     */
+    public static function observeProcess(?callable $observer): void
+    {
+        self::$processObserver = $observer === null
+            ? null
+            : \Closure::fromCallable($observer);
+    }
+
+    /** @param array<string, scalar|null> $context */
+    private static function observe(string $event, array $context = []): void
+    {
+        if (self::$processObserver !== null) {
+            (self::$processObserver)($event, $context);
+        }
+    }
+
     /**
      * Ejecuta las migraciones registradas en orden.
      */
     public static function migrate(): void
     {
+        self::observe('migration_manager_enter');
+        self::observe('migration_manager_run_started');
+
         foreach (self::migrations() as $migration) {
-            $migration->up();
+            $class = get_class($migration);
+            self::observe('migration_dispatched', ['class' => $class]);
+
+            try {
+                $migration->up();
+            } catch (\Throwable $exception) {
+                self::observe('migration_failed', ['class' => $class]);
+                throw $exception;
+            }
         }
     }
 
