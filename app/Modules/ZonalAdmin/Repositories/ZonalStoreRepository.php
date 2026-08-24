@@ -9,6 +9,13 @@ use VeciAhorra\Exceptions\PersistenceException;
 
 final class ZonalStoreRepository
 {
+    public function onboardingApplication(int $storeId): ?array
+    {
+        global $wpdb;
+        $row=$wpdb->get_row($wpdb->prepare('SELECT public_id,terms_version,terms_accepted_at,status FROM '.$this->table('store_onboarding_applications').' WHERE store_id=%d LIMIT 1',$storeId),ARRAY_A);
+        if($wpdb->last_error!=='')throw new PersistenceException('No fue posible cargar la autoridad de onboarding.');
+        return is_array($row)?$row:null;
+    }
     public function paginate(int $userId, bool $global, int $page, int $perPage, ?string $search, ?string $state): array
     {
         [$joins, $where, $params] = $this->scope($userId, $global, $search, $state);

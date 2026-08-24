@@ -1,4 +1,5 @@
 <section class="va-minimarket" data-va-minimarket>
+    <section hidden data-onboarding aria-labelledby="va-owner-onboarding-title"><h1 id="va-owner-onboarding-title">Estado de mi solicitud</h1><div data-onboarding-content></div></section>
     <div class="va-minimarket__status" data-status aria-live="polite">Cargando panel…</div>
     <header class="va-minimarket__summary" hidden data-summary><p class="va-minimarket__eyebrow">Mi minimarket</p><h1 data-store-name></h1><p>Estado: <strong data-store-status></strong> <span aria-hidden="true">·</span> <strong data-active-offers></strong> ofertas activas</p></header>
     <nav class="va-minimarket__tabs" hidden data-nav aria-label="Secciones del panel" role="tablist"><button type="button" role="tab" aria-selected="false" data-tab="inventory">Mis productos</button><button type="button" role="tab" aria-selected="false" data-tab="add">Agregar productos</button><button type="button" role="tab" aria-selected="false" data-tab="orders">Mis pedidos</button></nav>

@@ -47,6 +47,7 @@ final class ZonalStoreController
         }
         $data = $this->serialize($row, true);
         $data['service_zones'] = $this->stores->zonesForStore($storeId, $global ? null : $userId, $global);
+        $data['onboarding_application'] = $this->stores->onboardingApplication($storeId);
         $data['decision_history'] = $this->history->forStore($storeId);
         return ['success'=>true, 'data'=>$data];
     }
