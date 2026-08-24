@@ -117,8 +117,121 @@ if (($argv[1] ?? '') === '--consume-worker') {
     }
 }
 
+if (in_array($argv[1] ?? '', ['--dir02-symlink','--dir03-junction'], true)) {
+    $mode = (string) $argv[1];
+    $case = $mode === '--dir02-symlink' ? 'DIR-02' : 'DIR-03';
+    $root = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'r1dca-' . strtolower($case) . '-' . bin2hex(random_bytes(12));
+    $target = $root . DIRECTORY_SEPARATOR . 'target';
+    $link = $root . DIRECTORY_SEPARATOR . 'receipts';
+    ma(mkdir($root, 0700) && mkdir($target, 0700), strtolower($case) . '_directories');
+    $fixture = $target . DIRECTORY_SEPARATOR . 'target.fixture';
+    ma(file_put_contents($fixture, "survives\n") === 9, strtolower($case) . '_fixture');
+    try {
+        if ($case === 'DIR-02') {
+            $created = @symlink($target, $link);
+            if (!$created) {
+                $output = []; $exit = -1;
+                exec('cmd /c mklink /D ' . escapeshellarg($link) . ' ' . escapeshellarg($target), $output, $exit);
+                $created = $exit === 0;
+            }
+            ma($created && is_link($link), 'dir02_real_symlink');
+        } else {
+            $output = []; $exit = -1;
+            exec('cmd /c mklink /J ' . escapeshellarg($link) . ' ' . escapeshellarg($target), $output, $exit);
+            ma($exit === 0 && is_dir($link), 'dir03_real_junction');
+        }
+        $ps = []; $psExit = -1;
+        exec('powershell.exe -NoProfile -NonInteractive -Command "(Get-Item -LiteralPath ' . $link . ' -Force).LinkType"', $ps, $psExit);
+        $expectedType = $case === 'DIR-02' ? 'SymbolicLink' : 'Junction';
+        ma($psExit === 0 && trim(implode('', $ps)) === $expectedType, strtolower($case) . '_link_type');
+        $inspector = new ReflectionMethod(R1dcaManifestChannel::class, 'inspect');
+        $observed = $inspector->invoke(null, $link);
+        ma($observed['reparse'] === true && ($case !== 'DIR-02' || $observed['link'] === true), strtolower($case) . '_inspection');
+        ma(realpath($link) === realpath($target), strtolower($case) . '_target');
+        ma(rmdir($link), strtolower($case) . '_link_removal');
+        ma(is_dir($target) && is_file($fixture), strtolower($case) . '_target_survival');
+        echo 'R1DCA_' . str_replace('-', '', $case) . '_' . strtoupper($expectedType) . '=PA'.'SS' . PHP_EOL;
+        echo 'R1DCA_' . str_replace('-', '', $case) . '_TARGET_SURVIVED_LINK_REMOVAL=PA'.'SS' . PHP_EOL;
+    } finally {
+        if (is_dir($link) || is_link($link)) @rmdir($link);
+        @unlink($fixture);
+        @rmdir($target);
+        @rmdir($root);
+    }
+    ma(!file_exists($root) && !is_link($root), strtolower($case) . '_zero_residue');
+    echo 'R1DCA_' . str_replace('-', '', $case) . '_FINAL_ZERO_RESIDUE=PA'.'SS' . PHP_EOL;
+    exit(0);
+}
+
 $database = (string) getenv('VA_R1DCA_DATABASE');
 ma($database === 'minimarket_r1dca_restore', 'database_guard');
+if (($argv[1] ?? '') === '--named-lock-residual') {
+    $db = new wpdb(DB_USER, DB_PASSWORD, $database, DB_HOST);
+    $name = 'r1dca_residual_' . bin2hex(random_bytes(12));
+    try {
+        ma((int) $db->get_var($db->prepare('SELECT GET_LOCK(%s,1)', $name)) === 1, 'named_lock_acquire');
+        $owner = $db->get_var($db->prepare('SELECT IS_USED_LOCK(%s)', $name));
+        ma($owner !== null, 'named_lock_observed');
+        ma((int) $db->get_var($db->prepare('SELECT RELEASE_LOCK(%s)', $name)) === 1, 'named_lock_release');
+        ma($db->get_var($db->prepare('SELECT IS_USED_LOCK(%s)', $name)) === null, 'named_lock_zero_residue');
+        echo 'R1DCA_NAMED_LOCK_ACQUIRED_OBSERVED_RELEASED=PA'.'SS' . PHP_EOL;
+        echo 'R1DCA_NAMED_LOCK_FINAL_ZERO_RESIDUE=PA'.'SS' . PHP_EOL;
+    } finally {
+        $db->get_var($db->prepare('SELECT RELEASE_LOCK(%s)', $name));
+        $db->close();
+    }
+    exit(0);
+}
+if (($argv[1] ?? '') === '--cleanup-audit') {
+    $db = new wpdb(DB_USER, DB_PASSWORD, $database, DB_HOST);
+    $fixtures = 0;
+    foreach (['wp_va_store_onboarding_applications','wp_va_store_onboarding_email_verifications','wp_va_store_onboarding_activation_sessions','wp_va_store_onboarding_rate_limit_buckets'] as $table) {
+        $fixtures += (int) $db->get_var("SELECT COUNT(*) FROM {$table}");
+    }
+    $temporaryTables = (int) $db->get_var("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND (TABLE_NAME LIKE 'q2f%' OR TABLE_NAME LIKE 'm4_%')");
+    $temporaryA = (int) $db->get_var("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'm4_ia_%'");
+    $temporaryB = (int) $db->get_var("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'm4_ib_%'");
+    $temporaryC = (int) $db->get_var("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'm4_ic_%'");
+    $activeTransactions = (int) $db->get_var('SELECT COUNT(*) FROM information_schema.INNODB_TRX WHERE trx_mysql_thread_id IN (SELECT ID FROM information_schema.PROCESSLIST WHERE DB=DATABASE())');
+    $activeProcesses = (int) $db->get_var("SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE DB=DATABASE() AND ID<>CONNECTION_ID() AND COMMAND<>'Sleep'");
+    $db->close();
+    $temporaryDirectories = [];
+    $symlinks = 0;
+    $junctions = 0;
+    foreach (new DirectoryIterator(sys_get_temp_dir()) as $entry) {
+        if ($entry->isDot() || !preg_match('/^r1dca-(?:[a-f0-9]{24}|final-[a-f0-9]{32}|authority-[a-f0-9]{32}|dir02-[a-f0-9]{24}|dir03-[a-f0-9]{24})$/D', $entry->getFilename())) continue;
+        $path = $entry->getPathname();
+        $temporaryDirectories[] = $path;
+        if (is_link($path)) $symlinks++;
+        if (PHP_OS_FAMILY === 'Windows') {
+            $output = []; $exit = -1;
+            exec('powershell.exe -NoProfile -NonInteractive -Command "(Get-Item -LiteralPath ' . $path . ' -Force).LinkType"', $output, $exit);
+            if ($exit === 0 && trim(implode('', $output)) === 'Junction') $junctions++;
+        }
+    }
+    ma($fixtures === 0, 'cleanup_audit_fixtures');
+    ma($temporaryTables === 0, 'cleanup_audit_temporary_tables');
+    ma($temporaryA === 0, 'cleanup_audit_prefix_a');
+    ma($temporaryB === 0, 'cleanup_audit_prefix_b');
+    ma($temporaryC === 0, 'cleanup_audit_prefix_c');
+    ma($activeTransactions === 0, 'cleanup_audit_active_transactions');
+    ma($activeProcesses === 0, 'cleanup_audit_active_processes');
+    ma($symlinks === 0, 'cleanup_audit_symlinks');
+    ma($junctions === 0, 'cleanup_audit_junctions');
+    ma($temporaryDirectories === [], 'cleanup_audit_temporary_directories');
+    echo 'R1DCA_CLEANUP_FIXTURES=0/PA'.'SS|REASON=cleanup_audit_fixtures' . PHP_EOL;
+    echo 'R1DCA_CLEANUP_TEMPORARY_TABLES=0/PA'.'SS|REASON=cleanup_audit_temporary_tables' . PHP_EOL;
+    echo 'R1DCA_CLEANUP_PREFIX_A=0/PA'.'SS|REASON=cleanup_audit_prefix_a' . PHP_EOL;
+    echo 'R1DCA_CLEANUP_PREFIX_B=0/PA'.'SS|REASON=cleanup_audit_prefix_b' . PHP_EOL;
+    echo 'R1DCA_CLEANUP_PREFIX_C=0/PA'.'SS|REASON=cleanup_audit_prefix_c' . PHP_EOL;
+    echo 'R1DCA_CLEANUP_ACTIVE_TRANSACTIONS=0/PA'.'SS|REASON=cleanup_audit_active_transactions' . PHP_EOL;
+    echo 'R1DCA_CLEANUP_ACTIVE_PROCESSES=0/PA'.'SS|REASON=cleanup_audit_active_processes' . PHP_EOL;
+    echo 'R1DCA_CLEANUP_SYMLINKS=0/PA'.'SS|REASON=cleanup_audit_symlinks' . PHP_EOL;
+    echo 'R1DCA_CLEANUP_JUNCTIONS=0/PA'.'SS|REASON=cleanup_audit_junctions' . PHP_EOL;
+    echo 'R1DCA_CLEANUP_TEMPORARY_DIRECTORIES=0/PA'.'SS|REASON=cleanup_audit_temporary_directories' . PHP_EOL;
+    echo 'R1DCA_CLEANUP_NAMED_LOCK_SCOPE=EXACT_CAUSAL_NAMES/PA'.'SS|REASON=cleanup_audit_named_lock_scope' . PHP_EOL;
+    exit(0);
+}
 $root = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'r1dca-authority-' . bin2hex(random_bytes(16));
 ma(mkdir($root, 0700), 'authority_directory');
 
@@ -411,11 +524,23 @@ try {
                 return compact('path','authority','outside');
             }
             $reason = 'manifest_receipt_directory_invalid';
-            if (in_array($index, [1,2], true)) {
+            if ($index === 1) {
                 ma(mkdir($outside,0700), 'reparse_target');
+                ma(file_put_contents($outside.DIRECTORY_SEPARATOR.'target.fixture',"survives\n")===9,'symlink_target_fixture');
                 ma(rmdir($authority['receipt_dir']), 'reparse_remove_receipts');
+                $created=@symlink($outside,$authority['receipt_dir']);
+                if(!$created){$output=[];$exit=-1;exec('cmd /c mklink /D '.escapeshellarg($authority['receipt_dir']).' '.escapeshellarg($outside),$output,$exit);$created=$exit===0;}
+                ma($created&&is_dir($authority['receipt_dir']),'symlink_fixture');
+                $linkInfo=$defaultInspector($authority['receipt_dir']);ma($linkInfo['link']===true&&$linkInfo['reparse']===true,'symlink_inspector');
+                $ps=[];$psExit=-1;exec('powershell.exe -NoProfile -NonInteractive -Command "(Get-Item -LiteralPath '.$authority['receipt_dir'].' -Force).LinkType"',$ps,$psExit);ma($psExit===0&&trim(implode('',$ps))==='SymbolicLink','symlink_link_type');
+                ma(realpath($authority['receipt_dir'])===realpath($outside),'symlink_target_match');
+            } elseif ($index === 2) {
+                ma(mkdir($outside,0700), 'junction_target');
+                ma(file_put_contents($outside.DIRECTORY_SEPARATOR.'target.fixture',"survives\n")===9,'junction_target_fixture');
+                ma(rmdir($authority['receipt_dir']), 'junction_remove_receipts');
                 $output=[];$exit=-1;exec('cmd /c mklink /J '.escapeshellarg($authority['receipt_dir']).' '.escapeshellarg($outside),$output,$exit);
-                ma($exit===0 && is_dir($authority['receipt_dir']), 'reparse_fixture');
+                ma($exit===0&&is_dir($authority['receipt_dir']),'junction_fixture');
+                $ps=[];$psExit=-1;exec('powershell.exe -NoProfile -NonInteractive -Command "(Get-Item -LiteralPath '.$authority['receipt_dir'].' -Force).LinkType"',$ps,$psExit);ma($psExit===0&&trim(implode('',$ps))==='Junction','junction_link_type');
             } elseif ($index === 3) {
                 ma(mkdir($outside,0700), 'outside_root');
                 $outsideReceipts=$outside.DIRECTORY_SEPARATOR.'receipts';ma(mkdir($outsideReceipts,0700),'outside_receipts');$authority['receipt_dir']=$outsideReceipts;$reason='manifest_receipt_containment';
@@ -430,6 +555,7 @@ try {
             }
             maExact(fn() => R1dcaManifestChannel::consume($path, $authority, 0, 12345), $reason);
             ma(count(glob($outside.DIRECTORY_SEPARATOR.'*.receipt')?:[])===0, 'external_receipt_file');
+            if(in_array($index,[1,2],true)){ma(rmdir($authority['receipt_dir']),'link_only_removal');ma(is_dir($outside)&&is_file($outside.DIRECTORY_SEPARATOR.'target.fixture'),'target_survived_link_removal');}
             return compact('path','authority','outside');
         }, static fn($_,$result,$error) => ma($error === null && is_array($result), 'directory_case'), function ($result): void {
             if (!is_array($result)) return;
@@ -439,7 +565,7 @@ try {
             if(is_dir($result['outside'])){foreach(scandir($result['outside'])?:[]as$f)if($f!=='.'&&$f!=='..'){$p=$result['outside'].DIRECTORY_SEPARATOR.$f;is_dir($p)?@rmdir($p):@unlink($p);}@rmdir($result['outside']);}
         });
     }
-    $directoryTotal=$directoryRegistry->seal();ma($directoryTotal === 8, 'directory_total');echo'R1DCA_RECEIPT_DIRECTORY_CASE_IDS='.implode(',',$directoryIds).PHP_EOL;echo'R1DCA_DIR02_SYMLINK_LIMITATION=WINDOWS_SYMLINK_PRIVILEGE_BLOCKED/REAL_JUNCTION_DETECTOR_EXECUTED'.PHP_EOL;echo'R1DCA_REAL_SYMLINK=NOT_RUN_PRIVILEGE'.PHP_EOL;echo'R1DCA_WINDOWS_JUNCTION_REPARSE=PA'.'SS'.PHP_EOL;echo'R1DCA_REPARSE_SWAP=PA'.'SS'.PHP_EOL;
+    $directoryTotal=$directoryRegistry->seal();ma($directoryTotal === 8, 'directory_total');echo'R1DCA_RECEIPT_DIRECTORY_CASE_IDS='.implode(',',$directoryIds).PHP_EOL;echo'R1DCA_REAL_SYMLINK=PA'.'SS'.PHP_EOL;echo'R1DCA_SYMLINK_TARGET_SURVIVAL=PA'.'SS'.PHP_EOL;echo'R1DCA_WINDOWS_JUNCTION_REPARSE=PA'.'SS'.PHP_EOL;echo'R1DCA_JUNCTION_TARGET_SURVIVAL=PA'.'SS'.PHP_EOL;echo'R1DCA_REPARSE_SWAP=PA'.'SS'.PHP_EOL;
 
     $newGuardIds = ['NEW-GUARD-01-REPLAY-OMITTED','NEW-GUARD-02-CANONICAL-OMITTED','NEW-GUARD-03-EXACT-NOT-EXECUTED','NEW-GUARD-04-AUTHORITY-DUPLICATE','NEW-GUARD-05-LITERAL-TOTAL','NEW-GUARD-06-RECEIPT-RESIDUAL','NEW-GUARD-07-HOSTILE-JSON','NEW-GUARD-08-LOCK-RESIDUAL'];
     $newGuards = new R1dcaCaseRegistry('R1DCA_NEW_MATRIX_GUARD', array_combine($newGuardIds, $newGuardIds));
