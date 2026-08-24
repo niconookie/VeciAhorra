@@ -140,10 +140,10 @@ function validateCatalogDesign(array $sources): void
 
     assertCatalogDesign(str_contains($sources['product_card'], "el('article', 'va-card va-catalog-card')"), 'CATALOG_CARD_COMPONENT_MISSING');
     assertCatalogDesign(str_contains($sources['script'], 'window.VeciAhorraProductCard') && str_contains($sources['script'], 'renderer.render(product'), 'CATALOG_SHARED_RENDERER_REMOVED');
-    assertCatalogDesign(str_contains($sources['view'], 'class="va-button va-button--primary" type="submit"'), 'CATALOG_PRIMARY_MAPPING');
+    assertCatalogDesign(str_contains($sources['view'], 'class="va-button va-button--primary va-catalog__apply" type="submit"'), 'CATALOG_PRIMARY_MAPPING');
     assertCatalogDesign(str_contains($sources['view'], 'class="va-button va-button--secondary" type="button" data-va-catalog-reset'), 'CATALOG_SECONDARY_MAPPING');
-    assertCatalogDesign(str_contains($sources['product_card'], "el('a', 'va-button va-button--primary va-catalog-card__action', 'Ver producto')") && str_contains($sources['product_card'], 'link.href = url;'), 'CATALOG_DETAIL_LINK_REMOVED');
-    assertCatalogDesign(! str_contains($sources['script'], "/cart/items") && ! preg_match('/\.post\s*\(/', $sources['script']), 'CATALOG_DIRECT_CART');
+    assertCatalogDesign(str_contains($sources['product_card'], "el('a', 'va-button va-button--primary va-catalog-card__action', 'Ver producto')") && str_contains($sources['product_card'], "el('a', 'va-catalog-card__action', 'Ver opciones')") && str_contains($sources['product_card'], 'link.href = url;'), 'CATALOG_DETAIL_LINK_REMOVED');
+    assertCatalogDesign(str_contains($sources['script'], "Number(product.eligible_offers) !== 1") && str_contains($sources['script'], "Number(product && product.single_inventory_id)") && str_contains($sources['script'], "config.api.post('/cart/items'"), 'CATALOG_DIRECT_CART_GUARD');
     assertCatalogDesign(str_contains($sources['script'], "url.searchParams.set('product_id', id)"), 'CATALOG_PRODUCT_ID_REMOVED');
     assertCatalogDesign(str_contains($sources['view'], '<label for="<?php echo esc_attr($instanceId . \'-search\'); ?>">'), 'CATALOG_LABEL_REMOVED');
     assertCatalogDesign(str_contains($sources['view'], 'role="alert" data-va-catalog-error'), 'CATALOG_ALERT_ROLE_REMOVED');
@@ -152,7 +152,7 @@ function validateCatalogDesign(array $sources): void
     assertCatalogDesign(str_contains($sources['design_css'], 'min-width: 2.75rem;') && str_contains($sources['design_css'], 'min-height: 2.75rem;'), 'CATALOG_TOUCH_TARGET_REDUCED');
     assertCatalogDesign(! preg_match('/Temporada|m[aá]s vendidos|promoci[oó]n temporal|oferta temporal/i', $sources['view'] . $sources['script'] . $bridge), 'CATALOG_FUTURE_FEATURE');
     assertCatalogDesign(! preg_match('/prestador|service_provider|whatsapp|contact_email|tel[eé]fono del prestador/i', $sources['view'] . $sources['script'] . $bridge), 'CATALOG_PROVIDER_DISCLOSURE');
-    assertCatalogDesign(str_contains($sources['script'], "'/catalog/products?'") && str_contains($sources['script'], "'/catalog/categories'"), 'CATALOG_ENDPOINT_CHANGED');
+    assertCatalogDesign(str_contains($sources['script'], "'/catalog/products?'") && ! str_contains($sources['script'], "'/catalog/categories'"), 'CATALOG_ENDPOINT_CHANGED');
 
     $immutable = [
         'controller' => '79f958580e0d9905b16b0dbf4580a2fa1203b4ef48cc193355adc02b6e84e686',
@@ -199,26 +199,26 @@ $cases = [
     ['checkout', 'data-va-checkout aria-labelledby', 'data-va-checkout data-va-catalog aria-labelledby', 'CATALOG_IDENTITY_IN_CHECKOUT', 'identidad catalogo en checkout'],
     ['view', ' va-catalog" data-va-catalog', '" data-va-catalog', 'CATALOG_CLASS_IDENTITY_COUNT', 'clase raiz eliminada'],
     ['view', '" data-va-catalog data-product-urls', '" data-product-urls', 'CATALOG_ATTRIBUTE_IDENTITY_COUNT', 'atributo raiz eliminado'],
-    ['view', '<header class="va-catalog__hero', '<div data-va-catalog></div>\n    <header class="va-catalog__hero', 'CATALOG_ATTRIBUTE_IDENTITY_COUNT', 'clase y atributo separados'],
-    ['view', '<header class="va-catalog__hero', '<section class="veciahorra-frontend va-design-system va-catalog" data-va-catalog></section>\n    <header class="va-catalog__hero', 'CATALOG_CLASS_IDENTITY_COUNT', 'raiz duplicada anidada'],
-    ['legacy_css', '.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters', '.veciahorra-frontend.va-design-system .va-catalog .va-catalog__filters', 'CATALOG_WRONG_DESCENDANT_SELECTOR', 'selector descendiente'],
+    ['view', '<header class="va-catalog__heading', '<div data-va-catalog></div>\n    <header class="va-catalog__heading', 'CATALOG_ATTRIBUTE_IDENTITY_COUNT', 'clase y atributo separados'],
+    ['view', '<header class="va-catalog__heading', '<section class="veciahorra-frontend va-design-system va-catalog" data-va-catalog></section>\n    <header class="va-catalog__heading', 'CATALOG_CLASS_IDENTITY_COUNT', 'raiz duplicada anidada'],
+    ['legacy_css', '.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters .va-button--secondary', '.veciahorra-frontend.va-design-system .va-catalog .va-catalog__filters .va-button--secondary', 'CATALOG_WRONG_DESCENDANT_SELECTOR', 'selector descendiente'],
     ['legacy_css', '/* Phase 2 public catalog design-system bridge. */', "/* Phase 2 public catalog design-system bridge. */\nbody { color: red; }", 'CATALOG_GLOBAL_SELECTOR', 'selector global'],
     ['legacy_css', '/* Phase 2 public catalog design-system bridge. */', "/* Phase 2 public catalog design-system bridge. */\n.veciahorra-frontend.va-design-system.va-catalog + body { color: red; }", 'CATALOG_SIBLING_COMBINATOR', 'hermano externo'],
     ['design_css', '--va-color-primary:', '--va-color-primary: /* changed */', 'CATALOG_PHASE1_ASSET_CHANGED', 'asset Fase 1'],
     ['product_card', "el('article', 'va-card va-catalog-card')", "el('article', 'va-catalog-card')", 'CATALOG_CARD_COMPONENT_MISSING', 'tarjeta sin componente'],
-    ['view', 'va-button va-button--primary" type="submit"', 'va-button" type="submit"', 'CATALOG_PRIMARY_MAPPING', 'aplicar sin primary'],
+    ['view', 'va-button va-button--primary va-catalog__apply" type="submit"', 'va-button va-catalog__apply" type="submit"', 'CATALOG_PRIMARY_MAPPING', 'aplicar sin primary'],
     ['view', 'va-button va-button--secondary" type="button" data-va-catalog-reset', 'va-button va-button--primary" type="button" data-va-catalog-reset', 'CATALOG_SECONDARY_MAPPING', 'restablecer primary'],
-    ['product_card', 'link.href = url;', 'link.dataset.url = url;', 'CATALOG_DETAIL_LINK_REMOVED', 'enlace eliminado'],
-    ['script', "    function mount(root) {\n        var loading = root.querySelector('[data-va-catalog-loading]');", "    function mount(root) {\n        config.api.post('/cart/items', {});\n        var loading = root.querySelector('[data-va-catalog-loading]');", 'CATALOG_DIRECT_CART', 'cart directo'],
+    ['product_card', "el('a', 'va-catalog-card__action', 'Ver opciones')", "el('span', 'va-catalog-card__action', 'Ver opciones')", 'CATALOG_DETAIL_LINK_REMOVED', 'enlace eliminado'],
+    ['script', "Number(product.eligible_offers) !== 1", "Number(product.eligible_offers) !== 2", 'CATALOG_DIRECT_CART_GUARD', 'guardia de oferta unica'],
     ['script', "url.searchParams.set('product_id', id)", "url.searchParams.set('item', id)", 'CATALOG_PRODUCT_ID_REMOVED', 'product id eliminado'],
     ['view', '<label for="<?php echo esc_attr($instanceId . \'-search\'); ?>">', '<span>', 'CATALOG_LABEL_REMOVED', 'label eliminado'],
     ['view', 'role="alert" data-va-catalog-error', 'data-va-catalog-error', 'CATALOG_ALERT_ROLE_REMOVED', 'alert eliminado'],
     ['view', 'role="status" aria-live="polite" aria-atomic="true" data-va-catalog-status', 'data-va-catalog-status', 'CATALOG_LIVE_REGION_REMOVED', 'live region eliminada'],
     ['design_css', '.va-button:focus-visible,', '.va-button:focus-within,', 'CATALOG_FOCUS_REMOVED', 'focus eliminado'],
     ['design_css', 'min-width: 2.75rem;', 'min-width: 2rem;', 'CATALOG_TOUCH_TARGET_REDUCED', 'touch target reducido'],
-    ['view', 'Compra local, ahorra cerca', 'Temporada', 'CATALOG_FUTURE_FEATURE', 'funcion futura'],
-    ['view', 'Compra local, ahorra cerca', 'WhatsApp del prestador', 'CATALOG_PROVIDER_DISCLOSURE', 'prestador revelado'],
-    ['script', "'/catalog/categories'", "'/market/categories'", 'CATALOG_ENDPOINT_CHANGED', 'endpoint alterado'],
+    ['view', 'Productos cerca de ti', 'Temporada', 'CATALOG_FUTURE_FEATURE', 'funcion futura'],
+    ['view', 'Productos cerca de ti', 'WhatsApp del prestador', 'CATALOG_PROVIDER_DISCLOSURE', 'prestador revelado'],
+    ['script', "'/catalog/products?'", "'/market/products?'", 'CATALOG_ENDPOINT_CHANGED', 'endpoint alterado'],
     ['layout', 'data-va-sector-selector', 'data-va-zone-selector', 'CATALOG_SECTORIZATION_CHANGED', 'sectorizacion alterada'],
     ['layout', 'class="veciahorra-frontend va-design-system"', 'class="veciahorra-frontend"', 'CATALOG_SECTORIZATION_CHANGED', 'design system sectorial eliminado'],
 ];

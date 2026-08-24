@@ -50,22 +50,33 @@ final class CatalogService
         return ['state' => $products === [] ? 'empty' : 'success', 'products' => $products];
     }
 
-    /** @param array{category: ?int, brand: ?int, search: ?string, page: int, per_page: int, order_by: string} $filters */
+    /** @param array{category: ?int, subcategory: ?int, brand: ?int, unit: ?int, search: ?string, page: int, per_page: int, order_by: string} $filters */
     public function list(array $filters): array
     {
         $publicInventory = $this->publicInventory();
         $products = [];
+        $allVisibleProducts = [];
+
+        foreach ($this->productCandidates(null) as $product) {
+            if ($this->isVisible($product, $publicInventory['summaries'])) {
+                $allVisibleProducts[] = $product;
+            }
+        }
 
         foreach ($this->productCandidates($filters['search']) as $product) {
             if (! $this->isVisible($product, $publicInventory['summaries'])) {
                 continue;
             }
 
-            if ($filters['category'] !== null && (int) $product->category_id !== $filters['category']) {
+            if (! $this->matchesCategory($product, $filters['category'], $filters['subcategory'])) {
                 continue;
             }
 
             if ($filters['brand'] !== null && (int) $product->brand_id !== $filters['brand']) {
+                continue;
+            }
+
+            if ($filters['unit'] !== null && (int) $product->unit_id !== $filters['unit']) {
                 continue;
             }
 
@@ -87,8 +98,83 @@ final class CatalogService
                 'per_page' => $filters['per_page'],
                 'total' => $total,
                 'total_pages' => $total === 0 ? 0 : (int) ceil($total / $filters['per_page']),
+                'filters' => $this->publicFilterOptions($allVisibleProducts),
+                'sector' => $this->currentSector->current(),
             ],
         ];
+    }
+
+    private function matchesCategory(Product $product, ?int $categoryId, ?int $subcategoryId): bool
+    {
+        $productCategoryId = (int) ($product->category_id ?? 0);
+
+        if ($subcategoryId !== null) {
+            return $productCategoryId === $subcategoryId;
+        }
+
+        if ($categoryId === null) {
+            return true;
+        }
+
+        return $productCategoryId === $categoryId
+            || in_array($categoryId, get_ancestors($productCategoryId, 'product_cat', 'taxonomy'), true);
+    }
+
+    /** @param list<Product> $products @return array<string, list<array<string, mixed>>> */
+    private function publicFilterOptions(array $products): array
+    {
+        $categories = [];
+        $brands = [];
+        $units = [];
+
+        foreach ($products as $product) {
+            $categoryId = (int) ($product->category_id ?? 0);
+            if ($categoryId > 0) {
+                $term = get_term($categoryId, 'product_cat');
+                if ($term instanceof WP_Term && trim($term->name) !== '') {
+                    $categories[$categoryId] = [
+                        'id' => $categoryId,
+                        'name' => trim($term->name),
+                        'parent_id' => max(0, (int) $term->parent),
+                    ];
+                    foreach (get_ancestors($categoryId, 'product_cat', 'taxonomy') as $ancestorId) {
+                        $ancestor = get_term((int) $ancestorId, 'product_cat');
+                        if ($ancestor instanceof WP_Term && trim($ancestor->name) !== '') {
+                            $categories[(int) $ancestor->term_id] = [
+                                'id' => (int) $ancestor->term_id,
+                                'name' => trim($ancestor->name),
+                                'parent_id' => max(0, (int) $ancestor->parent),
+                            ];
+                        }
+                    }
+                }
+            }
+
+            $brand = $this->catalogItem($this->brands, (int) ($product->brand_id ?? 0));
+            if ($brand !== null) {
+                $brands[(int) $brand['id']] = ['id' => (int) $brand['id'], 'name' => (string) $brand['name']];
+            }
+            $unit = $this->catalogItem($this->units, (int) ($product->unit_id ?? 0));
+            if ($unit !== null) {
+                $units[(int) $unit['id']] = ['id' => (int) $unit['id'], 'name' => (string) $unit['name']];
+            }
+        }
+
+        $sort = static function (array $items): array {
+            uasort($items, static function (array $left, array $right): int {
+                $name = strcasecmp($left['name'], $right['name']);
+
+                return $name !== 0 ? $name : ((int) $left['id'] <=> (int) $right['id']);
+            });
+
+            return array_values($items);
+        };
+
+        $categories = $sort($categories);
+        $brands = $sort($brands);
+        $units = $sort($units);
+
+        return ['categories' => $categories, 'brands' => $brands, 'units' => $units];
     }
 
     public function find(int $id): array
@@ -185,7 +271,7 @@ final class CatalogService
     /**
      * @param list<int>|null $productIds
      * @return array{
-     *   summaries: array<int, array{min_price: string, max_price: string, minimarkets: array<int, true>}>,
+     *   summaries: array<int, array{min_price: string, max_price: string, minimarkets: array<int, true>, offer_count: int, single_inventory_id: ?int}>,
      *   offers: array<int, list<array{inventory_id: int, price: string, stock: int}>>
      * }
      */
@@ -269,6 +355,10 @@ final class CatalogService
                 'min_price' => (string) reset($prices),
                 'max_price' => (string) end($prices),
                 'minimarkets' => $minimarkets,
+                'offer_count' => count($productOffers),
+                'single_inventory_id' => count($productOffers) === 1
+                    ? (int) $productOffers[0]['inventory_id']
+                    : null,
             ];
         }
         unset($productOffers);
@@ -414,7 +504,7 @@ final class CatalogService
         } while (count($batch) === self::READ_BATCH_SIZE);
     }
 
-    /** @param array<int, array{min_price: string, max_price: string, minimarkets: array<int, true>}> $summaries */
+    /** @param array<int, array{min_price: string, max_price: string, minimarkets: array<int, true>, offer_count: int, single_inventory_id: ?int}> $summaries */
     private function isVisible(Product $product, array $summaries): bool
     {
         return $product->status === Product::STATUS_ACTIVE
@@ -422,7 +512,7 @@ final class CatalogService
             && isset($summaries[(int) $product->id]);
     }
 
-    /** @param array{min_price: string, max_price: string, minimarkets: array<int, true>} $summary */
+    /** @param array{min_price: string, max_price: string, minimarkets: array<int, true>, offer_count: int, single_inventory_id: ?int} $summary */
     private function serializeSummary(Product $product, array $summary): array
     {
         $description = wp_strip_all_tags((string) ($product->description ?? ''));
@@ -438,6 +528,8 @@ final class CatalogService
             'unit' => $this->catalogItem($this->units, (int) ($product->unit_id ?? 0)),
             'min_price' => $summary['min_price'],
             'available_minimarkets' => count($summary['minimarkets']),
+            'eligible_offers' => $summary['offer_count'],
+            'single_inventory_id' => $summary['single_inventory_id'],
             '_created_at' => (string) $product->created_at,
         ];
     }
@@ -479,7 +571,13 @@ final class CatalogService
             if ($orderBy === 'price') {
                 $price = (float) $left['min_price'] <=> (float) $right['min_price'];
 
-                return $price !== 0 ? $price : strcasecmp($left['name'], $right['name']);
+                if ($price !== 0) {
+                    return $price;
+                }
+
+                $name = strcasecmp($left['name'], $right['name']);
+
+                return $name !== 0 ? $name : ((int) $left['id'] <=> (int) $right['id']);
             }
 
             if ($orderBy === 'newest') {

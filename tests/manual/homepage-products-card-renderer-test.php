@@ -77,7 +77,7 @@ assertCardRenderer(
     str_contains($catalog, 'fragment.appendChild(renderer.render(product, {'),
     'CATALOG_DELEGATION_MISSING'
 );
-assertCardRenderer(substr_count($catalog, "config.api.get('/catalog/categories')") === 1, 'CATEGORY_REQUEST_CHANGED');
+assertCardRenderer(! str_contains($catalog, "config.api.get('/catalog/categories')"), 'CATEGORY_REQUEST_CHANGED');
 assertCardRenderer(substr_count($catalog, "config.api.get(catalogPath(filters))") === 1, 'PRODUCT_REQUEST_CHANGED');
 
 echo json_encode([

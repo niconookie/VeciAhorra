@@ -86,6 +86,7 @@ try {
         ]);
     };
     $availableId = $createProduct('available', Product::STATUS_ACTIVE);
+    $singleOfferId = $createProduct('single-offer', Product::STATUS_ACTIVE);
     $noStockId = $createProduct('no-stock', Product::STATUS_ACTIVE);
     $inactiveId = $createProduct('inactive', Product::STATUS_INACTIVE);
     $draftId = $createProduct('draft', Product::STATUS_DRAFT);
@@ -132,11 +133,14 @@ try {
     foreach (range($seed, $seed + 6) as $storeId) {
         $createStore($storeId);
     }
+    $createStore($seed + 20);
 
     $createInventory($availableId, $seed, 12.50, 4);
     $createInventory($availableId, $seed + 1, 8.50, 2);
     $createInventory($availableId, $seed + 2, 4.00, 9, 'inactive');
     $createInventory($availableId, $seed + 6, 0.00, 9);
+    $createInventory($availableId, $seed + 20, 1.00, 9);
+    $singleInventoryId = $createInventory($singleOfferId, $seed, 9.90, 3);
     $createInventory($noStockId, $seed + 3, 6.00, 0);
     $createInventory($inactiveId, $seed + 4, 3.00, 8);
     $createInventory($draftId, $seed + 5, 2.00, 8);
@@ -147,7 +151,7 @@ try {
     assertPublicCatalogSame(0, $withoutSector->get_data()['meta']['total'] ?? null);
     sectorizationFixtureSelect(range($seed, $seed + 6), $token);
     $response = publicCatalogRequest(
-        '/veciahorra/v1/catalog/products?search=' . rawurlencode($token)
+        '/veciahorra/v1/catalog/products?search=' . rawurlencode($token . ' available')
     );
     assertPublicCatalogSame(200, $response->get_status());
     $payload = $response->get_data();
@@ -158,6 +162,7 @@ try {
     $allowed = [
         'id', 'name', 'slug', 'short_description', 'image', 'category',
         'brand', 'unit', 'min_price', 'available_minimarkets',
+        'eligible_offers', 'single_inventory_id',
     ];
     $keys = array_keys($product);
     sort($allowed);
@@ -166,6 +171,8 @@ try {
     assertPublicCatalogSame($availableId, $product['id']);
     assertPublicCatalogSame('8.50', $product['min_price']);
     assertPublicCatalogSame(2, $product['available_minimarkets']);
+    assertPublicCatalogSame(2, $product['eligible_offers']);
+    assertPublicCatalogSame(null, $product['single_inventory_id']);
     assertPublicCatalog(
         is_int($product['available_minimarkets']),
         'El conteo de minimarkets no es entero.'
@@ -174,6 +181,21 @@ try {
         ! str_contains($product['short_description'], '<strong>'),
         'Descripcion publica contiene HTML.'
     );
+
+    $singleResponse = publicCatalogRequest(
+        '/veciahorra/v1/catalog/products?search=' . rawurlencode($token . ' single-offer')
+    );
+    assertPublicCatalogSame(200, $singleResponse->get_status());
+    $singleProduct = $singleResponse->get_data()['data'][0] ?? [];
+    assertPublicCatalogSame($singleOfferId, $singleProduct['id'] ?? null);
+    assertPublicCatalogSame(1, $singleProduct['eligible_offers'] ?? null);
+    assertPublicCatalogSame($singleInventoryId, $singleProduct['single_inventory_id'] ?? null);
+
+    $priceOrdered = publicCatalogRequest(
+        '/veciahorra/v1/catalog/products?search=' . rawurlencode($token)
+    )->get_data()['data'] ?? [];
+    assertPublicCatalogSame([$availableId, $singleOfferId], array_column($priceOrdered, 'id'));
+    assertPublicCatalogSame(['8.50', '9.90'], array_column($priceOrdered, 'min_price'));
 
     $detail = publicCatalogRequest(
         '/veciahorra/v1/catalog/products/' . $availableId
@@ -222,7 +244,9 @@ try {
         'page=0',
         'per_page=101',
         'category=anything',
+        'subcategory=anything',
         'brand=-1',
+        'unit=-1',
     ] as $invalidQuery) {
         assertPublicCatalogSame(
             422,

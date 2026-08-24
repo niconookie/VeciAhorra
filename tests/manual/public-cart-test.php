@@ -10,9 +10,11 @@ use VeciAhorra\Modules\Frontend\Controller\FrontendController;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Sectorization\CurrentSector;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+require_once __DIR__ . '/support/SectorizationFixture.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_save_path(sys_get_temp_dir());
@@ -53,6 +55,7 @@ global $wpdb;
 
 $transaction = $wpdb->query('START TRANSACTION');
 assertPublicCart($transaction !== false, 'No se inicio transaccion.');
+$customerId = 0;
 
 try {
     $container = new Container();
@@ -63,6 +66,14 @@ try {
     $inventory = new InventoryRepository();
     $now = current_time('mysql');
     $token = 'public-cart-' . bin2hex(random_bytes(5));
+    $createdUser = wp_insert_user([
+        'user_login' => $token,
+        'user_pass' => wp_generate_password(24, true, true),
+        'user_email' => $token . '-customer@example.test',
+        'role' => 'subscriber',
+    ]);
+    assertPublicCart(! is_wp_error($createdUser), 'No se creó cliente aislado para el carrito.');
+    $customerId = (int) $createdUser;
     $session = $token . '-guest';
     $otherSession = $token . '-other';
     $storeId = $stores->create([
@@ -98,11 +109,20 @@ try {
     ]);
     $itemsRoute = '/veciahorra/v1/cart/items';
     wp_set_current_user(0);
+    sectorizationFixtureClearCurrent();
 
     $empty = publicCartRequest('GET', '/veciahorra/v1/cart', $session);
     assertPublicCartSame(200, $empty->get_status());
     assertPublicCartSame([], $empty->get_data()['data']);
     assertPublicCartSame('0.00', $empty->get_data()['total']);
+
+    $withoutSector = publicCartRequest('POST', $itemsRoute, $session, [
+        'inventory_id' => $inventoryA, 'quantity' => 1,
+    ]);
+    assertPublicCartSame(422, $withoutSector->get_status());
+    assertPublicCartSame([], publicCartRequest('GET', '/veciahorra/v1/cart', $session)->get_data()['data']);
+
+    $zoneId = sectorizationFixtureSelect([$storeId], $token);
 
     $created = publicCartRequest('POST', $itemsRoute, $session, [
         'inventory_id' => $inventoryA, 'quantity' => 3,
@@ -116,12 +136,12 @@ try {
         'id', 'session_id', 'user_id', 'inventory_id', 'product_id',
         'minimarket_id', 'quantity', 'unit_price_snapshot', 'created_at',
         'updated_at', 'product_name', 'product_image_id',
-        'product_image_url', 'minimarket_name', 'subtotal',
+        'product_image_url', 'subtotal', 'sector_compatible',
     ] as $field) {
         assertPublicCart(array_key_exists($field, $single['data'][0]), "Falta campo {$field}.");
     }
     assertPublicCartSame('Producto a', $single['data'][0]['product_name']);
-    assertPublicCartSame('Minimarket Publico', $single['data'][0]['minimarket_name']);
+    assertPublicCartSame(true, $single['data'][0]['sector_compatible']);
     assertPublicCartSame(null, $single['data'][0]['product_image_id']);
     assertPublicCartSame(null, $single['data'][0]['product_image_url']);
     $legacyItem = $cartRepository->findBySession($session)[0];
@@ -181,7 +201,7 @@ try {
     assertPublicCartSame($missingProductId, (int) $stale['product_id']);
     assertPublicCartSame($missingStoreId, (int) $stale['minimarket_id']);
     assertPublicCartSame(null, $stale['product_name']);
-    assertPublicCartSame(null, $stale['minimarket_name']);
+    assertPublicCartSame(false, $stale['sector_compatible']);
     assertPublicCartSame('6.66', $stale['subtotal']);
 
     $cartRepository->create([
@@ -233,11 +253,12 @@ try {
     );
 
     assertPublicCartSame([], publicCartRequest('GET', '/veciahorra/v1/cart', $otherSession)->get_data()['data']);
-    wp_set_current_user(1);
-    $cartService->addItem(['session_id' => null, 'user_id' => 1], $inventoryB, 1);
+    wp_set_current_user($customerId);
+    (new CurrentSector())->set($zoneId);
+    $cartService->addItem(['session_id' => null, 'user_id' => $customerId], $inventoryB, 1);
     $userCart = rest_do_request(new WP_REST_Request('GET', '/veciahorra/v1/cart'))->get_data();
     assertPublicCartSame(1, count($userCart['data']));
-    assertPublicCartSame(1, (int) $userCart['data'][0]['user_id']);
+    assertPublicCartSame($customerId, (int) $userCart['data'][0]['user_id']);
     wp_set_current_user(0);
 
     assertPublicCartSame(200, publicCartRequest('DELETE', $itemsRoute . '/' . $itemA, $session)->get_status());
@@ -277,6 +298,10 @@ try {
 
     echo "PASS public-cart-test\n";
 } finally {
+    if ($customerId > 0) {
+        clean_user_cache($customerId);
+    }
+    sectorizationFixtureClearCurrent();
     wp_set_current_user(0);
     $wpdb->query('ROLLBACK');
 }

@@ -189,6 +189,132 @@
 @media (max-width: 39.99rem) { .veciahorra-frontend .va-product-detail__header { grid-template-columns: minmax(0, 1fr); } .veciahorra-frontend .va-product-detail__media { margin-inline: auto; max-width: 14rem; width: 100%; } }
 
 /* Phase 2 public catalog design-system bridge. */
+.veciahorra-frontend.va-design-system.va-catalog {
+    gap: clamp(1.25rem, 2vw, 2rem);
+    max-width: 96rem;
+    padding-inline: clamp(1rem, 3vw, 2rem);
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__heading {
+    align-items: end;
+    border-bottom: 1px solid var(--va-color-border);
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    padding-bottom: 1.25rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__heading h1 {
+    font-size: clamp(2rem, 3.4vw, 3.25rem);
+    letter-spacing: -0.035em;
+    line-height: 1.1;
+    margin: 0 0 0.35rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__heading p,
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filter-status,
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__status {
+    color: var(--va-color-muted);
+    margin: 0;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__order {
+    display: grid;
+    flex: 0 0 13rem;
+    gap: 0.35rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__order label,
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters label {
+    font-size: 0.875rem;
+    font-weight: 750;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__order select {
+    background: var(--va-color-surface);
+    border: 1px solid var(--va-color-border);
+    border-radius: var(--va-radius-md);
+    min-height: 2.75rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__layout {
+    align-items: start;
+    display: grid;
+    gap: clamp(1.25rem, 2.5vw, 2rem);
+    grid-template-columns: 16.5rem minmax(0, 1fr);
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters {
+    border-radius: 0.875rem;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 1.25rem;
+    position: sticky;
+    top: 1rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-title {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-title h2 {
+    font-size: 1.15rem;
+    margin: 0;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-title button {
+    background: transparent;
+    border: 0;
+    color: var(--va-color-primary);
+    cursor: pointer;
+    min-height: 2.75rem;
+    padding: 0.4rem;
+    text-decoration: underline;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__sector-context {
+    background: color-mix(in srgb, var(--va-color-primary) 6%, var(--va-color-surface));
+    border-left: 0.2rem solid var(--va-color-primary);
+    border-radius: 0.35rem;
+    display: grid;
+    gap: 0.2rem;
+    padding: 0.75rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__sector-context span,
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__sector-context small {
+    color: var(--va-color-muted);
+    font-size: 0.78rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__apply {
+    width: 100%;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-toggle {
+    align-items: center;
+    background: var(--va-color-surface);
+    border: 1px solid var(--va-color-border);
+    border-radius: var(--va-radius-md);
+    display: none;
+    font-weight: 700;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.9rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__results {
+    min-width: 0;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__grid {
+    gap: clamp(0.85rem, 1.5vw, 1.25rem);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters .va-button--secondary {
     border-color: var(--va-color-secondary);
     background: var(--va-color-surface);
@@ -208,6 +334,192 @@
     box-shadow: var(--va-shadow-md);
 }
 
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__media {
+    aspect-ratio: 1.2 / 1;
+    height: auto;
+    isolation: isolate;
+    position: relative;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__media::before {
+    background: rgb(255 255 255 / 58%);
+    border-radius: 50%;
+    content: "";
+    height: 72%;
+    left: 50%;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 72%;
+    z-index: 0;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__media--tone-0 { background: #fff4dc; }
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__media--tone-1 { background: #eaf6ee; }
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__media--tone-2 { background: #edf4fb; }
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__media--tone-3 { background: #f8edf5; }
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__media--tone-4 { background: #f2f0fb; }
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__image,
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__image-missing {
+    position: relative;
+    z-index: 1;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__body {
+    padding: 1rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__metadata {
+    color: var(--va-color-muted);
+    font-size: 0.75rem;
+    margin: 0 0 0.4rem;
+    min-height: 1.1rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__price-value {
+    color: #0b3159;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__title {
+    font-size: 1rem;
+    min-height: 2.7em;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__actions {
+    align-items: center;
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: minmax(0, 1fr) 2.75rem;
+    margin-top: 0.5rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__action {
+    color: var(--va-color-primary);
+    margin: 0;
+    min-height: 2.75rem;
+    text-decoration: underline;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__add {
+    align-items: center;
+    background: var(--va-color-primary);
+    border: 0;
+    border-radius: 50%;
+    color: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 1.5rem;
+    height: 2.75rem;
+    justify-content: center;
+    line-height: 1;
+    width: 2.75rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__add:focus-visible,
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-toggle:focus-visible,
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-title button:focus-visible {
+    outline: 0.1875rem solid var(--va-color-secondary);
+    outline-offset: 0.125rem;
+}
+
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__status:empty {
+    display: none;
+}
+
+@media (max-width: 87.49rem) {
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 68.75rem) {
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-toggle {
+        display: inline-flex;
+        justify-self: start;
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-panel {
+        display: none;
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog.va-catalog--filters-open .va-catalog__filters-panel {
+        display: block;
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        position: static;
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-title,
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__sector-context,
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filter-status {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 56.25rem) {
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 37.5rem) {
+    .veciahorra-frontend.va-design-system.va-catalog {
+        max-width: 100%;
+        padding-inline: 1rem;
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__heading h1 {
+        font-size: clamp(1.75rem, 7vw, 2rem);
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__media {
+        aspect-ratio: auto;
+        height: 8.5rem;
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__order {
+        flex-basis: auto;
+        width: 100%;
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__grid,
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-title,
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__sector-context,
+    .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filter-status {
+        grid-column: auto;
+    }
+}
+
+@media (min-width: 112.5rem) {
+    .veciahorra-frontend.va-design-system.va-catalog {
+        max-width: 108rem;
+        margin-left: 50%;
+        transform: translateX(-50%);
+        width: calc(100vw - 4rem);
+    }
+
+}
+
 @media (prefers-reduced-motion: reduce) {
     .veciahorra-frontend.va-design-system.va-catalog .va-catalog-card,
     .veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__image {
@@ -224,7 +536,8 @@
 /* Canonical catalog branding: Blocksy remains the sole logo/menu renderer. */
 body:has(.veciahorra-frontend .va-product-detail) .entry-header { display: none; }
 body.page-id-702 .entry-header { display: none; }
-body.page-id-702 .ct-container-full[data-vertical-spacing*="top"] { padding-top: clamp(2rem, 4vw, 4rem); }
+body.page-id-702 .ct-container-full[data-vertical-spacing*="top"] { padding-top: 0.25rem; }
+@media (min-width: 112.5rem) { body.page-id-702 .ct-container-full { --theme-container-width: 112rem; max-width: 112rem; width: calc(100% - 2rem); } }
 body.page-id-702 .ct-container-full[data-vertical-spacing*="bottom"] { padding-bottom: clamp(2.5rem, 5vw, 5rem); }
 body.page-id-702[data-header*="type-1"] .ct-header [data-device="desktop"] [data-id="logo"] .site-logo-container { --logo-max-height: clamp(16.25rem, 20vw, 20rem); }
 body.page-id-702[data-header*="type-1"] .ct-header [data-device="desktop"] [data-id="menu"] > ul > li > .ct-menu-link { font-size: clamp(1.0625rem, 1.25vw, 1.125rem); letter-spacing: 0.01em; padding-inline: clamp(0.65rem, 1vw, 1rem); }

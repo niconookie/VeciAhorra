@@ -42,7 +42,7 @@ function validateMarketplaceSharedRenderer(array $sources): void
     assertMarketplaceVisibility(str_contains($sources['renderer'], "'va-catalog-card__price'"), 'PRICE_RENDERING_MISSING');
     assertMarketplaceVisibility(str_contains($sources['renderer'], "'va-catalog-card__availability'"), 'AVAILABILITY_RENDERING_MISSING');
     assertMarketplaceVisibility(str_contains($sources['renderer'], "'va-catalog-card__image-missing'"), 'IMAGE_FALLBACK_MISSING');
-    assertMarketplaceVisibility(str_contains($sources['renderer'], 'va-catalog-card__action'), 'PRODUCT_LINK_MISSING');
+    assertMarketplaceVisibility(str_contains($sources['renderer'], "'va-button va-button--primary va-catalog-card__action'") && str_contains($sources['renderer'], "'va-catalog-card__action', 'Ver opciones'"), 'PRODUCT_LINK_MISSING');
     assertMarketplaceVisibility(str_contains($sources['renderer'], 'node.textContent = text'), 'TEXT_SECURITY_MISSING');
     assertMarketplaceVisibility(str_contains($sources['renderer'], "parsed.protocol === 'http:' || parsed.protocol === 'https:'"), 'URL_SECURITY_MISSING');
     assertMarketplaceVisibility(! str_contains($sources['renderer'], "parsed.protocol === 'javascript:'"), 'JAVASCRIPT_PROTOCOL_ACCEPTED');
@@ -120,7 +120,7 @@ function marketplaceRunMissingDependencyInChrome(string $catalog): void
     $profilePath = sys_get_temp_dir() . '/va-marketplace-missing-profile-' . $token;
     $markup = <<<'HTML'
 <section data-va-catalog data-product-urls="{}" data-catalog-url="https://example.test/catalog">
-<form data-va-catalog-filters><input data-va-catalog-search><select data-va-catalog-category></select><span data-va-catalog-category-status></span><select data-va-catalog-order><option value="name">name</option></select><button data-va-catalog-reset type="button"></button></form>
+<button data-va-catalog-filters-toggle aria-expanded="false"></button><form data-va-catalog-filters><input data-va-catalog-search><select data-va-catalog-category></select><select data-va-catalog-subcategory></select><select data-va-catalog-brand></select><select data-va-catalog-unit></select><strong data-va-catalog-sector></strong><span data-va-catalog-filter-status></span><select data-va-catalog-order><option value="name">name</option></select><button data-va-catalog-reset type="button"></button></form>
 <div data-va-catalog-loading></div><div data-va-catalog-error hidden><span data-va-catalog-error-message></span><button data-va-catalog-retry></button></div><div data-va-catalog-empty hidden></div><div data-va-catalog-grid hidden></div><div data-va-catalog-status></div>
 </section>
 HTML;
@@ -128,7 +128,7 @@ HTML;
 window.__vaUnhandled = 0;
 window.addEventListener('error', function () { window.__vaUnhandled++; });
 window.addEventListener('unhandledrejection', function () { window.__vaUnhandled++; });
-window.VeciAhorra = {api:{get:function(path){return Promise.resolve(path.includes('categories') ? [] : [{id:7,name:'Producto',min_price:'1000',available_minimarkets:1}]);}}};
+window.VeciAhorra = {api:{get:function(){return Promise.resolve({data:[{id:7,name:'Producto',min_price:'1000',available_minimarkets:1}],meta:{total:1,filters:{categories:[],brands:[],units:[]}}});}}};
 JS;
     $after = <<<'JS'
 setTimeout(function () {
@@ -181,7 +181,7 @@ $mutations = [
     ['renderer', "'va-catalog-card__price'", "'removed-price'", 'PRICE_RENDERING_MISSING'],
     ['renderer', "'va-catalog-card__availability'", "'removed-availability'", 'AVAILABILITY_RENDERING_MISSING'],
     ['renderer', "'va-catalog-card__image-missing'", "'removed-image-fallback'", 'IMAGE_FALLBACK_MISSING'],
-    ['renderer', "'va-button va-button--primary va-catalog-card__action'", "'va-button va-button--primary removed-product-action'", 'PRODUCT_LINK_MISSING'],
+    ['renderer', "'va-catalog-card__action', 'Ver opciones'", "'removed-product-action', 'Ver opciones'", 'PRODUCT_LINK_MISSING'],
     ['renderer', 'node.textContent = text', 'node.innerHTML = text', 'TEXT_SECURITY_MISSING'],
     ['renderer', "parsed.protocol === 'http:' || parsed.protocol === 'https:'", "parsed.protocol === 'http:'", 'URL_SECURITY_MISSING'],
     ['renderer', "parsed.protocol === 'http:' || parsed.protocol === 'https:'", "parsed.protocol === 'javascript:'", 'URL_SECURITY_MISSING'],

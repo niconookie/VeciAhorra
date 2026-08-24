@@ -81,17 +81,22 @@ try {
     $now = current_time('mysql');
     $firstTerm = wp_insert_term('Zulu ' . $token, 'product_cat', ['slug' => 'zulu-' . $token]);
     $secondTerm = wp_insert_term('Alpha ' . $token, 'product_cat', ['slug' => 'alpha-' . $token]);
+    $childTerm = is_wp_error($secondTerm) ? $secondTerm : wp_insert_term('Child ' . $token, 'product_cat', ['slug' => 'child-' . $token, 'parent' => (int) $secondTerm['term_id']]);
     $emptyTerm = wp_insert_term('Empty ' . $token, 'product_cat', ['slug' => 'empty-' . $token]);
     $brandTerm = wp_insert_term('Brand ' . $token, 'product_brand', ['slug' => 'brand-' . $token]);
+    $unitTerm = wp_insert_term('Unidad ' . $token, 'pa_unidad', ['slug' => 'unidad-' . $token]);
     assertPublicCategories(
         ! is_wp_error($firstTerm) && ! is_wp_error($secondTerm)
-            && ! is_wp_error($emptyTerm) && ! is_wp_error($brandTerm),
+            && ! is_wp_error($childTerm) && ! is_wp_error($emptyTerm)
+            && ! is_wp_error($brandTerm) && ! is_wp_error($unitTerm),
         'No se crearon términos de prueba.'
     );
     $zuluCategory = (int) $firstTerm['term_id'];
     $alphaCategory = (int) $secondTerm['term_id'];
+    $childCategory = (int) $childTerm['term_id'];
     $emptyCategory = (int) $emptyTerm['term_id'];
     $brandId = (int) $brandTerm['term_id'];
+    $unitId = (int) $unitTerm['term_id'];
     $storeSeed = random_int(810000000, 819999900);
 
     $createStore = static function (int $id, string $status) use ($stores, $now, $token): void {
@@ -108,11 +113,11 @@ try {
     $createStore($storeSeed + 1, 'active');
     $createStore($storeSeed + 2, 'inactive');
 
-    $createProduct = static function (string $suffix, string $status, int $categoryId, ?int $brand = null) use ($products, $now, $token): int {
+    $createProduct = static function (string $suffix, string $status, int $categoryId, ?int $brand = null, ?int $unit = null) use ($products, $now, $token): int {
         return $products->create([
             'woo_product_id' => null, 'name' => "{$token} {$suffix}",
             'slug' => "{$token}-{$suffix}", 'sku' => null, 'description' => null,
-            'category_id' => $categoryId, 'brand_id' => $brand, 'unit_id' => null,
+            'category_id' => $categoryId, 'brand_id' => $brand, 'unit_id' => $unit,
             'image_id' => null, 'status' => $status, 'created_at' => $now, 'updated_at' => $now,
         ]);
     };
@@ -128,6 +133,8 @@ try {
     $createInventory($zuluPublic, $storeSeed + 1, 900, 3);
     $alphaPublic = $createProduct('alpha-public', Product::STATUS_ACTIVE, $alphaCategory, $brandId);
     $createInventory($alphaPublic, $storeSeed, 800, 1);
+    $childPublic = $createProduct('child-public', Product::STATUS_ACTIVE, $childCategory, $brandId, $unitId);
+    $createInventory($childPublic, $storeSeed, 850, 1);
     $inactiveProduct = $createProduct('inactive-product', Product::STATUS_INACTIVE, $alphaCategory);
     $createInventory($inactiveProduct, $storeSeed, 700, 1);
     $inactiveInventory = $createProduct('inactive-inventory', Product::STATUS_ACTIVE, $alphaCategory);
@@ -147,10 +154,10 @@ try {
     assertPublicCategoriesSame(true, $body['success'] ?? null);
     $testItems = array_values(array_filter(
         $body['data'] ?? [],
-        static fn (array $item): bool => in_array($item['id'] ?? 0, [$alphaCategory, $zuluCategory], true)
+        static fn (array $item): bool => in_array($item['id'] ?? 0, [$alphaCategory, $childCategory, $zuluCategory], true)
     ));
-    assertPublicCategoriesSame([$alphaCategory, $zuluCategory], array_column($testItems, 'id'));
-    assertPublicCategoriesSame([1, 1], array_column($testItems, 'products_count'));
+    assertPublicCategoriesSame([$alphaCategory, $childCategory, $zuluCategory], array_column($testItems, 'id'));
+    assertPublicCategoriesSame([1, 1, 1], array_column($testItems, 'products_count'));
     assertPublicCategories(
         ! in_array($emptyCategory, array_column($body['data'] ?? [], 'id'), true),
         'Se expuso una categoría sin Products públicos.'
@@ -163,12 +170,24 @@ try {
     assertPublicCategoriesNoSensitiveData($body);
 
     $unfiltered = publicCategoriesRequest('/veciahorra/v1/catalog/products?search=' . rawurlencode($token));
-    assertPublicCategoriesSame(2, $unfiltered->get_data()['meta']['total'] ?? null);
+    assertPublicCategoriesSame(3, $unfiltered->get_data()['meta']['total'] ?? null);
+    $filterMeta = $unfiltered->get_data()['meta']['filters'] ?? [];
+    assertPublicCategories(array_is_list($filterMeta['categories'] ?? null), 'Categorías no serializadas como lista JSON.');
+    assertPublicCategories(array_is_list($filterMeta['brands'] ?? null), 'Marcas no serializadas como lista JSON.');
+    assertPublicCategories(array_is_list($filterMeta['units'] ?? null), 'Unidades no serializadas como lista JSON.');
+    $childOption = array_values(array_filter($filterMeta['categories'], static fn (array $item): bool => ($item['id'] ?? 0) === $childCategory))[0] ?? [];
+    assertPublicCategoriesSame($alphaCategory, $childOption['parent_id'] ?? null);
     $filtered = publicCategoriesRequest('/veciahorra/v1/catalog/products?category=' . $alphaCategory . '&search=' . rawurlencode($token) . '&order_by=price');
-    assertPublicCategoriesSame(1, $filtered->get_data()['meta']['total'] ?? null);
+    assertPublicCategoriesSame(2, $filtered->get_data()['meta']['total'] ?? null);
     assertPublicCategoriesSame($alphaPublic, $filtered->get_data()['data'][0]['id'] ?? null);
+    $withSubcategory = publicCategoriesRequest('/veciahorra/v1/catalog/products?category=' . $alphaCategory . '&subcategory=' . $childCategory . '&search=' . rawurlencode($token));
+    assertPublicCategoriesSame(1, $withSubcategory->get_data()['meta']['total'] ?? null);
+    assertPublicCategoriesSame($childPublic, $withSubcategory->get_data()['data'][0]['id'] ?? null);
     $withBrand = publicCategoriesRequest('/veciahorra/v1/catalog/products?category=' . $alphaCategory . '&brand=' . $brandId . '&search=' . rawurlencode($token) . '&order_by=name');
-    assertPublicCategoriesSame(1, $withBrand->get_data()['meta']['total'] ?? null);
+    assertPublicCategoriesSame(2, $withBrand->get_data()['meta']['total'] ?? null);
+    $withUnit = publicCategoriesRequest('/veciahorra/v1/catalog/products?unit=' . $unitId . '&search=' . rawurlencode($token));
+    assertPublicCategoriesSame(1, $withUnit->get_data()['meta']['total'] ?? null);
+    assertPublicCategoriesSame($childPublic, $withUnit->get_data()['data'][0]['id'] ?? null);
     assertPublicCategoriesSame(0, publicCategoriesRequest('/veciahorra/v1/catalog/products?category=' . $emptyCategory)->get_data()['meta']['total'] ?? null);
     assertPublicCategoriesSame(0, publicCategoriesRequest('/veciahorra/v1/catalog/products?category=999999999999&search=' . rawurlencode($token))->get_data()['meta']['total'] ?? null);
     assertPublicCategoriesSame(422, publicCategoriesRequest('/veciahorra/v1/catalog/products?category=not-a-number')->get_status());

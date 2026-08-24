@@ -16,12 +16,14 @@ final class CatalogListRequest
     {
     }
 
-    /** @return array{category: ?int, brand: ?int, search: ?string, page: int, per_page: int, order_by: string} */
+    /** @return array{category: ?int, subcategory: ?int, brand: ?int, unit: ?int, search: ?string, page: int, per_page: int, order_by: string} */
     public function validated(): array
     {
         return [
             'category' => $this->optionalId('category'),
+            'subcategory' => $this->optionalId('subcategory'),
             'brand' => $this->optionalId('brand'),
+            'unit' => $this->optionalId('unit'),
             'search' => $this->search(),
             'page' => $this->integer('page', 1, 1, self::MAXIMUM_PAGE),
             'per_page' => $this->integer('per_page', 20, 1, 100),
@@ -65,7 +67,7 @@ final class CatalogListRequest
 
     private function orderBy(): string
     {
-        $value = $this->input['order_by'] ?? 'name';
+        $value = $this->input['order_by'] ?? 'price';
 
         if (! is_string($value) || ! in_array($value, self::ORDERS, true)) {
             throw new InvalidArgumentException('Invalid catalog ordering.');
