@@ -124,7 +124,148 @@ SHA256(canonical_identity_material)
 
 `connection_identity_fingerprint` contiene exactamente 64 caracteres `[0-9A-F]`. No es un nonce ni un valor libre del productor. Debe cumplirse `constructed_sequence < registered_sequence <= registry_sequence < opened_sequence < identity_observed_sequence`. El registry impide identidad anterior al registro o posterior al cierre, una segunda identidad diferente para la misma conexión, cambio de actor o token, rebind y reutilización de `connection_id` dentro del conjunto simultáneamente abierto.
 
-## 6. Actor autenticado VERIFIER
+## 6. Autoridad de resultados SQL numéricos nativos
+
+La única autoridad de tipado admitida es:
+
+`R1DCA_NATIVE_NUMERIC_SQL_RESULT_AUTHORITY_V1`
+
+Se aplica obligatoriamente a `SELECT CONNECTION_ID()` y al resultado no null de `SELECT IS_USED_LOCK(<LOCK_NAME>)`. La implementación debe usar una subclase de `wpdb` exclusiva del harness, denominada conceptualmente `InstrumentedWpdb`, sin modificar WordPress, producción ni configuración global de PHP o MariaDB.
+
+### 6.1. Creación cerrada de la conexión
+
+`InstrumentedWpdb` debe controlar directamente y en este orden causal la creación del handle:
+
+1. comprobar que existe `MYSQLI_OPT_INT_AND_FLOAT_NATIVE`;
+2. ejecutar `mysqli_init()` y exigir una instancia `mysqli` válida;
+3. ejecutar exactamente la configuración equivalente a:
+
+```php
+mysqli_options(
+    $dbh,
+    MYSQLI_OPT_INT_AND_FLOAT_NATIVE,
+    1
+)
+```
+
+4. exigir que `mysqli_options()` devuelva exactamente `true`;
+5. sólo entonces iniciar `mysqli_real_connect()`;
+6. exigir apertura correcta antes de ejecutar SQL.
+
+La opción no puede configurarse después de conectar. No se puede reutilizar una conexión creada por WordPress sin esa opción, usar la conexión productiva, exponer el handle, alterar `wp-includes/class-wpdb.php`, instalar plugins ni cambiar configuración global. Cualquier incumplimiento debe detener el harness antes de producir evidencia con `native_numeric_driver_capability_unavailable`.
+
+La subclase debe conservar `$dbh` bajo la visibilidad protegida heredada y no entregarlo a `MigrationManager`, callbacks, closures ni código externo. A `MigrationManager` se entrega exclusivamente el objeto `InstrumentedWpdb` registrado. La subclase intercepta `query`, `get_var` y toda ruta derivada aplicable, preserva la semántica productiva de `wpdb`, usa sólo la base desechable autorizada y cierra cada conexión. Queda prohibido usar Reflection para reemplazar, extraer o alterar `$dbh`.
+
+### 6.2. Capability probe bloqueante
+
+Antes de construir o ejecutar A, B, C, GUARD o VERIFIER, el harness debe abrir una conexión desechable exclusiva de probe mediante la misma subclase y secuencia nativa. Esta conexión no pertenece a `AUTHENTICATED_CONNECTION_ACTORS`, no puede producir evidencia positiva de locks, no se incorpora como actor al manifest nominal y debe cerrarse antes de construir el universo autenticado. Su ledger de preflight queda ligado al `execution_id` y a `capability_version=R1DCA_NATIVE_NUMERIC_SQL_RESULT_AUTHORITY_V1`.
+
+El probe debe comprobar, en orden:
+
+1. `PHP_INT_SIZE` suficiente para representar el rango de `connection_id` sin pérdida;
+2. existencia de `MYSQLI_OPT_INT_AND_FLOAT_NATIVE`;
+3. retorno exactamente `true` de `mysqli_options()`;
+4. apertura correcta;
+5. resultado original de `SELECT CONNECTION_ID()` con `get_debug_type(...) === 'int'` e `is_int(...) === true`;
+6. entero estrictamente positivo;
+7. ausencia de transformación, conversión o normalización posterior;
+8. cierre real del probe y residuo final cero.
+
+String, float, bool, objeto, null o cualquier tipo distinto de int impiden publicar PASS. Ante ese resultado no se ejecutan migraciones, no se construye manifest, no se firma evidencia y no existe fallback; el reason cerrado es `native_numeric_connection_id_not_int` y el veredicto runtime futuro es:
+
+`VERDICT=MINIMARKET_ONBOARDING_R1DCA_NATIVE_NUMERIC_RUNTIME_BLOCKED`
+
+### 6.3. Prohibición absoluta de coerción
+
+Antes de validar el tipo original, y también después de validarlo, quedan prohibidos `(int)`, `intval`, `filter_var`, `FILTER_VALIDATE_INT`, suma con cero, multiplicación por uno, comparación numérica permisiva, `is_numeric`, `ctype_digit`, regex seguida de cast, encode/decode JSON usado para cambiar el tipo, serialización intermedia y cualquier normalizador o helper equivalente.
+
+El orden obligatorio es:
+
+1. recibir el resultado original del driver;
+2. registrar su tipo original mediante `get_debug_type()` o una autoridad cerrada equivalente que no transforme el valor;
+3. exigir `is_int()`;
+4. exigir valor positivo;
+5. incorporar exactamente el mismo entero, sin cast ni copia reconstruida, al evento causal.
+
+### 6.4. Lifecycle de configuración nativa
+
+Para cada conexión autenticada, el ledger registra en el punto real `native_numeric_option_configured` con exactamente:
+
+- `execution_id`;
+- `connection_token`;
+- `actor`;
+- `option_constant`;
+- `requested_value`;
+- `option_result`;
+- `configured_sequence`;
+- `connect_started_sequence`;
+- `connection_opened_sequence`.
+
+El parent debe comprobar que `option_constant` identifica exactamente `MYSQLI_OPT_INT_AND_FLOAT_NATIVE`, `requested_value === 1`, `option_result === true` y `configured_sequence < connect_started_sequence < connection_opened_sequence`. Un booleano aislado no es autoridad: deben existir el evento, las sequences y el lifecycle causal completo de configuración y conexión.
+
+### 6.5. Resultado original y binding estricto
+
+`query_completed` de `SELECT CONNECTION_ID()` debe transportar exactamente `sql_template`, `raw_result_type`, `raw_result`, `connection_token`, `actor`, `execution_id`, `query_started_sequence` y `query_completed_sequence`. `raw_result_type` debe ser literalmente `int`; `raw_result` debe ser el entero positivo original recibido con la opción nativa y debe satisfacer `is_int()`. No pueden existir `normalized_result`, `cast_result` ni un entero reconstruido.
+
+`connection_identity_observed` reutiliza el mismo valor sin transformación. El parent debe comprobar literalmente, con igualdad estricta de tipo y valor:
+
+```text
+query_completed.raw_result ===
+connection_identity_observed.connection_id
+```
+
+Para `SELECT IS_USED_LOCK(<LOCK_NAME>)`, `query_completed` transporta `raw_result_type`, `raw_result`, verifier connection token, subject connection token, `name_fingerprint`, `measurement_phase` y sus sequences. En `PRE_CLEANUP`, `raw_result_type` debe ser `int`, el valor original debe satisfacer `is_int()`, ser positivo, ser estrictamente igual al `connection_id` nativo del subject y estrictamente distinto del `connection_id` de VERIFIER. En `POST_CLOSE`, `raw_result_type` debe ser exactamente `null` y `raw_result === null`; no se puede convertir null en cero, string vacío o false.
+
+El mismo valor nativo queda vinculado, con mismo tipo, valor, `connection_token`, `execution_id` y orden causal, entre `query_completed`, `connection_identity_observed`, `canonical_identity_material`, `connection_identity_fingerprint`, mediciones `PRE_CLEANUP` y la identidad del subject. El parent recalcula y compara cada relación; un entero equivalente reconstruido desde texto no satisface identidad causal.
+
+### 6.6. Manifest y orden de guards
+
+El manifest autentica `capability_version`, lifecycle de la opción, `raw_result_type`, `raw_result`, query event, identity event, measurement, actor, tokens, sequences, material canónico y fingerprint. El parent rechaza bloque de capacidad ausente, opción posterior al connect, resultado false, resultado original string o convertido, tipo declarado contradictorio, valor diferente entre eventos, null convertido, entero reconstruido, conexión sin capacidad nativa y actor o token cruzado.
+
+Los guards se evalúan después de framing, canonicalización, firma, shape y tipos estructurales, y antes de fingerprints o conclusiones dependientes, en este orden semántico: capacidad y presencia; lifecycle y orden de opción; correspondencia entre tipo declarado y tipo real; prohibición de coerción; rango del valor; binding entre eventos; ownership y fase. Las mutaciones deben recalcular todas las dependencias no objetivo para alcanzar el reason previsto.
+
+### 6.7. Mutaciones nativas obligatorias
+
+Cada caso parte de evidencia nominal válida, cambia sólo el objetivo, recalcula dependencias no objetivo, canonical JSON y HMAC, llega al consumidor, supera framing y firma y falla por su reason semántico cerrado:
+
+| ID de mutación | Objetivo | Reason exacto |
+|---|---|---|
+| `NATIVE_OPTION_CONSTANT_MISSING` | constante ausente | `native_numeric_driver_capability_unavailable` |
+| `NATIVE_OPTION_RESULT_FALSE` | `mysqli_options()` retorna false | `native_numeric_option_result` |
+| `NATIVE_OPTION_AFTER_CONNECT` | opción configurada después de connect | `native_numeric_option_order` |
+| `NATIVE_OPTION_EVENT_MISSING` | evento de configuración omitido | `native_numeric_event_missing` |
+| `NATIVE_OPTION_REQUESTED_VALUE_NOT_ONE` | requested value distinto de 1 | `native_numeric_driver_capability_unavailable` |
+| `CONNECTION_ID_RAW_NUMERIC_STRING` | string numérico | `native_connection_id_raw_type` |
+| `CONNECTION_ID_RAW_WHITESPACE_STRING` | string con whitespace | `native_connection_id_raw_type` |
+| `CONNECTION_ID_RAW_SIGNED_STRING` | string con signo | `native_connection_id_raw_type` |
+| `CONNECTION_ID_RAW_FLOAT` | float | `native_connection_id_raw_type` |
+| `CONNECTION_ID_RAW_BOOL` | bool | `native_connection_id_raw_type` |
+| `CONNECTION_ID_RAW_NULL` | null | `native_connection_id_raw_type` |
+| `CONNECTION_ID_RAW_ZERO` | entero nativo igual a cero | `native_connection_id_raw_value` |
+| `CONNECTION_ID_RAW_NEGATIVE` | entero nativo negativo | `native_connection_id_raw_value` |
+| `CONNECTION_ID_DECLARED_INT_RAW_STRING` | tipo declarado int y valor string | `native_numeric_declared_type_mismatch` |
+| `CONNECTION_ID_DECLARED_STRING_RAW_INT` | tipo declarado string y valor int | `native_numeric_declared_type_mismatch` |
+| `CONNECTION_ID_CONVERTED_EVENT_VALUE` | identity event usa entero convertido | `native_numeric_coercion_detected` |
+| `LOCK_OWNER_RAW_NUMERIC_STRING` | PRE_CLEANUP retorna string numérico | `native_lock_owner_raw_type` |
+| `LOCK_OWNER_RAW_FLOAT` | PRE_CLEANUP retorna float | `native_lock_owner_raw_type` |
+| `LOCK_OWNER_RAW_BOOL` | PRE_CLEANUP retorna bool | `native_lock_owner_raw_type` |
+| `LOCK_OWNER_NOT_SUBJECT_NATIVE_ID` | owner entero distinto del subject | `native_lock_owner_raw_value` |
+| `POST_CLOSE_RAW_EMPTY_STRING` | POST_CLOSE retorna string vacío | `native_post_close_raw_type` |
+| `POST_CLOSE_RAW_ZERO` | POST_CLOSE retorna cero | `native_post_close_raw_value` |
+| `POST_CLOSE_RAW_FALSE` | POST_CLOSE retorna false | `native_post_close_raw_type` |
+| `POST_CLOSE_DECLARED_TYPE_NOT_NULL` | raw result type no es null | `native_post_close_raw_type` |
+| `LOCK_RESULT_QUERY_MEASUREMENT_MISMATCH` | valor cambia entre query y measurement | `native_lock_owner_event_mismatch` |
+| `CONNECTION_ID_QUERY_IDENTITY_MISMATCH` | valor cambia entre query e identity event | `native_connection_id_event_mismatch` |
+
+Los reasons cerrados de esta autoridad son: `native_numeric_driver_capability_unavailable`, `native_numeric_connection_id_not_int`, `native_numeric_option_order`, `native_numeric_option_result`, `native_numeric_event_missing`, `native_connection_id_raw_type`, `native_connection_id_raw_value`, `native_connection_id_event_mismatch`, `native_lock_owner_raw_type`, `native_lock_owner_raw_value`, `native_lock_owner_event_mismatch`, `native_post_close_raw_type`, `native_post_close_raw_value`, `native_numeric_declared_type_mismatch` y `native_numeric_coercion_detected`.
+
+### 6.8. Inspección anti-coerción y factibilidad
+
+La implementación debe inspeccionar mediante tokens exclusivamente el pipeline de resultados de `CONNECTION_ID` e `IS_USED_LOCK` y rechazar `T_INT_CAST`, llamadas a `intval`, `filter_var`, `is_numeric` o `ctype_digit` usadas como autoridad, helpers de normalización y conversiones equivalentes. Esta inspección se complementa obligatoriamente con pruebas conductuales; por sí sola no prueba ausencia de coerción.
+
+La arquitectura es implementable con una subclase exclusiva de `wpdb`, sin modificar producción, WordPress, MariaDB, plugins ni configuración global. Si el entorno no entrega enteros nativos después de configurar correctamente `MYSQLI_OPT_INT_AND_FLOAT_NATIVE`, la implementación queda bloqueada con el veredicto runtime publicado y sin fallback por cast.
+
+## 7. Actor autenticado VERIFIER
 
 `VERIFIER` pertenece al universo autenticado, al connection registry, al ledger, al manifest, a la validación del parent, al cleanup y al catálogo de mutaciones. No es una conexión auxiliar externa al scope. Debe existir exactamente un actor `VERIFIER`; cualquier verificador adicional queda prohibido.
 
@@ -177,7 +318,7 @@ Ese entero positivo no puede ser el `connection_id` de VERIFIER. En `POST_CLOSE`
 
 El parent debe validar el evento real `connection_identity_observed`, reconstruir literalmente `canonical_identity_material`, recalcular SHA-256 y comparar el fingerprint de cada actor. Debe comprobar actor, token, lifecycle, resultado tipado de la consulta, identidad en mediciones posteriores y unicidad de `connection_id` entre conexiones simultáneamente abiertas. También recalcula que token, `connection_id` y fingerprint de VERIFIER son distintos de los del subject, que `IS_USED_LOCK` identifica al subject durante `PRE_CLEANUP` y nunca a VERIFIER, y que devuelve null durante `POST_CLOSE`. Cualquier contradicción entre material, fingerprint, token, actor, lifecycle, execution ID o medición falla cerrada; formato, presencia, `distinct=true` o una conclusión booleana declarada nunca constituyen autoridad primaria.
 
-## 7. Catálogo exhaustivo dentro del scope
+## 8. Catálogo exhaustivo dentro del scope
 
 `InstrumentedWpdb` debe interceptar todas las superficies SQL autorizadas, incluidas `query`, `get_var`, `get_row` y cualquier método adicional que finalmente ejecute SQL. El parser cerrado debe reconocer `GET_LOCK`, `RELEASE_LOCK` y, si llegara a estar disponible, `RELEASE_ALL_LOCKS`, con independencia de casing, whitespace y comentarios SQL.
 
@@ -194,7 +335,7 @@ Cada operación de lock debe producir un evento append-only con exactamente:
 
 El catálogo es exhaustivo únicamente dentro del scope porque el wrapper encapsula la conexión, no expone un handle alternativo, intercepta todas las superficies SQL permitidas y el contrato prueba y rechaza bypass. No detecta ni pretende detectar locks de conexiones ajenas.
 
-## 8. Autoridad de cierre
+## 9. Autoridad de cierre
 
 Para cada nombre realmente observado, el único `VERIFIER` registrado y autenticado debe consultar `IS_USED_LOCK` y vincular el resultado al mismo `name_fingerprint`, `execution_id`, identidades causales y tokens del verifier y subject.
 
@@ -215,7 +356,7 @@ La secuencia obligatoria es:
 
 La medición previa debe observar el ownership esperado cuando un lock está retenido. La medición posterior debe observar libertad después del release y del cierre. No se permite usar una conexión de `CONTROLLED_ACTORS` como `VERIFIER`, ni atribuir mediciones a otro token o a un verificador no registrado.
 
-## 9. Catálogo vacío de A, B o C
+## 10. Catálogo vacío de A, B o C
 
 A, B o C pueden publicar un catálogo vacío únicamente cuando:
 
@@ -232,7 +373,7 @@ El significado exclusivo de ese resultado es:
 
 No significa ausencia global de locks. Queda prohibido publicar `named_locks_count=0` como conclusión global.
 
-## 10. Guard positivo obligatorio
+## 11. Guard positivo obligatorio
 
 GUARD debe demostrar conductualmente:
 
@@ -253,7 +394,7 @@ Las únicas salidas positivas autorizadas son:
 
 En ambas, el universo se limita a los nombres observados en conexiones desechables controladas.
 
-## 11. Manifest y recálculo del parent
+## 12. Manifest y recálculo del parent
 
 El manifest debe autenticar un esquema cerrado que incluya:
 
@@ -261,12 +402,12 @@ El manifest debe autenticar un esquema cerrado que incluya:
 - conjunto exacto `AUTHENTICATED_CONNECTION_ACTORS={A,B,C,GUARD,VERIFIER}`;
 - actor y `connection_token` único de cada conexión;
 - registry binding, base desechable y purpose de VERIFIER;
-- para A, B, C, GUARD y VERIFIER: evento real `connection_identity_observed`, `connection_id`, todo el material causal, `canonical_identity_material`, `connection_identity_fingerprint`, actor, token, lifecycle, execution ID y vínculo con mediciones posteriores;
+- para A, B, C, GUARD y VERIFIER: evento real `connection_identity_observed`, `connection_id`, la totalidad del material causal, `canonical_identity_material`, `connection_identity_fingerprint`, actor, token, lifecycle, execution ID y vínculo con mediciones posteriores;
 - lifecycle completo de cada conexión, incluido el lifecycle real de VERIFIER;
 - catálogo observado y sellado;
 - fingerprints de nombres y catálogo;
 - catálogo read-only autorizado de VERIFIER y ausencia material de operaciones prohibidas;
-- cada medición con todos los campos cerrados definidos en la sección 6, incluida `measurement_phase`;
+- cada medición con todos los campos cerrados definidos en la sección 7, incluida `measurement_phase`;
 - cierre de A, B, C, GUARD y VERIFIER;
 - resultados posteriores al cierre.
 
@@ -290,7 +431,7 @@ El parent debe recalcular identidades, catálogo por conexión, acquisitions, re
 
 El cleanup sólo puede aprobarse cuando A, B, C, GUARD y VERIFIER tienen cierre real registrado, no existen mediciones pendientes, no hay operaciones posteriores al cierre y los temporales del harness son cero. Un VERIFIER abierto invalida el cleanup completo.
 
-## 12. Mutaciones obligatorias futuras
+## 13. Mutaciones obligatorias futuras
 
 La implementación posterior debe recanonicalizar, recalcular dependencias internas, generar HMAC válida y alcanzar el guard semántico específico para cada una de estas mutaciones:
 
@@ -345,7 +486,7 @@ Además de los casos de actor, token, registro, base, lifecycle incompleto, firs
 
 Cada mutación parte de evidencia nominal válida, modifica sólo su objetivo semántico, recalcula todas las dependencias no objetivo, fingerprints, cadena posterior, JSON canónico y HMAC, alcanza el consumer, supera los guards anteriores y falla primero en el reason cerrado publicado. Una mutación no satisface el contrato si cae antes por framing, JSON no canónico, HMAC, presencia, tipo o un fingerprint que debía recalcularse.
 
-## 13. Invalidez automática y revisión futura
+## 14. Invalidez automática y revisión futura
 
 Esta autoridad queda invalidada y exige revisión previa si:
 
@@ -356,7 +497,7 @@ Esta autoridad queda invalidada y exige revisión previa si:
 - se habilita una autoridad completa independiente;
 - el harness intenta certificar ausencia global.
 
-## 14. Relación con los demás findings
+## 15. Relación con los demás findings
 
 Esta corrección normativa sólo desbloquea el diseño de autoridad de named locks acotada a conexiones controladas. No certifica R1D-C-A ni autoriza cambios productivos.
 
@@ -370,7 +511,7 @@ La implementación posterior sigue obligada a incorporar:
 - siete fases reales y separadas;
 - mutaciones dependency-aware que alcancen el guard correcto.
 
-## 15. Workflow privilegiado preservado
+## 16. Workflow privilegiado preservado
 
 Se conserva sin cambio conceptual el workflow ya certificado:
 
