@@ -53,6 +53,12 @@ final class FrontendModule
             [$this, 'enqueueHomepageHowItWorksAsset'],
             20
         );
+        add_filter(
+            'elementor/widget/render_content',
+            [$this, 'replaceHomepageHeroLogo'],
+            10,
+            2
+        );
         add_shortcode(
             FrontendController::SHORTCODE,
             [$this->controller, 'renderPlaceholder']
@@ -156,6 +162,26 @@ final class FrontendModule
         if (is_array($elements) && $this->containsHomepageHowItWorks($elements)) {
             $this->assets->enqueueHomepageHowItWorks();
         }
+    }
+
+    public function replaceHomepageHeroLogo(string $content, mixed $widget): string
+    {
+        if (
+            ! is_front_page()
+            || ! is_object($widget)
+            || ! method_exists($widget, 'get_id')
+            || ! method_exists($widget, 'get_name')
+            || $widget->get_id() !== 'df4acd5'
+            || $widget->get_name() !== 'image'
+        ) {
+            return $content;
+        }
+
+        return str_replace(
+            content_url('/uploads/2026/06/Logo-Veciahorra.jpg'),
+            VA_PLUGIN_URL . 'assets/frontend/images/veciahorra-logo-oficial.png',
+            $content
+        );
     }
 
     /** @param array<mixed> $elements */

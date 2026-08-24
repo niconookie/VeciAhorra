@@ -9,6 +9,7 @@ final class CustomerAccessModule
     public const SHORTCODE = 'veciahorra_customer_registration';
     private const PAGE_SLUG = 'registro-cliente';
     private const HEADER_STYLE = 'veciahorra-global-header';
+    private const HEADER_SCRIPT = 'veciahorra-global-header';
     private const REGISTRATION_STYLE = 'veciahorra-customer-registration';
 
     /** @var list<string> */
@@ -40,6 +41,7 @@ final class CustomerAccessModule
         add_filter('wp_nav_menu_items', [$this, 'appendAccessLinks'], 20, 2);
         add_filter('body_class', [$this, 'bodyClass']);
         add_action('wp_enqueue_scripts', [$this, 'enqueueHeaderStyle']);
+        add_action('wp_body_open', [$this, 'renderGlobalHeader'], 5);
         add_action('wp_enqueue_scripts', [$this, 'enqueueRegistrationStyle']);
     }
 
@@ -218,6 +220,10 @@ final class CustomerAccessModule
             return $items;
         }
 
+        if (! empty($args->va_header_primary)) {
+            return $items;
+        }
+
         if (! is_user_logged_in()) {
             return $items . $this->menuLink('Registrarse', $this->registrationUrl())
                 . $this->menuLink('Iniciar sesión', wp_login_url($this->customerPanelUrl()));
@@ -298,6 +304,81 @@ final class CustomerAccessModule
             [],
             \VeciAhorra\Core\Config::PLUGIN_VERSION
         );
+        wp_enqueue_script(
+            self::HEADER_SCRIPT,
+            VA_PLUGIN_URL . 'assets/frontend/js/global-header.js',
+            [],
+            \VeciAhorra\Core\Config::PLUGIN_VERSION,
+            true
+        );
+    }
+
+    public function renderGlobalHeader(): void
+    {
+        if (is_admin()) return;
+
+        $routes = new \VeciAhorra\Modules\Frontend\Support\PublicRouteResolver();
+        $catalogUrl = $routes->catalog() ?: home_url('/');
+        $servicesUrl = $this->pageUrlByShortcode('veciahorra_services', '/servicios/');
+        $cartUrl = $routes->cart() ?: home_url('/');
+        $sector = null;
+        $cartCount = 0;
+        try {
+            $sector = (new \VeciAhorra\Modules\Sectorization\CurrentSector())->current();
+            $owner = is_user_logged_in()
+                ? ['user_id' => get_current_user_id()]
+                : ['session_id' => (new \VeciAhorra\Modules\Frontend\Support\CartSession())->identifier()];
+            $cart = (new \VeciAhorra\Modules\Cart\Service\CartService(new \VeciAhorra\Modules\Cart\Repository\CartRepository()))->getPublicCart($owner);
+            foreach ($cart['items'] as $item) $cartCount += max(0, (int) ($item['quantity'] ?? 0));
+        } catch (\Throwable) {
+            $sector = is_array($sector) ? $sector : null;
+        }
+
+        $user = wp_get_current_user();
+        $accountUrl = is_user_logged_in() ? $this->destinationFor($user) : wp_login_url($this->customerPanelUrl());
+        $currentLabel = is_front_page() ? 'Inicio' : wp_strip_all_tags((string) (get_the_title() ?: 'VeciAhorra'));
+        ?>
+        <header class="va-global-header" data-va-global-header data-rest-url="<?php echo esc_url(rest_url('veciahorra/v1/')); ?>" data-current-sector="<?php echo esc_attr(is_array($sector) ? (string) $sector['id'] : ''); ?>">
+            <div class="va-global-header__main">
+                <div class="va-global-header__container va-global-header__primary">
+                    <a class="va-global-header__brand" href="<?php echo esc_url(home_url('/')); ?>" aria-label="VeciAhorra, ir al inicio">
+                        <img class="va-global-header__logo" src="<?php echo esc_url(VA_PLUGIN_URL . 'assets/frontend/images/veciahorra-logo-horizontal.png'); ?>" alt="VeciAhorra" width="1600" height="400">
+                    </a>
+                    <button class="va-global-header__menu-toggle" type="button" aria-expanded="false" aria-controls="va-global-navigation"><span aria-hidden="true">☰</span><span class="screen-reader-text">Abrir menú principal</span></button>
+                    <button class="va-global-header__sector" type="button" aria-expanded="false" aria-controls="va-global-sector-panel">
+                        <span class="va-global-header__icon" aria-hidden="true">⌖</span><span><small>Tu microzona</small><strong data-va-sector-label><?php echo esc_html(is_array($sector) ? (string) $sector['name'] : 'Seleccionar zona'); ?></strong><em><?php echo esc_html(is_array($sector) ? (string) $sector['commune'] : 'Ubicación pendiente'); ?></em></span><i aria-hidden="true">⌄</i>
+                    </button>
+                    <form class="va-global-header__search" action="<?php echo esc_url($catalogUrl); ?>" method="get" role="search" data-va-header-search data-products-url="<?php echo esc_url($catalogUrl); ?>" data-services-url="<?php echo esc_url($servicesUrl); ?>" data-current-commune="<?php echo esc_attr(is_array($sector) ? (string) $sector['commune'] : ''); ?>">
+                        <label class="screen-reader-text" for="va-global-search-scope">Ámbito de búsqueda</label><select id="va-global-search-scope" name="scope" data-va-header-search-scope><option value="products">Productos</option><option value="services">Servicios</option></select>
+                        <label class="screen-reader-text" for="va-global-search">Buscar productos</label><span aria-hidden="true">⌕</span>
+                        <input id="va-global-search" name="search" type="search" placeholder="¿Qué producto necesitas?" autocomplete="off" aria-describedby="va-global-search-context">
+                        <button type="submit">Buscar</button>
+                        <p class="screen-reader-text" id="va-global-search-context" data-va-header-search-context role="status" aria-live="polite">Busca productos disponibles en tu microzona.</p>
+                    </form>
+                    <div class="va-global-header__account">
+                        <a href="<?php echo esc_url($accountUrl); ?>"><span class="va-global-header__round-icon" aria-hidden="true">👤</span><span><small><?php echo is_user_logged_in() ? esc_html('Hola, ' . ($user->first_name ?: $user->display_name)) : 'Bienvenido'; ?></small><strong><?php echo is_user_logged_in() ? 'Mi cuenta' : 'Iniciar sesión'; ?></strong></span></a>
+                        <?php if (! is_user_logged_in()): ?><a class="va-global-header__register" href="<?php echo esc_url($this->registrationUrl()); ?>">Registrarse</a><?php endif; ?>
+                    </div>
+                    <a class="va-global-header__cart" href="<?php echo esc_url($cartUrl); ?>"><span aria-hidden="true">🛒</span><span>Carrito</span><b data-va-header-cart-count <?php echo $cartCount > 0 ? '' : 'hidden'; ?>><?php echo esc_html((string) $cartCount); ?></b></a>
+                </div>
+                <div class="va-global-header__sector-panel" id="va-global-sector-panel" hidden>
+                    <div class="va-global-header__container"><label for="va-global-sector-select">Selecciona tu microzona</label><select id="va-global-sector-select" data-va-header-sector-select><option value="">Cargando microzonas…</option></select><p data-va-header-sector-message role="status" aria-live="polite"></p></div>
+                </div>
+            </div>
+            <nav class="va-global-header__nav" id="va-global-navigation" aria-label="Navegación principal">
+                <div class="va-global-header__container va-global-header__nav-inner">
+                    <a class="va-global-header__categories" href="<?php echo esc_url($catalogUrl); ?>"><span aria-hidden="true">☰</span>Categorías</a>
+                    <ul class="va-global-header__menu">
+                        <?php foreach ($this->headerNavigationLinks($catalogUrl) as $link): ?><li><a href="<?php echo esc_url($link['url']); ?>"><?php echo esc_html($link['label']); ?></a></li><?php endforeach; ?>
+                    </ul>
+                    <span class="va-global-header__nav-spacer"></span>
+                    <a href="<?php echo esc_url($this->pageUrlByShortcode('veciahorra_minimarket_registration', '/registro-minimarket/')); ?>">Vende en VeciAhorra</a>
+                    <a href="<?php echo esc_url($this->pageUrlByShortcode('veciahorra_courier_registration', '/registro-repartidor/')); ?>">Reparte con nosotros</a>
+                </div>
+            </nav>
+            <?php if (! is_front_page()): ?><nav class="va-global-header__breadcrumb" aria-label="Migas de pan"><div class="va-global-header__container"><a href="<?php echo esc_url(home_url('/')); ?>">Inicio</a><span aria-hidden="true">›</span><span aria-current="page"><?php echo esc_html($currentLabel); ?></span></div></nav><?php endif; ?>
+        </header>
+        <?php
     }
 
     public function allowZonalAdminAccess(bool $prevent): bool
@@ -312,6 +393,10 @@ final class CustomerAccessModule
     {
         if ($this->isRegistrationPage()) {
             $classes[] = 'va-customer-registration-page';
+        }
+        $page = get_queried_object();
+        if ($page instanceof \WP_Post && has_shortcode($page->post_content, 'veciahorra_customer_panel')) {
+            $classes[] = 'va-customer-purchases-page';
         }
         return $classes;
     }
@@ -355,6 +440,32 @@ final class CustomerAccessModule
 
         $redirectTo = wp_validate_redirect(esc_url_raw($redirectTo), '');
         return $redirectTo !== '' ? add_query_arg('redirect_to', $redirectTo, $url) : $url;
+    }
+
+    /** @return list<array{label:string,url:string}> */
+    private function headerNavigationLinks(string $catalogUrl): array
+    {
+        $locations = get_nav_menu_locations();
+        $menuId = (int) ($locations['menu_1'] ?? $locations['primary'] ?? 0);
+        $items = $menuId > 0 ? wp_get_nav_menu_items($menuId) : [];
+        $items = is_array($items)
+            ? $this->filterRoleMenuItems($items, (object) ['theme_location'=>'menu_1', 'va_header_primary'=>true])
+            : [];
+        $urlFor = static function (array $labels, string $fallback) use ($items): string {
+            foreach ($items as $item) {
+                $title = strtolower(remove_accents(trim(wp_strip_all_tags((string) ($item->title ?? '')))));
+                if (in_array($title, $labels, true) && ! empty($item->url)) return (string) $item->url;
+            }
+            return $fallback;
+        };
+
+        $services = $this->pageUrlByShortcode('veciahorra_services', '/servicios/');
+        return [
+            ['label'=>'Ofertas', 'url'=>$urlFor(['ofertas'], $catalogUrl)],
+            ['label'=>'VeciMarket', 'url'=>$urlFor(['catalogo','vecimarket'], $catalogUrl)],
+            ['label'=>'VeciServicios', 'url'=>$urlFor(['servicios','veciservicios'], $services)],
+            ['label'=>'Quiénes somos', 'url'=>$urlFor(['nosotros','quienes somos'], home_url('/nosotros/'))],
+        ];
     }
 
     private function isRegistrationPage(): bool

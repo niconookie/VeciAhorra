@@ -256,6 +256,8 @@
         var raw = JSON.parse(root.querySelector('[data-va-service-categories]').textContent);
         var category = filter.elements.category_key;
         var subcategory = filter.elements.subcategory_key;
+        var requestedCommune = String(new URLSearchParams(window.location.search).get('commune') || '').trim();
+        if (requestedCommune) filter.elements.commune.value = requestedCommune;
 
         Object.keys(raw).forEach(function (key) { category.add(new Option(raw[key].label, key)); });
         function fillSubcategories() {

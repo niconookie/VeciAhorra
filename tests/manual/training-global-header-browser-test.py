@@ -43,8 +43,8 @@ result = {"contexts": {}, "js_errors": [], "preexisting_browser_errors": []}
 def open_page(path):
     driver.get(BASE + path)
     wait.until(lambda current: current.execute_script("return document.readyState") == "complete")
-    header = driver.find_element(By.ID, "header")
-    links = [link.text.strip() for link in header.find_elements(By.CSS_SELECTOR, "a") if link.text.strip()]
+    header = driver.find_element(By.CSS_SELECTOR, "[data-va-global-header]")
+    links = [link.text.strip() for link in header.find_elements(By.CSS_SELECTOR, ".va-global-header__main a, .va-global-header__nav a") if link.text.strip()]
     html = driver.page_source
     check("Warning:" not in html and "Notice:" not in html, "Warning/notice PHP visible en " + path)
     check(driver.execute_script("return document.documentElement.scrollWidth <= document.documentElement.clientWidth"), "Overflow horizontal en " + path)
@@ -69,13 +69,12 @@ try:
     guest_navigation = None
     for path in PAGES:
         header, links = open_page(path)
-        check("iniciar sesión" in labels(links) and "registrarse" in labels(links), "Accesos de visitante ausentes en " + path)
+        check("iniciar sesi\u00f3n" in " ".join(labels(links)) and "registrarse" in labels(links), "Accesos de visitante ausentes en " + path)
         comparable = tuple(labels(links))
         guest_navigation = guest_navigation or comparable
         check(comparable == guest_navigation, "Cabecera visitante inconsistente en " + path)
-        title = header.find_elements(By.CSS_SELECTOR, ".site-title")
-        check(not title or title[0].value_of_css_property("display") == "none", "Título textual visible")
-        logo = header.find_element(By.CSS_SELECTOR, '[data-id="logo"] img, .site-logo-container img, .custom-logo')
+        check(len(driver.find_elements(By.CSS_SELECTOR, "[data-va-global-header]")) == 1, "Cabecera global duplicada")
+        logo = header.find_element(By.CSS_SELECTOR, '.va-global-header__logo')
         natural = driver.execute_script("return [arguments[0].naturalWidth, arguments[0].naturalHeight]", logo)
         rendered = driver.execute_script("return [arguments[0].clientWidth, arguments[0].clientHeight]", logo)
         check(all(natural) and all(rendered), "Logo sin dimensiones")
@@ -83,7 +82,7 @@ try:
 
     driver.set_window_size(390, 844)
     open_page("/")
-    check(driver.find_element(By.CSS_SELECTOR, ".ct-header-trigger").is_displayed(), "Trigger móvil ausente")
+    check(driver.find_element(By.CSS_SELECTOR, ".va-global-header__menu-toggle").is_displayed(), "Trigger móvil ausente")
     result["contexts"]["guest"] = "PASS"
 
     driver.set_window_size(1440, 1000)
@@ -95,7 +94,8 @@ try:
             _, links = open_page(path)
             current_labels = labels(links)
             check("iniciar sesión" not in current_labels and "registrarse" not in current_labels, "Acceso público visible para " + role)
-            check("servicios" in current_labels and "mi panel" in current_labels, "Navegación de rol incompleta para " + role + ": " + repr(links))
+            joined_labels = " ".join(current_labels)
+            check("veciservicios" in current_labels and "mi cuenta" in joined_labels, "Navegación de rol incompleta para " + role + ": " + repr(links))
             comparable = tuple(current_labels)
             expected = expected or comparable
             check(comparable == expected, "Cabecera inconsistente para " + role + " en " + path)
