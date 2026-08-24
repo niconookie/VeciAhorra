@@ -127,17 +127,22 @@ if (in_array($argv[1] ?? '', ['--dir02-symlink','--dir03-junction'], true)) {
     $fixture = $target . DIRECTORY_SEPARATOR . 'target.fixture';
     ma(file_put_contents($fixture, "survives\n") === 9, strtolower($case) . '_fixture');
     try {
+        $creationAttempted = true;
+        $creationExit = -1;
         if ($case === 'DIR-02') {
             $created = @symlink($target, $link);
+            $creationExit = $created ? 0 : -1;
             if (!$created) {
                 $output = []; $exit = -1;
                 exec('cmd /c mklink /D ' . escapeshellarg($link) . ' ' . escapeshellarg($target), $output, $exit);
                 $created = $exit === 0;
+                $creationExit = $exit;
             }
             ma($created && is_link($link), 'dir02_real_symlink');
         } else {
             $output = []; $exit = -1;
             exec('cmd /c mklink /J ' . escapeshellarg($link) . ' ' . escapeshellarg($target), $output, $exit);
+            $creationExit = $exit;
             ma($exit === 0 && is_dir($link), 'dir03_real_junction');
         }
         $ps = []; $psExit = -1;
@@ -147,9 +152,19 @@ if (in_array($argv[1] ?? '', ['--dir02-symlink','--dir03-junction'], true)) {
         $inspector = new ReflectionMethod(R1dcaManifestChannel::class, 'inspect');
         $observed = $inspector->invoke(null, $link);
         ma($observed['reparse'] === true && ($case !== 'DIR-02' || $observed['link'] === true), strtolower($case) . '_inspection');
-        ma(realpath($link) === realpath($target), strtolower($case) . '_target');
-        ma(rmdir($link), strtolower($case) . '_link_removal');
+        $resolvedTarget = realpath($link); $expectedTarget = realpath($target);
+        $targetMatch = $resolvedTarget === $expectedTarget;
+        $fixtureMatch = is_file($link . DIRECTORY_SEPARATOR . basename($fixture)) && file_get_contents($link . DIRECTORY_SEPARATOR . basename($fixture)) === "survives\n";
+        ma($targetMatch && $fixtureMatch, strtolower($case) . '_target');
+        $removal = rmdir($link); $removalExit = $removal ? 0 : 1;
+        ma($removal, strtolower($case) . '_link_removal');
         ma(is_dir($target) && is_file($fixture), strtolower($case) . '_target_survival');
+        $details = $case === 'DIR-02' ? [
+            'creation_attempted'=>$creationAttempted,'creation_exit_code'=>$creationExit,'observed_link_type'=>trim(implode('', $ps)),'php_is_link'=>$observed['link'],'is_reparse_point'=>$observed['reparse'],'is_junction'=>trim(implode('', $ps)) === 'Junction','resolved_target_fingerprint'=>hash('sha256',strtolower(str_replace('\\','/',(string)$resolvedTarget))),'expected_target_fingerprint'=>hash('sha256',strtolower(str_replace('\\','/',(string)$expectedTarget))),'target_match'=>$targetMatch,'fixture_match'=>$fixtureMatch,'link_removal_exit_code'=>$removalExit,'target_survived'=>is_dir($target),'fixture_survived'=>is_file($fixture),'residue_count'=>(file_exists($link)||is_link($link)?1:0),
+        ] : [
+            'creation_attempted'=>$creationAttempted,'creation_exit_code'=>$creationExit,'observed_link_type'=>trim(implode('', $ps)),'is_reparse_point'=>$observed['reparse'],'is_symlink'=>$observed['link'],'resolved_target_fingerprint'=>hash('sha256',strtolower(str_replace('\\','/',(string)$resolvedTarget))),'expected_target_fingerprint'=>hash('sha256',strtolower(str_replace('\\','/',(string)$expectedTarget))),'target_match'=>$targetMatch,'target_survived'=>is_dir($target),'fixture_survived'=>is_file($fixture),'residue_count'=>(file_exists($link)||is_link($link)?1:0),
+        ];
+        echo 'R1DCA_' . str_replace('-', '', $case) . '_DETAILS=' . json_encode($details, JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR) . PHP_EOL;
         echo 'R1DCA_' . str_replace('-', '', $case) . '_' . strtoupper($expectedType) . '=PA'.'SS' . PHP_EOL;
         echo 'R1DCA_' . str_replace('-', '', $case) . '_TARGET_SURVIVED_LINK_REMOVAL=PA'.'SS' . PHP_EOL;
     } finally {
