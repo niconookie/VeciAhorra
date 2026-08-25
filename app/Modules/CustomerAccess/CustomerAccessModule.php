@@ -336,6 +336,8 @@ final class CustomerAccessModule
 
         $user = wp_get_current_user();
         $accountUrl = is_user_logged_in() ? $this->destinationFor($user) : wp_login_url($this->customerPanelUrl());
+        $accountMenuLinks = is_user_logged_in() ? $this->accountMenuLinks($user) : [];
+        $logoutUrl = is_user_logged_in() ? wp_logout_url(home_url('/')) : '';
         $currentLabel = is_front_page() ? 'Inicio' : wp_strip_all_tags((string) (get_the_title() ?: 'VeciAhorra'));
         ?>
         <header class="va-global-header" data-va-global-header data-rest-url="<?php echo esc_url(rest_url('veciahorra/v1/')); ?>" data-current-sector="<?php echo esc_attr(is_array($sector) ? (string) $sector['id'] : ''); ?>">
@@ -355,9 +357,18 @@ final class CustomerAccessModule
                         <button type="submit">Buscar</button>
                         <p class="screen-reader-text" id="va-global-search-context" data-va-header-search-context role="status" aria-live="polite">Busca productos disponibles en tu microzona.</p>
                     </form>
-                    <div class="va-global-header__account">
-                        <a href="<?php echo esc_url($accountUrl); ?>"><span class="va-global-header__round-icon" aria-hidden="true">👤</span><span><small><?php echo is_user_logged_in() ? esc_html('Hola, ' . ($user->first_name ?: $user->display_name)) : 'Bienvenido'; ?></small><strong><?php echo is_user_logged_in() ? 'Mi cuenta' : 'Iniciar sesión'; ?></strong></span></a>
-                        <?php if (! is_user_logged_in()): ?><a class="va-global-header__register" href="<?php echo esc_url($this->registrationUrl()); ?>">Registrarse</a><?php endif; ?>
+                    <div class="va-global-header__account<?php echo is_user_logged_in() ? ' va-global-header__account--authenticated' : ''; ?>">
+                        <a class="va-global-header__account-link" href="<?php echo esc_url($accountUrl); ?>"><span class="va-global-header__round-icon" aria-hidden="true">👤</span><span><small><?php echo is_user_logged_in() ? esc_html('Hola, ' . ($user->first_name ?: $user->display_name)) : 'Bienvenido'; ?></small><strong><?php echo is_user_logged_in() ? 'Mi cuenta' : 'Iniciar sesión'; ?></strong></span></a>
+                        <?php if (is_user_logged_in()): ?>
+                            <a class="va-global-header__logout" href="<?php echo esc_url($logoutUrl); ?>">Cerrar sesión</a>
+                            <button class="va-global-header__account-toggle" type="button" aria-expanded="false" aria-controls="va-global-account-menu" aria-label="Abrir menú de cuenta"><span class="va-global-header__round-icon" aria-hidden="true">👤</span></button>
+                            <div class="va-global-header__account-menu" id="va-global-account-menu" hidden>
+                                <?php foreach ($accountMenuLinks as $link): ?><a href="<?php echo esc_url($link['url']); ?>"><?php echo esc_html($link['label']); ?></a><?php endforeach; ?>
+                                <a href="<?php echo esc_url($logoutUrl); ?>">Cerrar sesión</a>
+                            </div>
+                        <?php else: ?>
+                            <a class="va-global-header__register" href="<?php echo esc_url($this->registrationUrl()); ?>">Registrarse</a>
+                        <?php endif; ?>
                     </div>
                     <a class="va-global-header__cart" href="<?php echo esc_url($cartUrl); ?>"><span aria-hidden="true">🛒</span><span>Carrito</span><b data-va-header-cart-count <?php echo $cartCount > 0 ? '' : 'hidden'; ?>><?php echo esc_html((string) $cartCount); ?></b></a>
                 </div>
@@ -490,6 +501,31 @@ final class CustomerAccessModule
     private function customerPanelUrl(): string
     {
         return $this->pageUrlByShortcode('veciahorra_customer_panel', '/mis-compras/');
+    }
+
+    /** @return list<array{label:string,url:string}> */
+    private function accountMenuLinks(\WP_User $user): array
+    {
+        if ($this->isBusinessUser($user)) {
+            return [['label' => 'Mi panel', 'url' => $this->destinationFor($user)]];
+        }
+
+        $accountPageId = (int) get_option('woocommerce_myaccount_page_id', 0);
+        $accountUrl = $accountPageId > 0 ? get_permalink($accountPageId) : false;
+
+        return [
+            ['label' => 'Mi cuenta', 'url' => is_string($accountUrl) ? $accountUrl : $this->customerPanelUrl()],
+            ['label' => 'Mis compras', 'url' => $this->customerPanelUrl()],
+        ];
+    }
+
+    private function isBusinessUser(\WP_User $user): bool
+    {
+        return user_can($user, 'manage_options')
+            || user_can($user, \VeciAhorra\Modules\ZonalAdmin\Identity\ZonalAdminRole::CAPABILITY_READ)
+            || user_can($user, 'veciahorra_manage_store')
+            || user_can($user, 'veciahorra_manage_deliveries')
+            || user_can($user, 'veciahorra_manage_service_profile');
     }
 
     private function pageUrlByShortcode(string $shortcode, string $fallback): string

@@ -16,6 +16,8 @@
         var sectorPanel = root.querySelector('#va-global-sector-panel');
         var sectorSelect = root.querySelector('[data-va-header-sector-select]');
         var sectorMessage = root.querySelector('[data-va-header-sector-message]');
+        var accountButton = root.querySelector('.va-global-header__account-toggle');
+        var accountMenu = root.querySelector('#va-global-account-menu');
         var searchForm = root.querySelector('[data-va-header-search]');
         var searchScope = searchForm.querySelector('[data-va-header-search-scope]');
         var searchInput = searchForm.elements.search;
@@ -34,6 +36,13 @@
             sectorPanel.hidden = true;
             sectorButton.setAttribute('aria-expanded', 'false');
             if (focus) sectorButton.focus();
+        }
+        function closeAccount(focus) {
+            if (!accountButton || !accountMenu) return;
+            accountMenu.hidden = true;
+            accountButton.setAttribute('aria-expanded', 'false');
+            accountButton.setAttribute('aria-label', 'Abrir menú de cuenta');
+            if (focus) accountButton.focus();
         }
         function loadSectors() {
             if (sectorsLoaded) return;
@@ -66,10 +75,25 @@
         sectorButton.addEventListener('click', function () {
             var open = sectorPanel.hidden;
             closeMenu(false);
+            closeAccount(false);
             sectorPanel.hidden = !open;
             sectorButton.setAttribute('aria-expanded', String(open));
             if (open) { loadSectors(); sectorSelect.focus(); }
         });
+        if (accountButton && accountMenu) {
+            accountButton.addEventListener('click', function () {
+                var open = accountMenu.hidden;
+                closeMenu(false);
+                closeSector(false);
+                accountMenu.hidden = !open;
+                accountButton.setAttribute('aria-expanded', String(open));
+                accountButton.setAttribute('aria-label', open ? 'Cerrar menú de cuenta' : 'Abrir menú de cuenta');
+                if (open) {
+                    var firstAccountLink = accountMenu.querySelector('a');
+                    if (firstAccountLink) firstAccountLink.focus();
+                }
+            });
+        }
         sectorSelect.addEventListener('change', function () {
             if (!/^\d+$/.test(sectorSelect.value)) return;
             sectorSelect.disabled = true;
@@ -113,12 +137,14 @@
         });
         document.addEventListener('keydown', function (event) {
             if (event.key === 'Escape') {
-                if (!sectorPanel.hidden) closeSector(true);
+                if (accountMenu && !accountMenu.hidden) closeAccount(true);
+                else if (!sectorPanel.hidden) closeSector(true);
                 else if (navigation.classList.contains('is-open')) closeMenu(true);
             }
         });
         document.addEventListener('click', function (event) {
-            if (!root.contains(event.target)) { closeMenu(false); closeSector(false); }
+            if (!root.contains(event.target)) { closeMenu(false); closeSector(false); closeAccount(false); return; }
+            if (accountMenu && !accountMenu.hidden && !accountMenu.contains(event.target) && !accountButton.contains(event.target)) closeAccount(false);
         });
 
         var params = new URLSearchParams(window.location.search);
