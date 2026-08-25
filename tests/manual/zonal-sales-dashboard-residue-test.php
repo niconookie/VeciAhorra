@@ -1,0 +1,7 @@
+<?php
+declare(strict_types=1);
+require_once dirname(__DIR__,5).'/wp-load.php';require_once ABSPATH.'wp-admin/includes/user.php';
+global $wpdb;$p=$wpdb->prefix.'va_';$pattern='^zs_[0-9a-f]{10}(_[ab])?$';$zonePattern='^zs_[0-9a-f]{10}$';
+if(($argv[1]??'')==='cleanup'){$users=array_map('intval',$wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->users} WHERE user_login REGEXP %s",$pattern)));$zones=array_map('intval',$wpdb->get_col($wpdb->prepare("SELECT id FROM {$p}service_zones WHERE commune REGEXP %s",$zonePattern)));if($users){$wpdb->query("DELETE FROM {$p}zonal_admin_service_zones WHERE user_id IN (".implode(',',$users).')');foreach($users as$user)wp_delete_user($user);}if($zones){$wpdb->query("DELETE FROM {$p}store_service_zones WHERE zone_id IN (".implode(',',$zones).')');$wpdb->query("DELETE FROM {$p}service_zones WHERE id IN (".implode(',',$zones).')');}}
+$counts=['users'=>(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->users} WHERE user_login REGEXP %s",$pattern)),'zones'=>(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$p}service_zones WHERE commune REGEXP %s",$zonePattern)),'stores'=>(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$p}stores WHERE business_name REGEXP %s",$zonePattern))];
+if(array_sum($counts)!==0)throw new RuntimeException('Residuos zonales: '.wp_json_encode($counts));echo 'ZONAL_SALES_RESIDUES=PASS '.wp_json_encode($counts)."\n";

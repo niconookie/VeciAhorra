@@ -27,10 +27,13 @@ final class ZonalStoresPage
     public function enqueueAssets(string $hookSuffix): void
     {
         if ($this->pageHook === null || $hookSuffix !== $this->pageHook || ! $this->authorized()) return;
-        wp_enqueue_style('veciahorra-zonal-stores-admin', VA_PLUGIN_URL . 'assets/admin/css/zonal-stores.css', [], Config::PLUGIN_VERSION);
-        wp_enqueue_script('veciahorra-zonal-stores-admin', VA_PLUGIN_URL . 'assets/admin/js/modules/zonal-stores/app.js', [], Config::PLUGIN_VERSION, true);
+        wp_enqueue_style('veciahorra-zonal-stores-admin', VA_PLUGIN_URL . 'assets/admin/css/zonal-stores.css', [], $this->assetVersion('assets/admin/css/zonal-stores.css'));
+        wp_enqueue_style('veciahorra-zonal-sales-admin', VA_PLUGIN_URL . 'assets/admin/css/zonal-sales.css', ['veciahorra-zonal-stores-admin'], $this->assetVersion('assets/admin/css/zonal-sales.css'));
+        wp_enqueue_script('veciahorra-zonal-stores-admin', VA_PLUGIN_URL . 'assets/admin/js/modules/zonal-stores/app.js', [], $this->assetVersion('assets/admin/js/modules/zonal-stores/app.js'), true);
+        wp_enqueue_script('veciahorra-zonal-sales-admin', VA_PLUGIN_URL . 'assets/admin/js/modules/zonal-stores/sales.js', ['veciahorra-zonal-stores-admin'], $this->assetVersion('assets/admin/js/modules/zonal-stores/sales.js'), true);
         wp_add_inline_script('veciahorra-zonal-stores-admin', 'window.VeciAhorraZonalStores=' . wp_json_encode([
             'restUrl' => esc_url_raw(rest_url('veciahorra/v1/zonal/stores')),
+            'salesUrl' => esc_url_raw(rest_url('veciahorra/v1/zonal/sales')),
             'nonce' => wp_create_nonce('wp_rest'),
         ]) . ';', 'before');
     }
@@ -44,5 +47,11 @@ final class ZonalStoresPage
     private function authorized(): bool
     {
         return current_user_can('manage_options') || current_user_can(ZonalAdminRole::CAPABILITY_READ);
+    }
+
+    private function assetVersion(string $relativePath): string
+    {
+        $modified = filemtime(VA_PLUGIN_PATH . $relativePath);
+        return Config::PLUGIN_VERSION . '.' . ($modified === false ? '0' : (string) $modified);
     }
 }
