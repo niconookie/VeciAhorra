@@ -15,6 +15,9 @@ if (! defined('ABSPATH')) {
         <button type="button" class="page-title-action">
             <?= esc_html__('Nuevo inventario', 'veciahorra'); ?>
         </button>
+        <a class="page-title-action" href="<?= esc_url(admin_url('admin.php?page=veciahorra-inventory-import')); ?>">
+            <?= esc_html__('Carga masiva CSV', 'veciahorra'); ?>
+        </a>
     </header>
 
     <hr class="wp-header-end">
