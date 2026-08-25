@@ -152,14 +152,14 @@
         }
 
         function quickAdd(product, button, message) {
-            var inventoryId = Number(product && product.single_inventory_id);
-            if (!Number.isInteger(inventoryId) || inventoryId <= 0 || Number(product.eligible_offers) !== 1) {
+            var offerToken = product && typeof product.single_offer_token === 'string' ? product.single_offer_token : '';
+            if (!/^[A-Za-z0-9_-]{40,512}$/.test(offerToken) || Number(product.eligible_offers) !== 1) {
                 return Promise.reject(new Error('Debes seleccionar una opción disponible.'));
             }
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
             message.textContent = 'Agregando al carrito…';
-            return config.api.post('/cart/items', {inventory_id: inventoryId, quantity: 1}, cartOptions())
+            return config.api.post('/cart/items', {offer_token: offerToken, quantity: 1}, cartOptions())
                 .then(function () { return config.api.get('/cart', cartOptions()); })
                 .then(function (response) {
                     updateCartBadge(response);

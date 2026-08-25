@@ -32,6 +32,7 @@ final class HomepageProductReadRepository
                 AND i.stock>0 AND i.price>0
              INNER JOIN {$prefix}stores s
                 ON s.id=i.minimarket_id AND s.id>0 AND s.status='active'
+                AND s.onboarding_status='complete' AND s.approved_at IS NOT NULL
              INNER JOIN {$prefix}store_service_zones sz
                 ON sz.store_id=s.id AND sz.zone_id=%d
              INNER JOIN {$prefix}service_zones z

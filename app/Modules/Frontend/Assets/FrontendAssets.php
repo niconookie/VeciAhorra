@@ -63,7 +63,7 @@ final class FrontendAssets
             self::STYLE_HANDLE,
             $baseUrl . 'css/veciahorra-frontend.css',
             [],
-            Config::PLUGIN_VERSION
+            $this->contentVersion('assets/frontend/css/veciahorra-frontend.css')
         );
         wp_register_style(
             self::HOMEPAGE_HERO_STYLE_HANDLE,
@@ -108,7 +108,7 @@ final class FrontendAssets
             self::CATALOG_SCRIPT_HANDLE,
             $baseUrl . 'js/veciahorra-catalog.js',
             [self::SCRIPT_HANDLE, self::PRODUCT_CARD_SCRIPT_HANDLE],
-            Config::PLUGIN_VERSION,
+            $this->contentVersion('assets/frontend/js/veciahorra-catalog.js'),
             true
         );
         wp_register_script(
@@ -122,14 +122,14 @@ final class FrontendAssets
             self::CART_SCRIPT_HANDLE,
             $baseUrl . 'js/veciahorra-cart.js',
             [self::SCRIPT_HANDLE],
-            Config::PLUGIN_VERSION,
+            $this->contentVersion('assets/frontend/js/veciahorra-cart.js'),
             true
         );
         wp_register_script(
             self::CHECKOUT_SCRIPT_HANDLE,
             $baseUrl . 'js/veciahorra-checkout.js',
             [self::SCRIPT_HANDLE],
-            Config::PLUGIN_VERSION,
+            $this->contentVersion('assets/frontend/js/veciahorra-checkout.js'),
             true
         );
         wp_register_style(

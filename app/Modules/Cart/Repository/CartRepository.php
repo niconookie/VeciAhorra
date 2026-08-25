@@ -94,7 +94,9 @@ final class CartRepository extends Repository
                         products.id AS resolved_product_id,
                         products.status AS product_status,
                         stores.id AS resolved_minimarket_id,
-                        stores.status AS minimarket_status
+                        stores.status AS minimarket_status,
+                        stores.onboarding_status AS minimarket_onboarding_status,
+                        stores.approved_at AS minimarket_approved_at
                      FROM %s AS inventory
                      LEFT JOIN %s AS products
                        ON products.id = inventory.product_id

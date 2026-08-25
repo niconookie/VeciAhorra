@@ -9,10 +9,12 @@ use Throwable;
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Cart\Service\CartService;
+use VeciAhorra\Modules\Catalog\Security\PublicOfferToken;
+use VeciAhorra\Modules\Sectorization\CurrentSector;
 
 final class CartController
 {
-    public function __construct(private CartService $service)
+    public function __construct(private CartService $service, private PublicOfferToken $offerTokens, private CurrentSector $currentSector)
     {
     }
 
@@ -34,10 +36,16 @@ final class CartController
     public function store(array $payload): array
     {
         try {
+            $reference = $this->offerTokens->resolve(
+                (string) ($payload['offer_token'] ?? ''),
+                $payload
+            );
+            if ($reference['sector_id'] !== $this->currentSector->id()) throw new InvalidArgumentException('La oferta no está disponible en el sector actual.');
             $result = $this->service->addItem(
                 $payload,
-                (int) ($payload['inventory_id'] ?? 0),
-                (int) ($payload['quantity'] ?? 0)
+                $reference['inventory_id'],
+                (int) ($payload['quantity'] ?? 0),
+                $reference['product_id']
             );
 
             return ['success' => true, 'data' => $result];

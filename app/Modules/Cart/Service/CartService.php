@@ -18,7 +18,8 @@ final class CartService
     public function addItem(
         array $owner,
         int $inventoryId,
-        int $quantity
+        int $quantity,
+        ?int $expectedProductId = null
     ): array
     {
         $this->assertPositive($inventoryId, 'inventory_id');
@@ -55,6 +56,14 @@ final class CartService
             $inventoryId,
             $totalQuantity
         );
+        if (
+            $expectedProductId !== null
+            && (int) $inventory['product_id'] !== $expectedProductId
+        ) {
+            throw new InvalidArgumentException(
+                'La oferta no corresponde al producto solicitado.'
+            );
+        }
 
         if ($existing !== null) {
             $updated = $this->repository->updateQuantity(
@@ -111,6 +120,9 @@ final class CartService
         $items = $userId !== null
             ? $this->repository->findPublicByUser($userId)
             : $this->repository->findPublicBySession($sessionId);
+        $ownerScope = $userId !== null
+            ? 'user|' . $userId
+            : 'session|' . $sessionId;
         $imageIds = [];
         $totalCents = 0;
 
@@ -161,6 +173,12 @@ final class CartService
                 ? null
                 : $this->formatCents($subtotalCents);
             $item['sector_compatible'] = isset($allowedSectorStores[(int) ($item['minimarket_id'] ?? 0)]);
+            $item['offer_group'] = hash_hmac(
+                'sha256',
+                $ownerScope . '|cart-store|' . (string) ($item['minimarket_id'] ?? 0),
+                wp_salt('auth')
+            );
+            unset($item['inventory_id'], $item['minimarket_id'], $item['session_id'], $item['user_id']);
 
             if (
                 $subtotalCents !== null
@@ -318,6 +336,8 @@ final class CartService
         if (
             $resolvedMinimarketId !== $minimarketId
             || ($inventory['minimarket_status'] ?? null) !== 'active'
+            || ($inventory['minimarket_onboarding_status'] ?? null) !== 'complete'
+            || empty($inventory['minimarket_approved_at'])
         ) {
             throw new InvalidArgumentException(
                 'El minimarket asociado no esta disponible.'

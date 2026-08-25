@@ -70,12 +70,16 @@
 .veciahorra-frontend .va-product-detail__description,
 .veciahorra-frontend .va-help-text { color: var(--va-color-muted); }
 .veciahorra-frontend .va-offer-section { display: grid; gap: var(--va-space-3); }
+.veciahorra-frontend .va-offer-modes { align-items: center; display: flex; flex-wrap: wrap; gap: var(--va-space-2); }
+.veciahorra-frontend .va-offer-modes span { color: var(--va-color-muted); flex-basis: 100%; }
 .veciahorra-frontend .va-offer-section h2,
 .veciahorra-frontend .va-selection-summary h2 { margin: 0; }
 .veciahorra-frontend .va-offer-grid { display: grid; gap: var(--va-space-3); grid-template-columns: minmax(0, 1fr); }
 .veciahorra-frontend .va-offer-card { align-items: flex-start; background: var(--va-color-background); border: 2px solid var(--va-color-border); border-radius: var(--va-radius-md); color: var(--va-color-text); display: grid; gap: var(--va-space-2); min-height: 7rem; padding: var(--va-space-3); text-align: left; width: 100%; }
 .veciahorra-frontend button.va-offer-card { cursor: pointer; }
 .veciahorra-frontend .va-offer-card--selected { border-color: var(--va-color-primary); box-shadow: 0 0 0 0.125rem color-mix(in srgb, var(--va-color-primary) 25%, transparent); }
+.veciahorra-frontend .va-offer-card--best-price { border-color: var(--va-color-success); }
+.veciahorra-frontend .va-offer-card__badge { color: var(--va-color-success); font-weight: 700; }
 .veciahorra-frontend .va-offer-card__choice { color: var(--va-color-primary); font-weight: 700; }
 .veciahorra-frontend .va-offer-card--selected .va-offer-card__choice { color: var(--va-color-success); }
 .veciahorra-frontend button.va-offer-card:disabled { cursor: wait; opacity: 0.72; }

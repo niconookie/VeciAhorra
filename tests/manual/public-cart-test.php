@@ -5,6 +5,7 @@ declare(strict_types=1);
 use VeciAhorra\Core\Container;
 use VeciAhorra\Modules\Cart\Repository\CartRepository;
 use VeciAhorra\Modules\Cart\Service\CartService;
+use VeciAhorra\Modules\Catalog\Security\PublicOfferToken;
 use VeciAhorra\Modules\Frontend\Assets\FrontendAssets;
 use VeciAhorra\Modules\Frontend\Controller\FrontendController;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
@@ -74,8 +75,8 @@ try {
     ]);
     assertPublicCart(! is_wp_error($createdUser), 'No se creó cliente aislado para el carrito.');
     $customerId = (int) $createdUser;
-    $session = $token . '-guest';
-    $otherSession = $token . '-other';
+    $session = hash('sha256', $token . '-guest');
+    $otherSession = hash('sha256', $token . '-other');
     $storeId = $stores->create([
         'business_name' => 'Minimarket Publico', 'legal_name' => 'Legal',
         'owner_name' => 'Owner', 'rut' => '1-9',
@@ -113,11 +114,16 @@ try {
 
     $empty = publicCartRequest('GET', '/veciahorra/v1/cart', $session);
     assertPublicCartSame(200, $empty->get_status());
+    assertPublicCart(
+        str_contains((string) ($empty->get_headers()['Cache-Control'] ?? ''), 'private')
+            && str_contains((string) ($empty->get_headers()['Cache-Control'] ?? ''), 'no-store'),
+        'El carrito anónimo permite caché compartida.'
+    );
     assertPublicCartSame([], $empty->get_data()['data']);
     assertPublicCartSame('0.00', $empty->get_data()['total']);
 
     $withoutSector = publicCartRequest('POST', $itemsRoute, $session, [
-        'inventory_id' => $inventoryA, 'quantity' => 1,
+        'offer_token' => (new PublicOfferToken())->issue($inventoryA,$productA,999999,['session_id'=>$session,'user_id'=>null]), 'quantity' => 1,
     ]);
     assertPublicCartSame(422, $withoutSector->get_status());
     assertPublicCartSame([], publicCartRequest('GET', '/veciahorra/v1/cart', $session)->get_data()['data']);
@@ -125,7 +131,7 @@ try {
     $zoneId = sectorizationFixtureSelect([$storeId], $token);
 
     $created = publicCartRequest('POST', $itemsRoute, $session, [
-        'inventory_id' => $inventoryA, 'quantity' => 3,
+        'offer_token' => (new PublicOfferToken())->issue($inventoryA,$productA,$zoneId,['session_id'=>$session,'user_id'=>null]), 'quantity' => 3,
     ]);
     assertPublicCartSame(201, $created->get_status());
     $itemA = (int) $created->get_data()['data']['id'];
@@ -133,8 +139,7 @@ try {
     assertPublicCartSame('0.30', $single['data'][0]['subtotal']);
     assertPublicCartSame('0.30', $single['total']);
     foreach ([
-        'id', 'session_id', 'user_id', 'inventory_id', 'product_id',
-        'minimarket_id', 'quantity', 'unit_price_snapshot', 'created_at',
+        'id', 'product_id', 'offer_group', 'quantity', 'unit_price_snapshot', 'created_at',
         'updated_at', 'product_name', 'product_image_id',
         'product_image_url', 'subtotal', 'sector_compatible',
     ] as $field) {
@@ -144,17 +149,7 @@ try {
     assertPublicCartSame(true, $single['data'][0]['sector_compatible']);
     assertPublicCartSame(null, $single['data'][0]['product_image_id']);
     assertPublicCartSame(null, $single['data'][0]['product_image_url']);
-    $legacyItem = $cartRepository->findBySession($session)[0];
-    foreach ([
-        'id', 'session_id', 'user_id', 'inventory_id', 'product_id',
-        'minimarket_id', 'quantity', 'unit_price_snapshot', 'created_at',
-        'updated_at',
-    ] as $legacyField) {
-        assertPublicCartSame(
-            $legacyItem[$legacyField],
-            $single['data'][0][$legacyField]
-        );
-    }
+    foreach (['session_id','user_id','inventory_id','minimarket_id','minimarket_name'] as $privateField) assertPublicCart(!array_key_exists($privateField,$single['data'][0]),"Filtración pública: {$privateField}");
 
     $cartService->addItem(['session_id' => $session, 'user_id' => null], $inventoryB, 2);
     $multiple = publicCartRequest('GET', '/veciahorra/v1/cart', $session)->get_data();
@@ -199,7 +194,7 @@ try {
     $unresolved = publicCartRequest('GET', '/veciahorra/v1/cart', $session)->get_data();
     $stale = $unresolved['data'][2];
     assertPublicCartSame($missingProductId, (int) $stale['product_id']);
-    assertPublicCartSame($missingStoreId, (int) $stale['minimarket_id']);
+    assertPublicCart(!isset($stale['minimarket_id'],$stale['inventory_id']), 'El carrito público expone referencias internas en filas obsoletas.');
     assertPublicCartSame(null, $stale['product_name']);
     assertPublicCartSame(false, $stale['sector_compatible']);
     assertPublicCartSame('6.66', $stale['subtotal']);
@@ -258,7 +253,7 @@ try {
     $cartService->addItem(['session_id' => null, 'user_id' => $customerId], $inventoryB, 1);
     $userCart = rest_do_request(new WP_REST_Request('GET', '/veciahorra/v1/cart'))->get_data();
     assertPublicCartSame(1, count($userCart['data']));
-    assertPublicCartSame($customerId, (int) $userCart['data'][0]['user_id']);
+    assertPublicCart(!isset($userCart['data'][0]['user_id']), 'El carrito autenticado expone user_id.');
     wp_set_current_user(0);
 
     assertPublicCartSame(200, publicCartRequest('DELETE', $itemsRoute . '/' . $itemA, $session)->get_status());

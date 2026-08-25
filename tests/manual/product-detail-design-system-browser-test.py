@@ -76,8 +76,8 @@ INTERCEPT = r"""
   ));
   const productId = 1000000852;
   const offers = [
-    {inventory_id: 1000000101, price: '1250.00', stock: 8},
-    {inventory_id: 1000000102, price: '1390.00', stock: 4}
+    {offer_token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', price: '1250.00', availability: 'available'},
+    {offer_token: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', price: '1390.00', availability: 'available'}
   ];
   const product = currentOffers => ({
     id: productId,
@@ -113,9 +113,9 @@ INTERCEPT = r"""
       }
       if (state === 'load-error') return response({success: false, error: {code: 'catalog_unavailable', message: 'Error controlado de ficha.'}}, 503);
       if (state === 'empty') return response({success: true, data: product([])});
-      if (state === 'missing-inventory') return response({success: true, data: product([{price:'1250.00',stock:8}])});
-      if (state === 'invalid-price') return response({success: true, data: product([{inventory_id:1000000101,price:'0.00',stock:8}])});
-      if (state === 'invalid-stock') return response({success: true, data: product([{inventory_id:1000000101,price:'1250.00',stock:0}])});
+      if (state === 'missing-inventory') return response({success: true, data: product([{price:'1250.00',availability:'available'}])});
+      if (state === 'invalid-price') return response({success: true, data: product([{offer_token:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',price:'0.00',availability:'available'}])});
+      if (state === 'invalid-stock') return response({success: true, data: product([{offer_token:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',price:'1250.00',availability:'unavailable'}])});
       if (window.__vaOffersMode === 'stale') return response({success: true, data: product([offers[1]])});
       return response({success: true, data: product(offers)});
     }
@@ -249,8 +249,8 @@ try:
 
     cards = root.find_elements(By.CSS_SELECTOR, "button.va-card.va-offer-card[role='radio']")
     check(len(cards) == 2, "El frontend inventó u omitió ofertas.")
-    check([card.get_attribute("data-inventory-id") for card in cards] == ["1000000101", "1000000102"], "data-inventory-id incorrecto.")
-    check([card.find_element(By.CSS_SELECTOR, ".va-offer-card__store").text for card in cards] == ["Oferta 1", "Oferta 2"], "Neutral offer numbering mismatch.")
+    check([card.get_attribute("data-offer-token") for card in cards] == ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"], "data-offer-token incorrecto.")
+    check([card.find_element(By.CSS_SELECTOR, ".va-offer-card__store").text for card in cards] == ["Opción A", "Opción B"], "Neutral offer numbering mismatch.")
     check("Selecciona la oferta que más te convenga." in root.text, "Public offer instruction mismatch.")
     add = root.find_element(By.CSS_SELECTOR, "[data-va-add-to-cart]")
     check(not add.is_enabled(), "Agregar habilitado sin selección.")
@@ -260,7 +260,7 @@ try:
     click_visible(add)
     wait.until(lambda current: visible(root, "[data-va-cart-success]"))
     payload = driver.execute_script("return window.__vaDetailCartPayload")
-    check(payload == {"inventory_id": 1000000101, "quantity": 1}, "Payload de carrito incorrecto: " + repr(payload))
+    check(payload == {"offer_token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "quantity": 1}, "Payload de carrito incorrecto: " + repr(payload))
     check(driver.execute_script("return window.__vaDetailPostCount") == 1, "Cantidad de POST inesperada.")
     result["payload"] = "PASS"
     result["states"]["cart-success"] = "PASS"

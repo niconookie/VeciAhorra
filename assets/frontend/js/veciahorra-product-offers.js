@@ -8,32 +8,30 @@
     }
 
     function normalizeOffer(productId, offer) {
-        var inventoryId;
+        var offerToken;
         var price;
-        var stock;
 
         if (!isPositiveInteger(productId) || !offer || typeof offer !== 'object') {
             return null;
         }
 
-        inventoryId = Number(offer.inventory_id);
+        offerToken = typeof offer.offer_token === 'string' ? offer.offer_token : '';
         price = Number(offer.price);
-        stock = Number(offer.stock);
 
         if (
-            !isPositiveInteger(inventoryId)
+            !/^[A-Za-z0-9_-]{40,512}$/.test(offerToken)
             || !Number.isFinite(price)
             || price <= 0
-            || !isPositiveInteger(stock)
+            || offer.availability !== 'available'
         ) {
             return null;
         }
 
         return {
             product_id: productId,
-            inventory_id: inventoryId,
+            offer_token: offerToken,
             unit_price: price,
-            available_stock: stock
+            availability: 'Disponible'
         };
     }
 
@@ -77,7 +75,7 @@
                 var normalized = normalizeOffer(productId, offer);
 
                 if (normalized) {
-                    normalized.offer_label = 'Oferta ' + (validOffers.length + 1);
+                    normalized.offer_label = 'Opción ' + String.fromCharCode(65 + validOffers.length);
                     validOffers.push(normalized);
                 } else {
                     invalidOffers.push(offer);
@@ -91,10 +89,10 @@
             state.selection = previousId === null
                 ? null
                 : validOffers.find(function (offer) {
-                    return offer.inventory_id === previousId;
+                    return offer.offer_token === previousId;
                 }) || null;
             state.selectedInventoryId = state.selection
-                ? state.selection.inventory_id
+                ? state.selection.offer_token
                 : null;
 
             if (previousId !== null && state.selection === null) {
@@ -108,8 +106,8 @@
             return snapshot();
         }
 
-        function select(inventoryId) {
-            var normalizedId = Number(inventoryId);
+        function select(offerToken) {
+            var normalizedId = String(offerToken || '');
             var offer;
 
             if (state.selectionLocked) {
@@ -117,7 +115,7 @@
             }
 
             offer = state.offers.find(function (candidate) {
-                return candidate.inventory_id === normalizedId;
+                return candidate.offer_token === normalizedId;
             }) || null;
 
             if (!offer) {
@@ -131,11 +129,11 @@
                 return snapshot();
             }
 
-            if (state.selectedInventoryId === offer.inventory_id) {
+            if (state.selectedInventoryId === offer.offer_token) {
                 return snapshot();
             }
 
-            state.selectedInventoryId = offer.inventory_id;
+            state.selectedInventoryId = offer.offer_token;
             state.selection = offer;
             state.error = null;
             notify();
@@ -157,7 +155,7 @@
 
         function cartPayload() {
             return state.selection
-                ? { inventory_id: state.selection.inventory_id, quantity: 1 }
+                ? { offer_token: state.selection.offer_token, quantity: 1 }
                 : null;
         }
 
@@ -212,7 +210,7 @@
         button.className = 'va-card va-offer-card' + (selected ? ' va-offer-card--selected' : '');
         button.setAttribute('role', 'radio');
         button.setAttribute('aria-checked', selected ? 'true' : 'false');
-        button.setAttribute('data-inventory-id', String(offer.inventory_id));
+        button.setAttribute('data-offer-token', offer.offer_token);
         button.disabled = locked;
         button.setAttribute('aria-disabled', locked ? 'true' : 'false');
         button.tabIndex = selected ? 0 : -1;
@@ -222,7 +220,7 @@
         choice.className = 'va-offer-card__choice';
         text(store, offer.offer_label);
         text(price, money(offer.unit_price));
-        text(stock, 'Stock disponible: ' + offer.available_stock);
+        text(stock, offer.availability);
         text(choice, selected ? '● Seleccionado' : '○ Seleccionar');
         button.append(store, price, stock, choice);
 
@@ -263,6 +261,7 @@
         var isAddingToCart = false;
         var renderedSelectionId = null;
         var reloadSequence = 0;
+        var displayMode = 'price';
 
         function renderProductImage(product) {
             var rawUrl = product && typeof product.image === 'string' ? product.image.trim() : '';
@@ -302,9 +301,9 @@
 
         function updateCartControls(state) {
             var selectedId = state.selectedInventoryId;
-            var selectedExists = isPositiveInteger(selectedId)
+            var selectedExists = typeof selectedId === 'string' && /^[A-Za-z0-9_-]{40,512}$/.test(selectedId)
                 && state.offers.some(function (offer) {
-                    return offer.inventory_id === selectedId;
+                    return offer.offer_token === selectedId;
                 });
 
             addButton.disabled = !selectedExists || isAddingToCart;
@@ -323,8 +322,15 @@
 
             list.replaceChildren();
             state.offers.forEach(function (offer, index) {
-                var selected = offer.inventory_id === state.selectedInventoryId;
+                var selected = offer.offer_token === state.selectedInventoryId;
                 var button = createOfferButton(offer, selected, state.selectionLocked);
+
+                if (displayMode === 'price' && index === 0) {
+                    button.classList.add('va-offer-card--best-price');
+                    button.append(document.createElement('span'));
+                    button.lastChild.className = 'va-offer-card__badge';
+                    button.lastChild.textContent = 'Precio más conveniente';
+                }
 
                 if (state.selectedInventoryId === null && index === 0) {
                     button.tabIndex = 0;
@@ -343,7 +349,7 @@
                 text(status, 'Oferta seleccionada.');
                 text(root.querySelector('[data-va-selected-store]'), state.selection.offer_label);
                 text(root.querySelector('[data-va-selected-price]'), money(state.selection.unit_price));
-                text(root.querySelector('[data-va-selected-stock]'), state.selection.available_stock);
+                text(root.querySelector('[data-va-selected-stock]'), state.selection.availability);
             } else if (state.error) {
                 text(status, state.error.message);
             } else {
@@ -364,12 +370,12 @@
         }
 
         function selectButton(button, focus) {
-            var inventoryId = Number(button.getAttribute('data-inventory-id'));
-            var state = store.select(inventoryId);
+            var offerToken = button.getAttribute('data-offer-token');
+            var state = store.select(offerToken);
             var selected;
 
             if (focus && state.selectedInventoryId !== null) {
-                selected = list.querySelector('[data-inventory-id="' + state.selectedInventoryId + '"]');
+                selected = Array.from(list.querySelectorAll('[data-offer-token]')).find(function(candidate){return candidate.getAttribute('data-offer-token')===state.selectedInventoryId;});
 
                 if (selected) {
                     selected.focus();
@@ -416,6 +422,9 @@
         });
 
         store.subscribe(render);
+        root.querySelectorAll('[data-va-offer-mode]').forEach(function(button){
+            button.addEventListener('click',function(){displayMode=button.getAttribute('data-va-offer-mode')==='free'?'free':'price';render(store.getState());});
+        });
 
         function cartRequestOptions() {
             var cart = config.cart || {};
@@ -449,9 +458,9 @@
         function addToCart() {
             var state = store.getState();
             var selectedId = state.selectedInventoryId;
-            var selectedExists = isPositiveInteger(selectedId)
+            var selectedExists = typeof selectedId === 'string' && /^[A-Za-z0-9_-]{40,512}$/.test(selectedId)
                 && state.offers.some(function (offer) {
-                    return offer.inventory_id === selectedId;
+                    return offer.offer_token === selectedId;
                 });
             var payload;
             var operationSelection;
@@ -465,8 +474,8 @@
 
             if (
                 !payload
-                || !isPositiveInteger(payload.inventory_id)
-                || payload.inventory_id !== selectedId
+                || typeof payload.offer_token !== 'string'
+                || payload.offer_token !== selectedId
                 || payload.quantity !== 1
                 || Object.keys(payload).length !== 2
             ) {
@@ -480,7 +489,7 @@
             store.setSelectionLocked(true);
 
             return config.api.post('/cart/items', {
-                inventory_id: selectedId,
+                offer_token: selectedId,
                 quantity: 1
             }, cartRequestOptions())
                 .then(function (response) {
@@ -496,9 +505,7 @@
                     cartSuccess.hidden = false;
                     text(
                         cartSuccess,
-                        'Producto agregado al carrito desde '
-                            + (operationSelection.minimarket || 'el minimarket seleccionado')
-                            + '.'
+                        'Producto agregado al carrito desde la opción seleccionada.'
                     );
                     viewCart.hidden = false;
                     continueShopping.hidden = false;

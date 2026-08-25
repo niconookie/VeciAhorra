@@ -115,13 +115,12 @@
         items.forEach(function (item) {
             var itemId = positiveInteger(item && item.id);
             var productId = positiveInteger(item && item.product_id);
-            var inventoryId = positiveInteger(item && item.inventory_id);
-            var minimarketId = positiveInteger(item && item.minimarket_id);
+            var offerGroup = item && typeof item.offer_group === 'string' ? item.offer_group : '';
             var quantity = positiveInteger(item && item.quantity);
             var unitCents = decimalToCents(item && item.unit_price_snapshot);
             var receivedSubtotal = decimalToCents(item && item.subtotal);
             var subtotalCents = null;
-            var key = minimarketId === null ? 0 : minimarketId;
+            var key = offerGroup;
             var group;
             var domainInvalid = allowDomainInvalid === true && item.valid === false;
 
@@ -140,14 +139,13 @@
             if (
                 itemId === null
                 || productId === null
-                || inventoryId === null
-                || minimarketId === null
+                || offerGroup === ''
                 || quantity === null
-                || inventories.has(inventoryId)
+                || inventories.has(itemId)
             ) {
                 subtotalCents = null;
             } else {
-                inventories.add(inventoryId);
+                inventories.add(itemId);
             }
 
             if (!groups.has(key)) {
@@ -162,7 +160,7 @@
                 item: item,
                 itemId: itemId,
                 productId: productId,
-                inventoryId: inventoryId,
+                inventoryId: itemId,
                 quantity: quantity,
                 unitCents: unitCents,
                 subtotalCents: subtotalCents
@@ -194,9 +192,9 @@
 
         return {
             groups: Array.from(groups.values()).sort(function (a, b) {
-                return a.id - b.id;
+                return String(a.id).localeCompare(String(b.id));
             }).map(function (group, index) {
-                group.label = 'Oferta ' + (index + 1);
+                group.label = 'Opción ' + String.fromCharCode(65 + index);
                 return group;
             }),
             totalCents: totalCents,

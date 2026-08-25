@@ -5,12 +5,17 @@ declare(strict_types=1);
 use VeciAhorra\Core\Container;
 use VeciAhorra\Modules\Cart\Requests\CartItemCreateRequest;
 use VeciAhorra\Modules\Cart\Service\CartService;
+use VeciAhorra\Modules\Catalog\Security\PublicOfferToken;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_save_path(sys_get_temp_dir());
+}
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+require_once __DIR__ . '/support/SectorizationFixture.php';
 
 function assertCartHardening(bool $condition, string $message): void
 {
@@ -155,10 +160,17 @@ try {
         )->get_status()
     );
 
-    $session = $token . '-valid';
+    $zoneId = sectorizationFixtureSelect([$activeStore], $token);
+    $session = hash('sha256', $token . '-valid');
+    $offerToken = (new PublicOfferToken())->issue(
+        $validInventory,
+        $activeProduct,
+        $zoneId,
+        ['session_id' => $session, 'user_id' => null]
+    );
     $forged = [
-        'inventory_id' => $validInventory, 'quantity' => 3,
-        'product_id' => 1, 'minimarket_id' => 2, 'unit_price' => 0.01,
+        'offer_token' => $offerToken, 'quantity' => 3,
+        'product_id' => 1, 'unit_price' => 0.01,
         'unit_price_snapshot' => 0.02, 'stock' => 999999,
         'subtotal' => 0.03, 'total' => 0.04, 'status' => 'deleted',
     ];
@@ -176,7 +188,7 @@ try {
 
     assertCartHardeningSame(
         422,
-        cartHardeningRequest('POST', $itemsRoute, ['inventory_id' => $validInventory, 'quantity' => 3], $session)->get_status()
+        cartHardeningRequest('POST', $itemsRoute, ['offer_token' => $offerToken, 'quantity' => 3], $session)->get_status()
     );
     assertCartHardeningSame(
         3,
@@ -187,7 +199,7 @@ try {
         $wpdb->get_var($wpdb->prepare('SELECT unit_price_snapshot FROM ' . $wpdb->prefix . 'va_cart_items WHERE id = %d', $itemId))
     );
 
-    $otherSession = $token . '-other-owner';
+    $otherSession = hash('sha256', $token . '-other-owner');
     assertCartHardeningSame(
         404,
         cartHardeningRequest('PATCH', $itemsRoute . '/' . $itemId, ['quantity' => 1], $otherSession)->get_status()
@@ -266,14 +278,15 @@ try {
         }
     }
 
-    $request = new CartItemCreateRequest(['inventory_id' => $validInventory, 'quantity' => 1]);
+    $request = new CartItemCreateRequest(['offer_token' => $offerToken, 'quantity' => 1]);
     assertCartHardeningSame(
-        ['inventory_id' => $validInventory, 'quantity' => 1],
+        ['offer_token' => $offerToken, 'quantity' => 1],
         $request->validated()
     );
 
     echo "PASS cart-validation-hardening-test\n";
 } finally {
+    sectorizationFixtureClearCurrent();
     wp_set_current_user(0);
     $wpdb->query('ROLLBACK');
 }

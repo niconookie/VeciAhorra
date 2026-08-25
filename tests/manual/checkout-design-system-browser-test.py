@@ -69,8 +69,8 @@ INTERCEPT = r"""
  window.__vaCalls=[];window.__vaStatusCount=0;window.__vaLoadingResolve=null;
  const response=(p,s=200)=>Promise.resolve(new Response(JSON.stringify(p),{status:s,headers:{'Content-Type':'application/json'}}));
  const items=[
- {id:701,inventory_id:901,product_id:501,minimarket_id:801,product_name:'Arroz efímero',quantity:1,unit_price_snapshot:'5000.00',subtotal:'5000.00',valid:true,errors:[]},
- {id:702,inventory_id:902,product_id:502,minimarket_id:802,product_name:'Aceite efímero',quantity:1,unit_price_snapshot:'4500.00',subtotal:'4500.00',valid:true,errors:[]}];
+ {id:701,product_id:501,offer_group:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',product_name:'Arroz efímero',quantity:1,unit_price_snapshot:'5000.00',subtotal:'5000.00',valid:true,errors:[]},
+ {id:702,product_id:502,offer_group:'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',product_name:'Aceite efímero',quantity:1,unit_price_snapshot:'4500.00',subtotal:'4500.00',valid:true,errors:[]}];
  const low=[Object.assign({},items[0],{unit_price_snapshot:'7000.00',subtotal:'7000.00'})];
  const validation=(rows,total,valid=true)=>({success:true,data:{valid,items:rows,errors:valid?[]:[{code:'price_changed',message:'Precio modificado.',cart_item_id:701}],summary:{item_count:rows.length,valid_item_count:valid?rows.length:0,invalid_item_count:valid?0:rows.length,total}}});
  window.fetch=function(input,init){
@@ -174,7 +174,7 @@ try:
 
     root=auth_state(driver,wait,"loading");check(visible(root,"[data-va-checkout-loading]"),"Loading ausente.");wait.until(lambda d:d.execute_script("return typeof window.__vaLoadingResolve==='function'"));driver.execute_script("window.__vaLoadingResolve()")
     wait.until(lambda d:visible(root,"[data-va-checkout-content]"));result["states"]["loading"]="PASS"
-    check("Mercado Uno" not in root.text and "Mercado Dos" not in root.text and [node.text for node in root.find_elements(By.CSS_SELECTOR,".va-checkout-group h3")]==["Oferta 1","Oferta 2"],"Store identity visible in checkout.")
+    check("Mercado Uno" not in root.text and "Mercado Dos" not in root.text and [node.text for node in root.find_elements(By.CSS_SELECTOR,".va-checkout-group h3")]==["Opción A","Opción B"],"Store identity visible in checkout.")
     result["sha256"]=asset_check(driver,driver.get_log("performance"))
     check(driver.execute_script("return window.VeciAhorra.currentUser.loggedIn") is True,"Identidad falsa.")
     check(driver.execute_script("return window.VeciAhorra.currentUser.id")==user["id"],"ID incorrecto.")

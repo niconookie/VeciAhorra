@@ -225,7 +225,7 @@ final class CartRoutes
 
     private function validationError(string $message): WP_REST_Response
     {
-        return new WP_REST_Response([
+        return $this->privateResponse([
             'success' => false,
             'error' => [
                 'code' => 'validation_error',
@@ -238,7 +238,7 @@ final class CartRoutes
         string $code,
         string $message
     ): WP_REST_Response {
-        return new WP_REST_Response([
+        return $this->privateResponse([
             'success' => false,
             'error' => ['code' => $code, 'message' => $message],
         ], 400);
@@ -256,6 +256,15 @@ final class CartRoutes
                 default => 500,
             };
 
-        return new WP_REST_Response($result, $status);
+        return $this->privateResponse($result, $status);
+    }
+
+    private function privateResponse(array $data, int $status): WP_REST_Response
+    {
+        $response = new WP_REST_Response($data, $status);
+        $response->header('Cache-Control', 'private, no-store, max-age=0');
+        $response->header('Pragma', 'no-cache');
+
+        return $response;
     }
 }

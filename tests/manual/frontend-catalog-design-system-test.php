@@ -143,7 +143,7 @@ function validateCatalogDesign(array $sources): void
     assertCatalogDesign(str_contains($sources['view'], 'class="va-button va-button--primary va-catalog__apply" type="submit"'), 'CATALOG_PRIMARY_MAPPING');
     assertCatalogDesign(str_contains($sources['view'], 'class="va-button va-button--secondary" type="button" data-va-catalog-reset'), 'CATALOG_SECONDARY_MAPPING');
     assertCatalogDesign(str_contains($sources['product_card'], "el('a', 'va-button va-button--primary va-catalog-card__action', 'Ver producto')") && str_contains($sources['product_card'], "el('a', 'va-catalog-card__action', 'Ver opciones')") && str_contains($sources['product_card'], 'link.href = url;'), 'CATALOG_DETAIL_LINK_REMOVED');
-    assertCatalogDesign(str_contains($sources['script'], "Number(product.eligible_offers) !== 1") && str_contains($sources['script'], "Number(product && product.single_inventory_id)") && str_contains($sources['script'], "config.api.post('/cart/items'"), 'CATALOG_DIRECT_CART_GUARD');
+    assertCatalogDesign(str_contains($sources['script'], "Number(product.eligible_offers) !== 1") && str_contains($sources['script'], "product.single_offer_token") && str_contains($sources['script'], "config.api.post('/cart/items'") && str_contains($sources['script'], 'offer_token: offerToken'), 'CATALOG_DIRECT_CART_GUARD');
     assertCatalogDesign(str_contains($sources['script'], "url.searchParams.set('product_id', id)"), 'CATALOG_PRODUCT_ID_REMOVED');
     assertCatalogDesign(str_contains($sources['view'], '<label for="<?php echo esc_attr($instanceId . \'-search\'); ?>">'), 'CATALOG_LABEL_REMOVED');
     assertCatalogDesign(str_contains($sources['view'], 'role="alert" data-va-catalog-error'), 'CATALOG_ALERT_ROLE_REMOVED');

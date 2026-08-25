@@ -29,6 +29,12 @@ $selectionTitleId = $instanceId . '-selection-title';
     <section class="va-offer-section va-card" data-va-offer-section hidden>
         <h2 id="<?php echo esc_attr($offersLabelId); ?>"><?php esc_html_e('Ofertas disponibles', 'veciahorra'); ?></h2>
         <p class="va-help-text"><?php esc_html_e('Selecciona la oferta que más te convenga.', 'veciahorra'); ?></p>
+        <div class="va-offer-modes" aria-label="Orden de ofertas">
+            <button type="button" class="va-button va-button--secondary" data-va-offer-mode="price"><?php esc_html_e('Precio más conveniente', 'veciahorra'); ?></button>
+            <button type="button" class="va-button va-button--secondary" data-va-offer-mode="free"><?php esc_html_e('Elegir libremente', 'veciahorra'); ?></button>
+            <button type="button" class="va-button va-button--secondary" disabled aria-describedby="<?php echo esc_attr($instanceId . '-distance-help'); ?>"><?php esc_html_e('Cercanía', 'veciahorra'); ?></button>
+            <span id="<?php echo esc_attr($instanceId . '-distance-help'); ?>"><?php esc_html_e('Disponible cuando los minimarkets tengan ubicación validada', 'veciahorra'); ?></span>
+        </div>
         <div class="va-offer-grid" role="radiogroup" aria-labelledby="<?php echo esc_attr($offersLabelId); ?>" data-va-offer-list></div>
         <div class="va-empty-state" data-va-offers-empty hidden>
             <h3 class="va-empty-state__title"><?php esc_html_e('Producto sin ofertas', 'veciahorra'); ?></h3>
@@ -42,7 +48,7 @@ $selectionTitleId = $instanceId . '-selection-title';
         <dl class="va-selection-summary__values" data-va-selection-values hidden>
             <div><dt><?php esc_html_e('Oferta', 'veciahorra'); ?></dt><dd data-va-selected-store></dd></div>
             <div><dt><?php esc_html_e('Precio', 'veciahorra'); ?></dt><dd data-va-selected-price></dd></div>
-            <div><dt><?php esc_html_e('Stock disponible', 'veciahorra'); ?></dt><dd data-va-selected-stock></dd></div>
+            <div><dt><?php esc_html_e('Disponibilidad', 'veciahorra'); ?></dt><dd data-va-selected-stock></dd></div>
         </dl>
     </section>
 

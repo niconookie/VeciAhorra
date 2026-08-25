@@ -209,6 +209,11 @@ try {
         '/veciahorra/v1/catalog/products/' . $targetId
     );
     assertCatalogDetailSame(200, $response->get_status());
+    assertCatalogDetail(
+        str_contains((string) ($response->get_headers()['Cache-Control'] ?? ''), 'private')
+            && str_contains((string) ($response->get_headers()['Cache-Control'] ?? ''), 'no-store'),
+        'La respuesta con tokens permite caché pública.'
+    );
     $data = $response->get_data()['data'] ?? [];
 
     foreach ([
@@ -226,19 +231,15 @@ try {
     assertCatalogDetailSame('5.00', $data['min_price']);
     assertCatalogDetailSame(4, $data['available_minimarkets']);
     assertCatalogDetailSame(4, count($data['offers']));
-    assertCatalogDetailSame(
-        [$lowestId, $tieHighStockFirstId, $tieHighStockSecondId, $tieLowStockId],
-        array_column($data['offers'], 'inventory_id')
-    );
-
     foreach ($data['offers'] as $offer) {
         $keys = array_keys($offer);
         sort($keys);
         assertCatalogDetailSame(
-            ['inventory_id', 'price', 'stock'],
+            ['availability', 'offer_token', 'price'],
             $keys
         );
-        assertCatalogDetail(!isset($offer['minimarket'], $offer['minimarket_id']), 'La oferta expone identidad del minimarket.');
+        assertCatalogDetail(preg_match('/^[A-Za-z0-9_-]{40,512}$/D',(string)$offer['offer_token'])===1, 'La oferta no usa token opaco.');
+        assertCatalogDetail(!isset($offer['inventory_id'],$offer['stock'],$offer['minimarket'], $offer['minimarket_id']), 'La oferta expone identidad o correlación del minimarket.');
     }
     $serializedDetail = wp_json_encode($data);
     assertCatalogDetail(is_string($serializedDetail), 'No se pudo serializar el detalle público.');

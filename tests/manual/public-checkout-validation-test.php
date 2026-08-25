@@ -15,6 +15,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_save_path(sys_get_temp_dir());
 }
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+require_once __DIR__ . '/support/SectorizationFixture.php';
 
 function assertPublicCheckoutValidation(bool $condition, string $message): void
 {
@@ -65,6 +66,7 @@ try {
         'price' => 4000.0, 'stock' => 5, 'status' => 'active',
         'created_at' => $now, 'updated_at' => $now,
     ]);
+    sectorizationFixtureSelect([$storeId], $token);
     $cartService->addItem(
         ['session_id' => $session, 'user_id' => null],
         $inventoryId,
@@ -173,9 +175,13 @@ try {
     $inactiveStorePayload = rest_do_request(
         $inactiveStoreRequest
     )->get_data();
-    assertPublicCheckoutValidationSame(
-        'minimarket_inactive',
-        $inactiveStorePayload['data']['errors'][0]['code'] ?? null
+    assertPublicCheckoutValidation(
+        in_array(
+            'minimarket_inactive',
+            array_column($inactiveStorePayload['data']['errors'] ?? [], 'code'),
+            true
+        ),
+        'La validación no informó el minimarket inactivo.'
     );
 
     assertPublicCheckoutValidationSame(
@@ -195,6 +201,7 @@ try {
 
     echo "PASS public-checkout-validation-test\n";
 } finally {
+    sectorizationFixtureClearCurrent();
     wp_set_current_user(0);
     $wpdb->query('ROLLBACK');
 }

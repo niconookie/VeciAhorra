@@ -162,7 +162,7 @@ try {
     $allowed = [
         'id', 'name', 'slug', 'short_description', 'image', 'category',
         'brand', 'unit', 'min_price', 'available_minimarkets',
-        'eligible_offers', 'single_inventory_id',
+        'eligible_offers', 'single_offer_token',
     ];
     $keys = array_keys($product);
     sort($allowed);
@@ -172,7 +172,7 @@ try {
     assertPublicCatalogSame('8.50', $product['min_price']);
     assertPublicCatalogSame(2, $product['available_minimarkets']);
     assertPublicCatalogSame(2, $product['eligible_offers']);
-    assertPublicCatalogSame(null, $product['single_inventory_id']);
+    assertPublicCatalogSame(null, $product['single_offer_token']);
     assertPublicCatalog(
         is_int($product['available_minimarkets']),
         'El conteo de minimarkets no es entero.'
@@ -189,7 +189,8 @@ try {
     $singleProduct = $singleResponse->get_data()['data'][0] ?? [];
     assertPublicCatalogSame($singleOfferId, $singleProduct['id'] ?? null);
     assertPublicCatalogSame(1, $singleProduct['eligible_offers'] ?? null);
-    assertPublicCatalogSame($singleInventoryId, $singleProduct['single_inventory_id'] ?? null);
+    assertPublicCatalog(is_string($singleProduct['single_offer_token'] ?? null), 'La oferta única no usa token opaco.');
+    assertPublicCatalog(! str_contains((string) $singleProduct['single_offer_token'], (string) $singleInventoryId), 'El token expone Inventory ID.');
 
     $priceOrdered = publicCatalogRequest(
         '/veciahorra/v1/catalog/products?search=' . rawurlencode($token)

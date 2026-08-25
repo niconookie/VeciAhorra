@@ -174,10 +174,10 @@ try {
     );
 
     $validated = (new CartItemCreateRequest([
-        'inventory_id' => '55',
+        'offer_token' => str_repeat('a', 40),
         'quantity' => '3',
     ]))->validated();
-    assertCartFoundationSame(55, $validated['inventory_id']);
+    assertCartFoundationSame(str_repeat('a', 40), $validated['offer_token']);
     assertCartFoundationSame(3, $validated['quantity']);
     assertCartFoundationSame(
         ['quantity' => 7],
@@ -187,13 +187,13 @@ try {
     foreach ([0, -1, '0', '1.5', null, []] as $invalid) {
         assertCartFoundationInvalid(fn () =>
             (new CartItemCreateRequest([
-                'inventory_id' => 1,
+                'offer_token' => str_repeat('a', 40),
                 'quantity' => $invalid,
             ]))->validated()
         );
         assertCartFoundationInvalid(fn () =>
             (new CartItemCreateRequest([
-                'inventory_id' => $invalid,
+                'offer_token' => $invalid,
                 'quantity' => 1,
             ]))->validated()
         );

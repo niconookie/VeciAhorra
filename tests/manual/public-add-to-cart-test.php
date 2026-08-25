@@ -86,9 +86,9 @@ foreach ([
     'isAddingToCart', 'if (isAddingToCart || !selectedExists)',
     'store.setSelectionLocked(true)', 'store.setSelectionLocked(false)',
     'operationSelection', 'Producto agregado al carrito desde ',
-    "config.api.post('/cart/items'", 'inventory_id: selectedId',
+    "config.api.post('/cart/items'", 'offer_token: selectedId',
     'quantity: 1', 'Object.keys(payload).length !== 2',
-    'payload.inventory_id !== selectedId', 'cartRequestOptions',
+    'payload.offer_token !== selectedId', 'cartRequestOptions',
     'cart.sessionHeader', "setAttribute('aria-busy'",
     '.finally(function ()',
     'viewCart.hidden = false',
@@ -107,7 +107,7 @@ $addEnd = strpos($javascript, "addButton.addEventListener('click'", $addStart);
 assertPublicAddToCart($addStart !== false && $addEnd !== false, 'No se aislo addToCart.');
 $addSource = substr($javascript, $addStart, $addEnd - $addStart);
 foreach ([
-    'product_id:', 'minimarket_id:', 'unit_price:', 'price:', 'stock:',
+    'product_id:', 'inventory_id:', 'minimarket_id:', 'unit_price:', 'price:', 'stock:',
     'available_stock:', 'subtotal:', 'total:', 'customer_id:', 'session_id:',
 ] as $forbidden) {
     assertPublicAddToCart(

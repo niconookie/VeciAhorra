@@ -21,14 +21,14 @@ final class CheckoutController
     public function validate(array $payload): array
     {
         return $this->execute(
-            fn (): array => $this->service->validate($payload)
+            fn (): array => $this->anonymous($this->service->validate($payload))
         );
     }
 
     public function initialize(array $payload): array
     {
         return $this->execute(
-            fn (): array => $this->service->initialize($payload)
+            fn (): array => $this->anonymous($this->service->initialize($payload))
         );
     }
 
@@ -84,5 +84,12 @@ final class CheckoutController
                 ],
             ];
         }
+    }
+
+    private function anonymous(array $data): array
+    {
+        $blocked=['inventory_id'=>true,'minimarket_id'=>true,'store_id'=>true,'store_name'=>true,'business_name'=>true,'address'=>true,'phone'=>true,'email'=>true,'rut'=>true,'latitude'=>true,'longitude'=>true];
+        $walk=function(array $value)use(&$walk,$blocked):array{foreach(array_keys($value)as$key){if(is_string($key)&&isset($blocked[$key])){unset($value[$key]);continue;}if(is_array($value[$key]))$value[$key]=$walk($value[$key]);}return $value;};
+        return $walk($data);
     }
 }

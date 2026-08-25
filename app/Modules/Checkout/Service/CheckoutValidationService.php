@@ -26,6 +26,9 @@ final class CheckoutValidationService
     public function validate(array $owner): array
     {
         $cartItems = $this->cartService->getCart($owner);
+        $ownerScope = isset($owner['user_id']) && is_int($owner['user_id'])
+            ? 'user|' . $owner['user_id']
+            : 'session|' . (string) ($owner['session_id'] ?? '');
 
         if ($cartItems === []) {
             return $this->emptyCartResult();
@@ -43,20 +46,27 @@ final class CheckoutValidationService
                 true
             )
             : [];
-        $activeMinimarketIds = array_fill_keys(array_map(
-            static fn (array $store): int => (int) $store['id'],
+        $eligibleStores = array_filter(
             $this->storeRepository->findActiveByIds(array_map(
                 static fn (array $item): int =>
                     (int) ($item['minimarket_id'] ?? 0),
                 $cartItems
-            ))->toArray()
+            ))->toArray(),
+            static fn (array $store): bool =>
+                ($store['onboarding_status'] ?? null) === 'complete'
+                && ! empty($store['approved_at'])
+        );
+        $activeMinimarketIds = array_fill_keys(array_map(
+            static fn (array $store): int => (int) $store['id'],
+            $eligibleStores
         ), true);
 
         foreach ($cartItems as $cartItem) {
             $result = $this->validateItem(
                 $cartItem,
                 $activeMinimarketIds,
-                $allowedSectorStores
+                $allowedSectorStores,
+                $ownerScope
             );
             $items[] = $result;
 
@@ -104,7 +114,8 @@ final class CheckoutValidationService
     private function validateItem(
         array $cartItem,
         array $activeMinimarketIds,
-        array $allowedSectorStores
+        array $allowedSectorStores,
+        string $ownerScope
     ): array
     {
         $id = (int) ($cartItem['id'] ?? 0);
@@ -239,6 +250,11 @@ final class CheckoutValidationService
             'inventory_id' => $inventoryId,
             'product_id' => $productId,
             'minimarket_id' => $minimarketId,
+            'offer_group' => hash_hmac(
+                'sha256',
+                $ownerScope . '|cart-store|' . $minimarketId,
+                wp_salt('auth')
+            ),
             'quantity' => $quantity,
             'unit_price_snapshot' => $snapshotCents === null
                 ? $snapshot

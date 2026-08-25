@@ -8,6 +8,7 @@ use VeciAhorra\Exceptions\CatalogUnavailableException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 use VeciAhorra\Modules\Catalog\Repository\HomepageProductReadRepository;
+use VeciAhorra\Modules\Catalog\Security\PublicOfferToken;
 use VeciAhorra\Modules\Sectorization\CurrentSector;
 use VeciAhorra\Modules\ProductCatalogs\Services\BrandService;
 use VeciAhorra\Modules\ProductCatalogs\Services\CatalogService as ProductCatalogService;
@@ -35,7 +36,8 @@ final class CatalogService
         private UnitService $units,
         private StoreRepository $stores,
         private HomepageProductReadRepository $homepageProducts,
-        private CurrentSector $currentSector
+        private CurrentSector $currentSector,
+        private PublicOfferToken $offerTokens
     ) {
     }
 
@@ -271,8 +273,8 @@ final class CatalogService
     /**
      * @param list<int>|null $productIds
      * @return array{
-     *   summaries: array<int, array{min_price: string, max_price: string, minimarkets: array<int, true>, offer_count: int, single_inventory_id: ?int}>,
-     *   offers: array<int, list<array{inventory_id: int, price: string, stock: int}>>
+     *   summaries: array<int, array{min_price: string, max_price: string, minimarkets: array<int, true>, offer_count: int, single_offer_token: ?string}>,
+     *   offers: array<int, list<array{offer_token: string, price: string, availability: string}>>
      * }
      */
     private function publicInventory(?array $productIds = null): array
@@ -356,16 +358,18 @@ final class CatalogService
                 'max_price' => (string) end($prices),
                 'minimarkets' => $minimarkets,
                 'offer_count' => count($productOffers),
-                'single_inventory_id' => count($productOffers) === 1
-                    ? (int) $productOffers[0]['inventory_id']
+                'single_offer_token' => count($productOffers) === 1
+                    ? $this->offerTokens->issue((int) $productOffers[0]['inventory_id'], (int) $productId, $this->currentSector->id())
                     : null,
             ];
         }
         unset($productOffers);
 
-        foreach ($offers as &$productOffers) {
+        foreach ($offers as $productId => &$productOffers) {
             foreach ($productOffers as &$offer) {
-                unset($offer['minimarket_id'], $offer['minimarket']);
+                $offer['offer_token'] = $this->offerTokens->issue((int) $offer['inventory_id'], (int) $productId, $this->currentSector->id());
+                $offer['availability'] = 'available';
+                unset($offer['inventory_id'], $offer['minimarket_id'], $offer['minimarket'], $offer['stock']);
             }
             unset($offer);
         }
@@ -426,7 +430,7 @@ final class CatalogService
 
         foreach (array_chunk($ids, self::READ_BATCH_SIZE) as $batch) {
             foreach ($this->stores->findActiveByIds($batch) as $store) {
-                if ($store instanceof Store && (int) $store->id > 0 && isset($allowed[(int) $store->id])) {
+                if ($store instanceof Store && (int) $store->id > 0 && (string)$store->onboarding_status === 'complete' && !empty($store->approved_at) && isset($allowed[(int) $store->id])) {
                     $stores[(int) $store->id] = (string) $store->business_name;
                 }
             }
@@ -504,7 +508,7 @@ final class CatalogService
         } while (count($batch) === self::READ_BATCH_SIZE);
     }
 
-    /** @param array<int, array{min_price: string, max_price: string, minimarkets: array<int, true>, offer_count: int, single_inventory_id: ?int}> $summaries */
+    /** @param array<int, array{min_price: string, max_price: string, minimarkets: array<int, true>, offer_count: int, single_offer_token: ?string}> $summaries */
     private function isVisible(Product $product, array $summaries): bool
     {
         return $product->status === Product::STATUS_ACTIVE
@@ -512,7 +516,7 @@ final class CatalogService
             && isset($summaries[(int) $product->id]);
     }
 
-    /** @param array{min_price: string, max_price: string, minimarkets: array<int, true>, offer_count: int, single_inventory_id: ?int} $summary */
+    /** @param array{min_price: string, max_price: string, minimarkets: array<int, true>, offer_count: int, single_offer_token: ?string} $summary */
     private function serializeSummary(Product $product, array $summary): array
     {
         $description = wp_strip_all_tags((string) ($product->description ?? ''));
@@ -529,7 +533,7 @@ final class CatalogService
             'min_price' => $summary['min_price'],
             'available_minimarkets' => count($summary['minimarkets']),
             'eligible_offers' => $summary['offer_count'],
-            'single_inventory_id' => $summary['single_inventory_id'],
+            'single_offer_token' => $summary['single_offer_token'],
             '_created_at' => (string) $product->created_at,
         ];
     }

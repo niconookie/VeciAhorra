@@ -29,12 +29,12 @@ selección por producto con `selectedInventoryId` como fuente de verdad, la
 conserva tras recargar mientras siga disponible y la limpia si desaparece.
 
 La selección 28.4 no llama por sí misma a Cart. `getCartPayload()` prepara la
-forma `{ inventory_id, quantity: 1 }`; precio y stock son datos de presentación
+forma `{ offer_token, quantity: 1 }`; precio y disponibilidad son datos de presentación
 que el backend debe resolver nuevamente.
 
 ## Agregar al carrito
 
-La ficha envía exclusivamente `POST /cart/items` con `inventory_id` y cantidad
+La ficha envía exclusivamente `POST /cart/items` con `offer_token` opaco y cantidad
 fija `1`. Para usuarios autenticados se reutilizan cookie WordPress, credenciales
 same-origin y nonce REST. Para invitados, `CartSession` conserva un identificador
 opaco dentro de `Core\Session` y el cliente lo presenta mediante el encabezado

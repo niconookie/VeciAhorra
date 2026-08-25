@@ -91,6 +91,10 @@ final class CatalogRoutes
                 default => 500,
             });
 
-        return new WP_REST_Response($result, $status);
+        $response = new WP_REST_Response($result, $status);
+        $response->header('Cache-Control', 'private, no-store, max-age=0');
+        $response->header('Pragma', 'no-cache');
+
+        return $response;
     }
 }
