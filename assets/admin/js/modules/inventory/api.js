@@ -406,8 +406,8 @@ function isInventoryAdminRow(row) {
         && isPositiveInteger(row.id)
         && isAdministrativeEntity(row.product)
         && isAdministrativeEntity(row.store)
-        && isNonNegativeNumber(row.price)
-        && isNonNegativeInteger(row.stock)
+        && isObservedPrice(row.price)
+        && isObservedInteger(row.stock)
         && typeof row.status === 'string'
         && isObject(row.availability)
         && typeof row.availability.is_publicly_available === 'boolean'
@@ -528,6 +528,11 @@ function causeCollection(availability, objectsKey, codesKey) {
 function isObservedPrice(value) {
     return (typeof value === 'string' && value.trim() !== '')
         || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function isObservedInteger(value) {
+    return Number.isInteger(value)
+        || (typeof value === 'string' && /^-?\d+$/.test(value));
 }
 
 function isDetailReferences(references) {
