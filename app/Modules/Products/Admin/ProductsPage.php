@@ -23,6 +23,7 @@ final class ProductsPage
      */
     public function register(): void
     {
+        (new ProductBulkImportPage())->register();
         add_action(
             'admin_menu',
             [$this, 'registerMenu']
