@@ -59,6 +59,7 @@ final class FrontendModule
             10,
             2
         );
+        add_filter('body_class', [$this, 'catalogBodyClasses']);
         add_shortcode(
             FrontendController::SHORTCODE,
             [$this->controller, 'renderPlaceholder']
@@ -97,6 +98,34 @@ final class FrontendModule
             new PublicSearchIsolationPolicy(),
             new WooCommercePublicPageResolver()
         ))->register();
+    }
+
+    /** @param list<string> $classes @return list<string> */
+    public function catalogBodyClasses(array $classes): array
+    {
+        if (! is_singular()) {
+            return $classes;
+        }
+
+        $post = get_queried_object();
+        if (! $post instanceof \WP_Post || ! has_shortcode($post->post_content, FrontendController::SHORTCODE)) {
+            return $classes;
+        }
+
+        $pattern = get_shortcode_regex([FrontendController::SHORTCODE]);
+        if (! preg_match_all('/' . $pattern . '/s', $post->post_content, $matches)) {
+            return $classes;
+        }
+
+        foreach ($matches[3] as $rawAttributes) {
+            $attributes = shortcode_parse_atts($rawAttributes);
+            if (absint(is_array($attributes) ? ($attributes['product_id'] ?? 0) : 0) === 0) {
+                $classes[] = 'veciahorra-catalog-page';
+                break;
+            }
+        }
+
+        return array_values(array_unique($classes));
     }
 
     public function enqueueHomepageHeroAsset(): void
@@ -169,10 +198,9 @@ final class FrontendModule
         if (
             ! is_front_page()
             || ! is_object($widget)
-            || ! method_exists($widget, 'get_id')
             || ! method_exists($widget, 'get_name')
-            || $widget->get_id() !== 'df4acd5'
             || $widget->get_name() !== 'image'
+            || ! str_contains($content, content_url('/uploads/2026/06/Logo-Veciahorra.jpg'))
         ) {
             return $content;
         }
