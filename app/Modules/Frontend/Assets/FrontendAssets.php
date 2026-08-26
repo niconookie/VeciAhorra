@@ -7,6 +7,7 @@ namespace VeciAhorra\Modules\Frontend\Assets;
 use VeciAhorra\Modules\Checkout\Service\FulfillmentPolicy;
 
 use VeciAhorra\Core\Config;
+use VeciAhorra\Core\LaunchGate;
 use VeciAhorra\Modules\Frontend\Support\CartSession;
 use VeciAhorra\Modules\Frontend\Support\PublicRouteResolver;
 
@@ -319,6 +320,12 @@ final class FrontendAssets
             'locale' => str_replace('_', '-', sanitize_text_field(determine_locale())),
             'timeZone' => sanitize_text_field(wp_timezone_string() ?: 'UTC'),
             'currency' => 'CLP',
+            'launch' => [
+                'registrationEnabled' => (new LaunchGate())->registrationEnabled(),
+                'commerceEnabled' => (new LaunchGate())->commerceEnabled(),
+                'registrationMessage' => LaunchGate::REGISTRATION_MESSAGE,
+                'commerceMessage' => LaunchGate::COMMERCE_MESSAGE,
+            ],
             'pages' => [
                 'cart' => esc_url_raw($this->routeResolver()->cart()),
                 'checkout' => esc_url_raw($this->routeResolver()->checkout()),

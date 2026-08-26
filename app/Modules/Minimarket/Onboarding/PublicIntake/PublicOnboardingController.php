@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Minimarket\Onboarding\PublicIntake;
 
+use VeciAhorra\Core\LaunchGate;
+
 final class PublicOnboardingController
 {
     public function __construct(
@@ -13,8 +15,9 @@ final class PublicOnboardingController
         private RemoteAddressResolver $addresses,
         private PublicOnboardingErrorTranslator $errors,
         private PublicOnboardingPageState $state,
-        private OnboardingLegalAuthorityValidator $legalAuthority
-    ) {}
+        private OnboardingLegalAuthorityValidator $legalAuthority,
+        private ?LaunchGate $launchGate = null
+    ) { $this->launchGate ??= new LaunchGate(); }
 
     public function handle(): void
     {
@@ -23,6 +26,12 @@ final class PublicOnboardingController
         $this->noStoreHeaders();
         do_action('litespeed_control_set_nocache', 'VeciAhorra minimarket onboarding');
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') return;
+        if (! $this->launchGate->registrationEnabled()) {
+            $response = new PublicOnboardingResponse(503, 'registration_disabled');
+            $this->state->set($response, null);
+            status_header(503);
+            return;
+        }
         $request = null;
         try {
             [$rawBody, $completeBody] = $this->readRawBody();

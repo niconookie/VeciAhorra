@@ -134,6 +134,11 @@
         addButton.type = 'button';
         addButton.setAttribute('aria-label', Number.isInteger(offers) && offers === 1 ? 'Agregar al carrito' : 'Ver opciones disponibles');
         addButton.setAttribute('aria-busy', 'false');
+        if (window.VeciAhorra && window.VeciAhorra.launch && window.VeciAhorra.launch.commerceEnabled === false) {
+            addButton.disabled = true;
+            addButton.setAttribute('aria-disabled', 'true');
+            addButton.textContent = 'Disponible desde el 1 de septiembre';
+        }
         addButton.addEventListener('click', function () {
             if (Number.isInteger(offers) && offers === 1 && typeof settings.quickAdd === 'function') {
                 settings.quickAdd(item, addButton, cardStatus);

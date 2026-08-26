@@ -50,7 +50,9 @@ $titleId = $instanceId . '-title';
         </footer>
         <div class="va-public-cart__checkout">
             <a class="va-button va-button--secondary" href="<?php echo esc_url($catalogUrl); ?>" data-va-cart-continue-shopping><?php esc_html_e('Seguir comprando', 'veciahorra'); ?></a>
-            <?php if ($checkoutUrl !== '') : ?>
+            <?php if (! (new \VeciAhorra\Core\LaunchGate())->commerceEnabled()) : ?>
+                <span class="va-help-text" role="status" data-va-cart-checkout-unavailable>Disponible desde el 1 de septiembre</span>
+            <?php elseif ($checkoutUrl !== '') : ?>
                 <a class="va-button va-button--primary" href="<?php echo esc_url($checkoutUrl); ?>" data-va-cart-checkout><?php esc_html_e('Continuar al checkout', 'veciahorra'); ?></a>
             <?php else : ?>
                 <span class="va-help-text" role="status" data-va-cart-checkout-unavailable><?php esc_html_e('Checkout no disponible temporalmente.', 'veciahorra'); ?></span>

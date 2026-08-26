@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\CustomerAccess;
 
+use VeciAhorra\Core\LaunchGate;
+
 final class CustomerAccessModule
 {
     public const SHORTCODE = 'veciahorra_customer_registration';
@@ -26,10 +28,20 @@ final class CustomerAccessModule
     /** @var list<string> */
     private array $errors = [];
 
+    public function __construct(private ?LaunchGate $launchGate = null)
+    {
+        $this->launchGate ??= new LaunchGate();
+    }
+
     public function register(): void
     {
         add_action('init', [$this, 'ensureRegistrationPage'], 30);
         add_action('template_redirect', [$this, 'handleRegistration']);
+        add_action('template_redirect', [$this, 'disablePublicCacheDuringPrelaunch'], PHP_INT_MAX);
+        add_filter('option_users_can_register', [$this, 'publicWordPressRegistration']);
+        add_filter('option_woocommerce_enable_myaccount_registration', [$this, 'publicWooCommerceRegistration']);
+        add_action('login_init', [$this, 'blockNativePublicRegistration']);
+        add_filter('nocache_headers', [$this, 'prelaunchNoCacheHeaders'], PHP_INT_MAX);
         add_action('admin_init', [$this, 'redirectBusinessUsersFromAdmin']);
         add_shortcode(self::SHORTCODE, [$this, 'renderRegistration']);
         add_filter('login_redirect', [$this, 'loginRedirect'], 20, 3);
@@ -66,6 +78,12 @@ final class CustomerAccessModule
             ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST'
             || ! isset($_POST['veciahorra_customer_registration'])
         ) {
+            return;
+        }
+
+        if (! $this->launchGate->registrationEnabled()) {
+            status_header(503);
+            $this->errors[] = LaunchGate::REGISTRATION_MESSAGE;
             return;
         }
 
@@ -131,6 +149,14 @@ final class CustomerAccessModule
                 . '">Cerrar sesión</a></p></section>';
         }
 
+        if (! $this->launchGate->registrationEnabled()) {
+            return '<section class="va-customer-registration" aria-labelledby="va-customer-registration-title">'
+                . '<h1 id="va-customer-registration-title">Registro próximamente</h1>'
+                . '<div class="va-alert" role="status"><p>' . esc_html(LaunchGate::REGISTRATION_MESSAGE) . '</p></div>'
+                . '<p><a class="va-button" href="' . esc_url(wp_login_url($this->customerPanelUrl())) . '">Iniciar sesión</a></p>'
+                . '</section>';
+        }
+
         $messages = '';
         if ($this->errors !== []) {
             $messages = '<div class="va-alert va-alert--error" role="alert"><ul>';
@@ -194,6 +220,52 @@ final class CustomerAccessModule
         return is_user_logged_in() && ! current_user_can('manage_options') ? false : $show;
     }
 
+    /** @param array<string, string> $headers */
+    public function prelaunchNoCacheHeaders(array $headers): array
+    {
+        if ($this->launchGate->registrationEnabled() && $this->launchGate->commerceEnabled()) {
+            return $headers;
+        }
+        $headers['Cache-Control'] = 'private, no-store, max-age=0';
+        $headers['Pragma'] = 'no-cache';
+        return $headers;
+    }
+
+    public function blockNativePublicRegistration(): void
+    {
+        if ($this->launchGate->registrationEnabled() || ($_REQUEST['action'] ?? '') !== 'register') {
+            return;
+        }
+        status_header(503);
+        wp_die(esc_html(LaunchGate::REGISTRATION_MESSAGE), 'VeciAhorra', ['response' => 503]);
+    }
+
+    public function publicWordPressRegistration(mixed $configured): mixed
+    {
+        return $this->launchGate->registrationEnabled() ? $configured : false;
+    }
+
+    public function publicWooCommerceRegistration(mixed $configured): mixed
+    {
+        return $this->launchGate->registrationEnabled() ? $configured : 'no';
+    }
+
+    public function disablePublicCacheDuringPrelaunch(): void
+    {
+        if ($this->launchGate->registrationEnabled() && $this->launchGate->commerceEnabled()) {
+            return;
+        }
+        nocache_headers();
+        header('Cache-Control: private, no-store, max-age=0', true);
+        if (function_exists('header_register_callback')) {
+            header_register_callback(static function (): void {
+                header('Cache-Control: private, no-store, max-age=0', true);
+                header('Pragma: no-cache', true);
+            });
+        }
+        do_action('litespeed_control_set_nocache', 'VeciAhorra prelaunch gate');
+    }
+
     public function disableZonalCommandPalette(): void
     {
         if (! $this->isRestrictedZonalAdmin()) {
@@ -225,7 +297,10 @@ final class CustomerAccessModule
         }
 
         if (! is_user_logged_in()) {
-            return $items . $this->menuLink('Registrarse', $this->registrationUrl())
+            $registration = $this->launchGate->registrationEnabled()
+                ? $this->menuLink('Registrarse', $this->registrationUrl())
+                : '';
+            return $items . $registration
                 . $this->menuLink('Iniciar sesión', wp_login_url($this->customerPanelUrl()));
         }
 
@@ -366,8 +441,10 @@ final class CustomerAccessModule
                                 <?php foreach ($accountMenuLinks as $link): ?><a href="<?php echo esc_url($link['url']); ?>"><?php echo esc_html($link['label']); ?></a><?php endforeach; ?>
                                 <a href="<?php echo esc_url($logoutUrl); ?>">Cerrar sesión</a>
                             </div>
-                        <?php else: ?>
+                        <?php elseif ($this->launchGate->registrationEnabled()): ?>
                             <a class="va-global-header__register" href="<?php echo esc_url($this->registrationUrl()); ?>">Registrarse</a>
+                        <?php else: ?>
+                            <span class="va-global-header__register" role="status">Disponible desde el 1 de septiembre</span>
                         <?php endif; ?>
                     </div>
                     <a class="va-global-header__cart" href="<?php echo esc_url($cartUrl); ?>"><span aria-hidden="true">🛒</span><span>Carrito</span><b data-va-header-cart-count <?php echo $cartCount > 0 ? '' : 'hidden'; ?>><?php echo esc_html((string) $cartCount); ?></b></a>
@@ -383,8 +460,12 @@ final class CustomerAccessModule
                         <?php foreach ($this->headerNavigationLinks($catalogUrl) as $link): ?><li><a href="<?php echo esc_url($link['url']); ?>"><?php echo esc_html($link['label']); ?></a></li><?php endforeach; ?>
                     </ul>
                     <span class="va-global-header__nav-spacer"></span>
-                    <a href="<?php echo esc_url($this->pageUrlByShortcode('veciahorra_minimarket_registration', '/registro-minimarket/')); ?>">Vende en VeciAhorra</a>
-                    <a href="<?php echo esc_url($this->pageUrlByShortcode('veciahorra_courier_registration', '/registro-repartidor/')); ?>">Reparte con nosotros</a>
+                    <?php if ($this->launchGate->registrationEnabled()): ?>
+                        <a href="<?php echo esc_url($this->pageUrlByShortcode('veciahorra_minimarket_registration', '/registro-minimarket/')); ?>">Vende en VeciAhorra</a>
+                        <a href="<?php echo esc_url($this->pageUrlByShortcode('veciahorra_courier_registration', '/registro-repartidor/')); ?>">Reparte con nosotros</a>
+                    <?php else: ?>
+                        <span role="status">Registros disponibles desde el 1 de septiembre</span>
+                    <?php endif; ?>
                 </div>
             </nav>
             <?php if (! is_front_page()): ?><nav class="va-global-header__breadcrumb" aria-label="Migas de pan"><div class="va-global-header__container"><a href="<?php echo esc_url(home_url('/')); ?>">Inicio</a><span aria-hidden="true">›</span><span aria-current="page"><?php echo esc_html($currentLabel); ?></span></div></nav><?php endif; ?>

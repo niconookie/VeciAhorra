@@ -54,8 +54,8 @@ $selectionTitleId = $instanceId . '-selection-title';
 
     <section class="va-cart-action va-card" aria-labelledby="<?php echo esc_attr($instanceId . '-cart-title'); ?>">
         <h2 id="<?php echo esc_attr($instanceId . '-cart-title'); ?>"><?php esc_html_e('Agregar al carrito', 'veciahorra'); ?></h2>
-        <button class="va-button va-button--primary va-cart-action__button" type="button" data-va-add-to-cart disabled aria-busy="false">
-            <span data-va-add-label><?php esc_html_e('Agregar al carrito', 'veciahorra'); ?></span>
+        <button class="va-button va-button--primary va-cart-action__button" type="button" data-va-add-to-cart disabled aria-busy="false"<?php echo (new \VeciAhorra\Core\LaunchGate())->commerceEnabled() ? '' : ' aria-disabled="true"'; ?>>
+            <span data-va-add-label><?php echo esc_html((new \VeciAhorra\Core\LaunchGate())->commerceEnabled() ? __('Agregar al carrito', 'veciahorra') : 'Disponible desde el 1 de septiembre'); ?></span>
             <span data-va-add-loading hidden><?php esc_html_e('Agregando…', 'veciahorra'); ?></span>
         </button>
         <p class="va-cart-action__message va-cart-action__message--success" role="status" aria-live="polite" data-va-cart-success hidden></p>

@@ -14,6 +14,7 @@ use InvalidArgumentException;
 use VeciAhorra\Modules\Frontend\Support\CartSession;
 use VeciAhorra\Modules\Payments\Models\PaymentSession;
 use VeciAhorra\Modules\Payments\Requests\PaymentSessionRequest;
+use VeciAhorra\Core\LaunchGate;
 
 final class PaymentRoutes
 {
@@ -142,6 +143,12 @@ final class PaymentRoutes
     public function startPublicSession(
         WP_REST_Request $request
     ): WP_REST_Response {
+        if (! (new LaunchGate())->commerceEnabled()) {
+            $response = new WP_REST_Response(['success' => false, 'error' => ['code' => 'commerce_disabled', 'message' => LaunchGate::COMMERCE_MESSAGE]], 503);
+            $response->header('Cache-Control', 'private, no-store, max-age=0');
+            $response->header('Pragma', 'no-cache');
+            return $response;
+        }
         $owner = $this->publicOwner();
         $key = $request->get_header('Idempotency-Key');
 

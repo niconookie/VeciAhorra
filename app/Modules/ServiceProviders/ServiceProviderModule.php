@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\ServiceProviders;
 
 use VeciAhorra\Core\Config;
+use VeciAhorra\Core\LaunchGate;
 use VeciAhorra\Modules\CustomerAccess\CustomerAccessModule;
 use VeciAhorra\Modules\Frontend\Assets\FrontendAssets;
 use VeciAhorra\Modules\ServiceProviders\Admin\ServiceProviderAdminPage;
@@ -70,6 +71,9 @@ final class ServiceProviderModule
     public function landing(): string
     {
         $this->assets();
+        if (! (new LaunchGate())->registrationEnabled()) {
+            return '<main class="va-sp va-sp-landing"><section class="va-sp-section"><p class="va-sp-eyebrow">Prestadores de servicios</p><h1>Tu talento merece ser conocido en tu barrio.</h1><p role="status">' . esc_html(LaunchGate::REGISTRATION_MESSAGE) . '</p><a class="va-sp-button secondary" href="' . esc_url(wp_login_url()) . '">Iniciar sesi&oacute;n</a></section></main>';
+        }
         $logo = $this->logo();
         $registrationUrl = $this->customerAccess->registrationUrl($this->servicesUrl());
         return '<main class="va-sp va-sp-landing">'

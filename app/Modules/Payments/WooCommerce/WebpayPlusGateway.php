@@ -6,6 +6,7 @@ namespace VeciAhorra\Modules\Payments\WooCommerce;
 
 use InvalidArgumentException;
 use Throwable;
+use VeciAhorra\Core\LaunchGate;
 use VeciAhorra\Modules\Payments\Gateway\GatewaySessionResult;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayInterface;
@@ -158,6 +159,9 @@ class WebpayPlusGateway extends \WC_Payment_Gateway
 
     public function process_payment($order_id): array
     {
+        if (! (new LaunchGate())->commerceEnabled()) {
+            return $this->paymentFailure(LaunchGate::COMMERCE_MESSAGE);
+        }
         $orderId = filter_var($order_id, FILTER_VALIDATE_INT);
         $order = $orderId !== false && $orderId > 0
             ? wc_get_order($orderId)

@@ -152,6 +152,12 @@
         }
 
         function quickAdd(product, button, message) {
+            if (config.launch && config.launch.commerceEnabled === false) {
+                button.disabled = true;
+                button.setAttribute('aria-disabled', 'true');
+                message.textContent = 'Disponible desde el 1 de septiembre';
+                return Promise.resolve(null);
+            }
             var offerToken = product && typeof product.single_offer_token === 'string' ? product.single_offer_token : '';
             if (!/^[A-Za-z0-9_-]{40,512}$/.test(offerToken) || Number(product.eligible_offers) !== 1) {
                 return Promise.reject(new Error('Debes seleccionar una opción disponible.'));

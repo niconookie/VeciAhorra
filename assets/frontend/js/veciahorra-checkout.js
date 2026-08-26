@@ -950,7 +950,8 @@
                 }
                 valid = fieldValid && valid;
             });
-            submit.disabled = submitted || validating || creating || created
+            submit.disabled = (config.launch && config.launch.commerceEnabled === false)
+                || submitted || validating || creating || created
                 || ambiguousAttempt || (validated && !authenticated) || !valid;
             return valid;
         }

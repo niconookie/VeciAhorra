@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace VeciAhorra\Modules\ServiceProviders\Routes;
-use VeciAhorra\Modules\ServiceProviders\Domain\ServiceCatalog;use VeciAhorra\Modules\ServiceProviders\Identity\ServiceProviderRole;use VeciAhorra\Modules\ServiceProviders\Service\ServiceProviderService;use WP_Error;use WP_REST_Request;use WP_REST_Response;
+use VeciAhorra\Core\LaunchGate;use VeciAhorra\Modules\ServiceProviders\Domain\ServiceCatalog;use VeciAhorra\Modules\ServiceProviders\Identity\ServiceProviderRole;use VeciAhorra\Modules\ServiceProviders\Service\ServiceProviderService;use WP_Error;use WP_REST_Request;use WP_REST_Response;
 final class ServiceProviderRoutes
 {
  public function __construct(private ServiceProviderService $service=new ServiceProviderService()){}
@@ -12,7 +12,7 @@ final class ServiceProviderRoutes
  public function publicPermission():bool{return true;}public function authenticatedPermission():bool|WP_Error{return is_user_logged_in()?true:new WP_Error('authentication_required','Inicio de sesión requerido.',['status'=>401]);}public function privatePermission():bool|WP_Error{return is_user_logged_in()&&current_user_can(ServiceProviderRole::CAPABILITY)?true:new WP_Error('provider_forbidden','Prestador no autorizado.',['status'=>403]);}
  private function id():int{return(int)get_user_meta(get_current_user_id(),ServiceProviderRole::META_KEY,true);}
  public function categories():WP_REST_Response{return$this->ok(ServiceCatalog::publicData());}
- public function enroll():WP_REST_Response{$u=new \WP_User(get_current_user_id());$u->add_role(ServiceProviderRole::ROLE);$u->add_cap(ServiceProviderRole::CAPABILITY);return$this->ok(['enrolled'=>true]);}
+ public function enroll():WP_REST_Response{if(!(new LaunchGate())->registrationEnabled()){$r=$this->error('registration_disabled',503,LaunchGate::REGISTRATION_MESSAGE);$r->header('Cache-Control','private, no-store, max-age=0');$r->header('Pragma','no-cache');return$r;}$u=new \WP_User(get_current_user_id());$u->add_role(ServiceProviderRole::ROLE);$u->add_cap(ServiceProviderRole::CAPABILITY);return$this->ok(['enrolled'=>true]);}
  public function me():WP_REST_Response{$r=$this->service->private($this->service->repository()->find($this->id()));return$r?$this->ok($r):$this->error('not_found',404);}
  public function save(WP_REST_Request $r):WP_REST_Response{return$this->mutate(fn()=>$this->service->save(get_current_user_id(),(array)$r->get_json_params()));}
  public function submit():WP_REST_Response{return$this->mutate(fn()=>$this->service->submit($this->id()));}

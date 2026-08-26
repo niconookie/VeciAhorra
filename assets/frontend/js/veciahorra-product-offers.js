@@ -300,6 +300,12 @@
         }
 
         function updateCartControls(state) {
+            if (config.launch && config.launch.commerceEnabled === false) {
+                addButton.disabled = true;
+                addButton.setAttribute('aria-disabled', 'true');
+                text(addLabel, 'Disponible desde el 1 de septiembre');
+                return;
+            }
             var selectedId = state.selectedInventoryId;
             var selectedExists = typeof selectedId === 'string' && /^[A-Za-z0-9_-]{40,512}$/.test(selectedId)
                 && state.offers.some(function (offer) {
@@ -456,6 +462,11 @@
         }
 
         function addToCart() {
+            if (config.launch && config.launch.commerceEnabled === false) {
+                cartError.hidden = false;
+                text(cartError, config.launch.commerceMessage || 'Estamos preparando VeciAhorra. Las compras estarán disponibles desde el 1 de septiembre.');
+                return Promise.resolve(null);
+            }
             var state = store.getState();
             var selectedId = state.selectedInventoryId;
             var selectedExists = typeof selectedId === 'string' && /^[A-Za-z0-9_-]{40,512}$/.test(selectedId)

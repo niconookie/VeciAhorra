@@ -76,7 +76,7 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
                 </div>
             </section>
 
-            <button class="va-button va-button--primary va-checkout-form__submit" type="submit" data-va-checkout-submit disabled><?php esc_html_e('Crear pedido', 'veciahorra'); ?></button>
+            <button class="va-button va-button--primary va-checkout-form__submit" type="submit" data-va-checkout-submit disabled<?php echo (new \VeciAhorra\Core\LaunchGate())->commerceEnabled() ? '' : ' aria-disabled="true"'; ?>><?php echo esc_html((new \VeciAhorra\Core\LaunchGate())->commerceEnabled() ? __('Crear pedido', 'veciahorra') : 'Disponible desde el 1 de septiembre'); ?></button>
             <p class="va-alert va-alert--info" role="status" aria-live="polite" data-va-checkout-status hidden></p>
         </form>
     </div>

@@ -420,6 +420,18 @@
     width: 2.75rem;
 }
 
+.veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__add[aria-disabled="true"] {
+    border-radius: var(--va-radius-md);
+    font-size: 0.78rem;
+    grid-column: 1 / -1;
+    height: auto;
+    line-height: 1.25;
+    min-height: 2.75rem;
+    padding: 0.55rem 0.7rem;
+    text-align: center;
+    width: 100%;
+}
+
 .veciahorra-frontend.va-design-system.va-catalog .va-catalog-card__add:focus-visible,
 .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-toggle:focus-visible,
 .veciahorra-frontend.va-design-system.va-catalog .va-catalog__filters-title button:focus-visible {

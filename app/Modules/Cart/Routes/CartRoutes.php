@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Cart\Routes;
 
 use InvalidArgumentException;
+use VeciAhorra\Core\LaunchGate;
 use VeciAhorra\Modules\Cart\Controller\CartController;
 use VeciAhorra\Modules\Cart\Requests\CartItemCreateRequest;
 use VeciAhorra\Modules\Cart\Requests\CartItemQuantityRequest;
@@ -71,6 +72,12 @@ final class CartRoutes
 
     public function store(WP_REST_Request $request): WP_REST_Response
     {
+        if (! (new LaunchGate())->commerceEnabled()) {
+            $response = new WP_REST_Response(['success' => false, 'error' => ['code' => 'commerce_disabled', 'message' => LaunchGate::COMMERCE_MESSAGE]], 503);
+            $response->header('Cache-Control', 'private, no-store, max-age=0');
+            $response->header('Pragma', 'no-cache');
+            return $response;
+        }
         $owner = $this->ownerOrError($request);
 
         if ($owner instanceof WP_REST_Response) {
