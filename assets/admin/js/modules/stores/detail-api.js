@@ -65,7 +65,7 @@ export function createStoreDetailApi(config) {
                 body, signal,
             }, 'store_update_failed');
         },
-        async transition(action, signal) {
+        async transition(payload, signal) {
             return request(`${config.detailUrl}/transitions`, {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -74,7 +74,7 @@ export function createStoreDetailApi(config) {
                     'Content-Type': 'application/json',
                     'X-WP-Nonce': config.nonce,
                 },
-                body: JSON.stringify({ action }),
+                body: JSON.stringify(payload),
                 signal,
             }, 'store_transition_failed');
         },

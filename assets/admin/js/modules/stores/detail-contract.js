@@ -1,12 +1,13 @@
-const statuses = new Set(['pending', 'active', 'inactive', 'rejected']);
+const statuses = new Set(['pending', 'active', 'inactive', 'rejected', 'observed']);
 const onboardingStatuses = new Set(['draft', 'complete']);
-const lifecycleStates = new Set(['draft', 'in_review', 'rejected', 'approved_inactive', 'active', 'invalid']);
+const lifecycleStates = new Set(['draft', 'in_review', 'rejected', 'observed', 'approved_inactive', 'active', 'invalid']);
 const actions = new Set([
     'save',
     'submit_for_review',
     'return_to_draft',
     'approve',
     'reject',
+    'observe',
     'activate',
     'deactivate',
     'delete_if_unreferenced',
@@ -88,6 +89,7 @@ export const lifecyclePresentation = Object.freeze({
     draft: Object.freeze({ label: 'Borrador', tone: 'neutral', description: 'Información en preparación, aún no enviada a revisión.' }),
     in_review: Object.freeze({ label: 'En revisión', tone: 'info', description: 'Pendiente de una decisión administrativa.' }),
     rejected: Object.freeze({ label: 'Rechazado', tone: 'critical', description: 'El lifecycle fue rechazado y puede requerir correcciones.' }),
+    observed: Object.freeze({ label: 'Observado', tone: 'warning', description: 'Se solicitaron correcciones antes de continuar la revisión.' }),
     approved_inactive: Object.freeze({ label: 'Aprobado e inactivo', tone: 'warning', description: 'Aprobado, pero no habilitado operativamente.' }),
     active: Object.freeze({ label: 'Activo', tone: 'positive', description: 'Habilitado operativamente.' }),
     invalid: Object.freeze({ label: 'Estado inconsistente', tone: 'critical', description: 'La combinación persistida no pertenece al contrato reconocido.' }),
@@ -99,6 +101,7 @@ export const actionLabels = Object.freeze({
     return_to_draft: 'Volver a borrador',
     approve: 'Aprobar',
     reject: 'Rechazar',
+    observe: 'Observar',
     activate: 'Activar',
     deactivate: 'Inactivar',
     delete_if_unreferenced: 'Eliminar si no posee referencias',

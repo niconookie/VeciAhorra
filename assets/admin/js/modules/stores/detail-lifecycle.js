@@ -3,6 +3,7 @@ export const lifecycleActions = Object.freeze({
     return_to_draft: Object.freeze({ label: 'Volver a borrador', tone: 'secondary', consequence: 'El minimarket volverá a borrador y podrá corregirse antes de enviarse nuevamente.', success: 'Minimarket devuelto a borrador.' }),
     approve: Object.freeze({ label: 'Aprobar', tone: 'primary', consequence: 'El minimarket quedará aprobado, pero todavía inactivo.', success: 'Minimarket aprobado.' }),
     reject: Object.freeze({ label: 'Rechazar', tone: 'critical', consequence: 'El minimarket volverá al estado rechazado y requerirá correcciones antes de una nueva revisión.', success: 'Minimarket rechazado.' }),
+    observe: Object.freeze({ label: 'Observar', tone: 'secondary', consequence: 'El minimarket quedará observado y el motivo se registrará en el historial de decisiones.', success: 'Minimarket observado.' }),
     activate: Object.freeze({ label: 'Activar', tone: 'primary', consequence: 'El minimarket quedará habilitado operativamente.', success: 'Minimarket activado.' }),
     deactivate: Object.freeze({ label: 'Inactivar', tone: 'secondary', consequence: 'El minimarket dejará de estar activo, pero conservará su aprobación.', success: 'Minimarket inactivado.' }),
 });
@@ -17,7 +18,11 @@ export function isLifecycleAction(action) {
     return typeof action === 'string' && lifecycleActionNames.includes(action);
 }
 
-export function transitionPayload(action) {
+export function transitionPayload(action, reason, expectedUpdatedAt) {
     if (!isLifecycleAction(action)) throw new TypeError('invalid_lifecycle_action');
-    return Object.freeze({ action });
+    if (typeof expectedUpdatedAt !== 'string' || expectedUpdatedAt === '') throw new TypeError('invalid_expected_updated_at');
+    const requiresReason = ['observe', 'reject'].includes(action);
+    const normalizedReason = typeof reason === 'string' ? reason.trim() : '';
+    if (requiresReason && normalizedReason === '') throw new TypeError('reason_required');
+    return Object.freeze({ action, reason: normalizedReason === '' ? null : normalizedReason, expected_updated_at: expectedUpdatedAt });
 }

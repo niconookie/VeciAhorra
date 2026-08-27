@@ -14,7 +14,7 @@ final class Config
     /**
      * Versión actual del plugin.
      */
-    public const PLUGIN_VERSION = '0.3.0';
+    public const PLUGIN_VERSION = '0.3.1';
 
     /**
      * Versión actual del esquema de base de datos.

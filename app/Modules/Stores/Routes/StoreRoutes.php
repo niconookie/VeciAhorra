@@ -111,12 +111,12 @@ final class StoreRoutes
             return $body;
         }
         try {
-            $action = (new StoreTransitionRequest($body))->validated();
+            $payload = (new StoreTransitionRequest($body))->validated();
         } catch (InvalidArgumentException $exception) {
             return $this->errorResponse('validation_error', $exception->getMessage(), 422, 'invalid_payload');
         }
 
-        return $this->toResponse($this->controller->transition($id, $action));
+        return $this->toResponse($this->controller->transition($id, $payload, get_current_user_id()));
     }
 
     public function delete(WP_REST_Request $request): WP_REST_Response

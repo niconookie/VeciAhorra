@@ -28,7 +28,7 @@ foreach (['AbortController', 'readSequence', 'requestId !== readSequence', "addE
 foreach (['validateDetailPayload', 'Number.isSafeInteger', 'item.id !== expectedId', 'isPlainObject', 'invalid_detail_actions', "item.lifecycle_state === 'invalid'", 'new Set(item.allowed_actions)', 'isMysqlDate'] as $fragment) {
     detailReadAssert(str_contains($contract, $fragment), 'Contrato DTO sin ' . $fragment . '.');
 }
-foreach (['draft', 'in_review', 'rejected', 'approved_inactive', 'active', 'invalid', 'save', 'submit_for_review', 'return_to_draft', 'approve', 'reject', 'activate', 'deactivate', 'delete_if_unreferenced'] as $value) {
+foreach (['draft', 'in_review', 'rejected', 'observed', 'approved_inactive', 'active', 'invalid', 'save', 'submit_for_review', 'return_to_draft', 'approve', 'reject', 'observe', 'activate', 'deactivate', 'delete_if_unreferenced'] as $value) {
     detailReadAssert(str_contains($contract, "'{$value}'") || str_contains($contract, "{$value}:"), 'Allowlist sin ' . $value . '.');
 }
 foreach (['document.createElement', 'textContent', 'append', 'replaceChildren', 'createDocumentFragment', 'Cargando minimarket', 'No hay acciones lifecycle disponibles', 'Estado operativo', 'Estado de incorporación'] as $fragment) {
@@ -45,6 +45,7 @@ foreach ([' 0:', ' 400:', ' 401:', ' 403:', ' 404:', ' 409:', ' 422:'] as $statu
 detailReadAssert(str_contains($view, "role', 'alert") && str_contains($view, 'focus({ preventScroll: true })'), 'Error sin alerta o foco.');
 detailReadAssert(str_contains($view, 'va-store-detail__invalid') && str_contains($view, 'No se realizó ninguna corrección'), 'Invalid no es conservador.');
 detailReadAssert(str_contains($controller, 'STATE_INVALID') && str_contains($controller, '? []') && str_contains($controller, 'classify('), 'Read model invalid no entrega acciones vacías.');
+detailReadAssert(str_contains($controller, 'StoreDecisionCoordinator') && str_contains($controller, 'ACTION_OBSERVE') && str_contains($controller, 'decideAuthorized'), 'Observe anunciado no posee dispatcher global autoritativo.');
 detailReadAssert(! str_contains($controller, "'inventory'") && ! str_contains($controller, "'orders'"), 'DTO agregó relaciones.');
 detailReadAssert(str_contains($css, '.va-store-detail__definitions') && str_contains($css, 'overflow-wrap: anywhere') && str_contains($css, '@media (max-width: 782px)'), 'CSS de lectura no cubre contenido/responsive.');
 detailReadAssert(! str_contains($css, '!important') && preg_match('/^\s*height\s*:/m', $css) !== 1, 'CSS fuera de alcance.');

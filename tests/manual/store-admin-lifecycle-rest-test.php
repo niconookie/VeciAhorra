@@ -66,7 +66,12 @@ function restStoreRequest(
 
 function restStoreTransition(int $id, string $action, string $nonce): WP_REST_Response
 {
-    return restStoreRequest('POST', "/veciahorra/v1/stores/{$id}/transitions", ['action' => $action], $nonce);
+    $detail = restStoreRequest('GET', "/veciahorra/v1/stores/{$id}", null, $nonce)->get_data();
+    return restStoreRequest('POST', "/veciahorra/v1/stores/{$id}/transitions", [
+        'action' => $action,
+        'reason' => in_array($action, ['observe', 'reject'], true) ? 'Motivo de prueba contractual.' : null,
+        'expected_updated_at' => $detail['data']['updated_at'] ?? '',
+    ], $nonce);
 }
 
 function restStoreRawRequest(
@@ -123,6 +128,7 @@ restStoreSame(true, is_int($subscriberId) && $subscriberId > 0, 'No se creo usua
 $stores = new StoreService();
 $contract = new StoreLifecycleContract();
 $table = $wpdb->prefix . Config::TABLE_PREFIX . 'stores';
+$historyTable = $wpdb->prefix . Config::TABLE_PREFIX . 'store_decision_history';
 $inventoryTable = $wpdb->prefix . Config::TABLE_PREFIX . 'inventory';
 restStoreSame(false, $wpdb->query('START TRANSACTION') === false, 'No se inicio transaccion REST.');
 
@@ -208,6 +214,7 @@ try {
     restStoreSame(409, restStoreTransition($flowId, 'submit_for_review', $nonce)->get_status(), 'Segunda transicion no idempotente fue aceptada.');
     $response = restStoreTransition($flowId, 'approve', $nonce);
     restStoreSame('approved_inactive', $response->get_data()['data']['lifecycle_state'] ?? null, 'approve fallo.');
+    restStoreSame(1, (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$historyTable} WHERE store_id=%d AND action='approve' AND actor_role='administrator'", $flowId)), 'Approve global no registro historial.');
     $approval = $stores->find($flowId)?->approved_at;
     $response = restStoreTransition($flowId, 'activate', $nonce);
     restStoreSame('active', $response->get_data()['data']['lifecycle_state'] ?? null, 'activate fallo.');
@@ -218,7 +225,13 @@ try {
     $rejectId = restStoreFixture($stores, 'reject-' . uniqid());
     restStoreTransition($rejectId, 'submit_for_review', $nonce);
     restStoreSame('rejected', restStoreTransition($rejectId, 'reject', $nonce)->get_data()['data']['lifecycle_state'] ?? null, 'reject fallo.');
+    restStoreSame(1, (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$historyTable} WHERE store_id=%d AND action='reject' AND reason<>''", $rejectId)), 'Reject global no registro motivo/historial.');
     restStoreSame('draft', restStoreTransition($rejectId, 'return_to_draft', $nonce)->get_data()['data']['lifecycle_state'] ?? null, 'return_to_draft fallo.');
+
+    $observeId = restStoreFixture($stores, 'observe-' . uniqid());
+    restStoreTransition($observeId, 'submit_for_review', $nonce);
+    restStoreSame('observed', restStoreTransition($observeId, 'observe', $nonce)->get_data()['data']['lifecycle_state'] ?? null, 'observe global fallo.');
+    restStoreSame(1, (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$historyTable} WHERE store_id=%d AND action='observe' AND reason<>''", $observeId)), 'Observe global no registro motivo/historial.');
 
     $prohibited = [
         [$stateIds['draft'], 'approve'],
@@ -332,7 +345,7 @@ try {
     $request = new WP_REST_Request('POST', "/veciahorra/v1/stores/{$directId}/transitions");
     $request->set_url_params(['id' => (string) $directId]);
     $request->set_header('content-type', 'application/json');
-    $request->set_body('{"action":"submit_for_review"}');
+    $request->set_body((string) wp_json_encode(['action'=>'submit_for_review','reason'=>null,'expected_updated_at'=>$stores->find($directId)?->updated_at]));
 
     $mutating = new RestMutatingTransitionRepository(new StoreRepository(), static function (int $id) use ($wpdb, $table): void {
         restStoreSame(1, $wpdb->update($table, ['onboarding_status' => 'complete'], ['id' => $id]), 'No se simulo concurrencia REST.');

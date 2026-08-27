@@ -12,6 +12,7 @@ use VeciAhorra\Modules\Stores\Exceptions\StoreLifecycleException;
 use VeciAhorra\Modules\Stores\Models\Store;
 use VeciAhorra\Modules\Stores\Services\StoreService;
 use VeciAhorra\Modules\Stores\Services\StoreTransitionService;
+use VeciAhorra\Modules\ZonalAdmin\Services\StoreDecisionCoordinator;
 
 /**
  * Caso HTTP neutral para la lectura administrativa paginada de Store.
@@ -29,7 +30,8 @@ final class StoreAdminReadController
     public function __construct(
         private StoreService $service,
         private StoreTransitionService $transitions,
-        private StoreLifecycleContract $lifecycle
+        private StoreLifecycleContract $lifecycle,
+        private ?StoreDecisionCoordinator $decisions = null
     ) {
     }
 
@@ -47,14 +49,18 @@ final class StoreAdminReadController
         }
     }
 
-    public function transition(int $id, string $action): array
+    public function transition(int $id, array $payload, int $actorUserId): array
     {
         try {
+            $action = $payload['action'];
             $store = match ($action) {
+                StoreLifecycleContract::ACTION_APPROVE,
+                StoreLifecycleContract::ACTION_REJECT,
+                StoreLifecycleContract::ACTION_OBSERVE => ($this->decisions ??= new StoreDecisionCoordinator())->decideAuthorized(
+                    $id, $actorUserId, $action, $payload['reason'], $payload['expected_updated_at']
+                ),
                 StoreLifecycleContract::ACTION_SUBMIT_FOR_REVIEW => $this->transitions->submitForReview($id),
                 StoreLifecycleContract::ACTION_RETURN_TO_DRAFT => $this->transitions->returnToDraft($id),
-                StoreLifecycleContract::ACTION_APPROVE => $this->transitions->approve($id),
-                StoreLifecycleContract::ACTION_REJECT => $this->transitions->reject($id),
                 StoreLifecycleContract::ACTION_ACTIVATE => $this->transitions->activate($id),
                 StoreLifecycleContract::ACTION_DEACTIVATE => $this->transitions->deactivate($id),
                 default => throw new RuntimeException('Accion no despachada.'),

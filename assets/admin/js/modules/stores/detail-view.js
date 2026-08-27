@@ -227,7 +227,15 @@ export function createStoreDetailView(root, config = {}) {
             const cancel = node('button', 'Cancelar', 'button');
             cancel.type = 'button'; cancel.dataset.vaStoreCancelLifecycle = 'true';
             controls.append(confirm, cancel);
-            panel.append(heading, node('p', definition.consequence), progress, controls);
+            panel.append(heading, node('p', definition.consequence));
+            if (['observe', 'reject'].includes(action)) {
+                const id = `va-store-detail-${action}-reason`;
+                const label = node('label', 'Motivo'); label.htmlFor = id;
+                const reason = node('textarea'); reason.id = id; reason.required = true; reason.maxLength = 1000;
+                reason.dataset.vaStoreLifecycleReason = 'true';
+                panel.append(label, reason);
+            }
+            panel.append(progress, controls);
             nodes.actions.replaceChildren(panel);
             root.dataset.vaStoreDetailState = 'confirming';
             heading.focus({ preventScroll: true });
@@ -240,6 +248,19 @@ export function createStoreDetailView(root, config = {}) {
             panel?.querySelectorAll('button').forEach((button) => { button.disabled = active; });
             const progress = nodes.actions.querySelector('[data-va-store-transition-progress]');
             if (progress) progress.textContent = active ? 'Procesando acción lifecycle…' : '';
+        },
+        lifecycleReason() {
+            const control = nodes.actions.querySelector('[data-va-store-lifecycle-reason]');
+            return typeof control?.value === 'string' ? control.value : '';
+        },
+        lifecycleValidationError(message) {
+            const control = nodes.actions.querySelector('[data-va-store-lifecycle-reason]');
+            if (control) {
+                control.setAttribute('aria-invalid', 'true');
+                control.focus({ preventScroll: true });
+            }
+            const progress = nodes.actions.querySelector('[data-va-store-transition-progress]');
+            if (progress) progress.textContent = message;
         },
         confirmDelete(item) {
             hideInventory();

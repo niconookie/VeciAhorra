@@ -13,14 +13,20 @@ $api = file_get_contents($root . '/assets/admin/js/modules/stores/detail-api.js'
 $module = file_get_contents($root . '/assets/admin/js/modules/stores/detail-lifecycle.js');
 $view = file_get_contents($root . '/assets/admin/js/modules/stores/detail-view.js');
 $css = file_get_contents($root . '/assets/admin/css/stores-detail.css');
+$controller = file_get_contents($root . '/app/Modules/Stores/Controllers/StoreAdminReadController.php');
+$request = file_get_contents($root . '/app/Modules/Stores/Requests/StoreTransitionRequest.php');
 
-$actions = ['submit_for_review', 'return_to_draft', 'approve', 'reject', 'activate', 'deactivate'];
+$actions = ['submit_for_review', 'return_to_draft', 'approve', 'reject', 'observe', 'activate', 'deactivate'];
 foreach ($actions as $action) {
     detailLifecycleAssert(str_contains($module, "{$action}: Object.freeze"), "Falta acción lifecycle {$action}.");
 }
+foreach (['ACTION_SUBMIT_FOR_REVIEW', 'ACTION_RETURN_TO_DRAFT', 'ACTION_APPROVE', 'ACTION_REJECT', 'ACTION_OBSERVE', 'ACTION_ACTIVATE', 'ACTION_DEACTIVATE'] as $constant) {
+    detailLifecycleAssert(str_contains($controller, $constant) && str_contains($request, $constant), "Acción anunciada sin request/dispatcher: {$constant}.");
+}
 detailLifecycleAssert(str_contains($module, 'dto.allowed_actions.filter'), 'Las acciones no derivan de allowed_actions.');
+detailLifecycleAssert(str_contains($module, 'observe') && str_contains($module, 'expected_updated_at') && str_contains($app, 'lifecycleReason'), 'Observe no posee UI, motivo o control de concurrencia.');
 detailLifecycleAssert(! str_contains($module, "save:") && ! str_contains($module, 'delete_if_unreferenced'), 'Save o delete se trataron como lifecycle.');
-foreach (["method: 'POST'", '`${config.detailUrl}/transitions`', "'X-WP-Nonce': config.nonce", "'Content-Type': 'application/json'", 'JSON.stringify({ action })'] as $transport) {
+foreach (["method: 'POST'", '`${config.detailUrl}/transitions`', "'X-WP-Nonce': config.nonce", "'Content-Type': 'application/json'", 'JSON.stringify(payload)'] as $transport) {
     detailLifecycleAssert(str_contains($api, $transport), "Transporte lifecycle sin {$transport}.");
 }
 detailLifecycleAssert(substr_count($api, 'fetch(') === 1, 'Se perdió el punto fetch único.');

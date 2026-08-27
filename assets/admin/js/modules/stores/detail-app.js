@@ -182,7 +182,13 @@ export function createStoreDetailCoordinator({ rootNode, config, api, view, navi
     const confirmLifecycle = () => {
         if (mode !== 'confirming' || !dto || !pendingAction || !dto.allowed_actions.includes(pendingAction)) return;
         const action = pendingAction;
-        transitionPayload(action);
+        let payload;
+        try {
+            payload = transitionPayload(action, view.lifecycleReason?.() ?? '', dto.updated_at);
+        } catch (error) {
+            view.lifecycleValidationError?.('El motivo es obligatorio.');
+            return;
+        }
         const baseDto = dto;
         const operationId = ++transitionSequence;
         let processed = false;
@@ -190,7 +196,7 @@ export function createStoreDetailCoordinator({ rootNode, config, api, view, navi
         view.transitioning(true);
         transitionController?.abort();
         transitionController = new AbortController();
-        api.transition(action, transitionController.signal)
+        api.transition(payload, transitionController.signal)
             .then((result) => {
                 if (!isCurrentTransition(operationId, baseDto, action)) return null;
                 validateDetailPayload(result, config.storeId);
