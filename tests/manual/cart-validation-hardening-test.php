@@ -2,7 +2,16 @@
 
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') throw new RuntimeException('cart_hardening_cli_required');
+if (defined('VECIAHORRA_PUBLIC_COMMERCE_ENABLED')) throw new RuntimeException('cart_hardening_commerce_predefined');
+if (define('VECIAHORRA_PUBLIC_COMMERCE_ENABLED', true) !== true) throw new RuntimeException('cart_hardening_commerce_define_failed');
+$oldSessionPath = session_save_path();
+$sessionPath = sys_get_temp_dir() . '/va-cart-hardening-' . bin2hex(random_bytes(8));
+if (! mkdir($sessionPath, 0700)) throw new RuntimeException('cart_hardening_session_path_failed');
+session_save_path($sessionPath);
+
 use VeciAhorra\Core\Container;
+use VeciAhorra\Core\LaunchGate;
 use VeciAhorra\Modules\Cart\Requests\CartItemCreateRequest;
 use VeciAhorra\Modules\Cart\Service\CartService;
 use VeciAhorra\Modules\Catalog\Security\PublicOfferToken;
@@ -11,9 +20,6 @@ use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_save_path(sys_get_temp_dir());
-}
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 require_once __DIR__ . '/support/SectorizationFixture.php';
 
@@ -47,6 +53,7 @@ function cartHardeningRequest(
 }
 
 global $wpdb;
+assertCartHardening((new LaunchGate())->commerceEnabled(), 'El comercio no quedo abierto.');
 
 $transaction = $wpdb->query('START TRANSACTION');
 assertCartHardening($transaction !== false, 'No se inicio transaccion.');
@@ -289,4 +296,9 @@ try {
     sectorizationFixtureClearCurrent();
     wp_set_current_user(0);
     $wpdb->query('ROLLBACK');
+    if (session_status() === PHP_SESSION_ACTIVE) { $_SESSION = []; @session_destroy(); }
+    session_id('');
+    session_save_path($oldSessionPath);
+    foreach (glob($sessionPath . '/*') ?: [] as $file) if (is_file($file)) unlink($file);
+    rmdir($sessionPath);
 }

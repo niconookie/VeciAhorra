@@ -415,7 +415,7 @@ final class CustomerAccessModule
         $logoutUrl = is_user_logged_in() ? wp_logout_url(home_url('/')) : '';
         $currentLabel = is_front_page() ? 'Inicio' : wp_strip_all_tags((string) (get_the_title() ?: 'VeciAhorra'));
         ?>
-        <header class="va-global-header" data-va-global-header data-rest-url="<?php echo esc_url(rest_url('veciahorra/v1/')); ?>" data-current-sector="<?php echo esc_attr(is_array($sector) ? (string) $sector['id'] : ''); ?>">
+        <header class="va-global-header" data-va-global-header data-rest-url="<?php echo esc_url(rest_url('veciahorra/v1/')); ?>" data-rest-nonce="<?php echo esc_attr(is_user_logged_in() ? wp_create_nonce('wp_rest') : ''); ?>" data-current-sector="<?php echo esc_attr(is_array($sector) ? (string) $sector['id'] : ''); ?>">
             <div class="va-global-header__main">
                 <div class="va-global-header__container va-global-header__primary">
                     <a class="va-global-header__brand" href="<?php echo esc_url(home_url('/')); ?>" aria-label="VeciAhorra, ir al inicio">

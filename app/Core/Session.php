@@ -12,11 +12,17 @@ final class Session
     /**
      * Inicia la sesión si aún no existe.
      */
-    public static function start(): void
+    public static function start(): bool
     {
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            return true;
         }
+
+        if (session_status() === PHP_SESSION_NONE) {
+            return @session_start() && session_status() === PHP_SESSION_ACTIVE;
+        }
+
+        return false;
     }
 
     /**
@@ -53,5 +59,44 @@ final class Session
         self::start();
 
         unset($_SESSION[$key]);
+    }
+
+    public static function putVerifiedAndClose(string $key, mixed $value): bool
+    {
+        if (! self::start()) {
+            return false;
+        }
+
+        $sessionId = session_id();
+        if ($sessionId === '') {
+            @session_write_close();
+            return false;
+        }
+
+        $_SESSION[$key] = $value;
+        $writtenInMemory = array_key_exists($key, $_SESSION) && $_SESSION[$key] === $value;
+        @session_write_close();
+
+        if (! $writtenInMemory || session_status() === PHP_SESSION_ACTIVE) {
+            return false;
+        }
+
+        // Force the verification read to come from the configured session handler.
+        $_SESSION = [];
+        if (session_id() !== $sessionId) {
+            session_id($sessionId);
+        }
+
+        if (! @session_start() || session_status() !== PHP_SESSION_ACTIVE) {
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                @session_write_close();
+            }
+            return false;
+        }
+
+        $persisted = array_key_exists($key, $_SESSION) && $_SESSION[$key] === $value;
+        $verificationClosed = @session_write_close();
+
+        return $persisted && $verificationClosed && session_status() === PHP_SESSION_NONE;
     }
 }

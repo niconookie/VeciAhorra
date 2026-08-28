@@ -2,11 +2,16 @@
 
 declare(strict_types=1);
 
+ob_start();
+
+use VeciAhorra\Core\Config;
 use VeciAhorra\Modules\Cart\Repository\CartRepository;
 use VeciAhorra\Modules\Cart\Service\CartService;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Sectorization\CurrentSector;
+use VeciAhorra\Modules\Sectorization\ServiceZoneRepository;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
@@ -41,6 +46,21 @@ function assertCartServiceInvalid(callable $callback): void
     throw new RuntimeException('Se esperaba InvalidArgumentException.');
 }
 
+function assertCartServiceOutOfSector(callable $callback): void
+{
+    try {
+        $callback();
+    } catch (InvalidArgumentException $exception) {
+        assertCartServiceSame(
+            'La oferta no está disponible en el sector actual.',
+            $exception->getMessage()
+        );
+        return;
+    }
+
+    throw new RuntimeException('Se esperaba rechazo por sector.');
+}
+
 function assertCartServiceNotFound(callable $callback): void
 {
     try {
@@ -53,6 +73,26 @@ function assertCartServiceNotFound(callable $callback): void
 }
 
 global $wpdb;
+
+function cartServiceCommercialSnapshot(): string
+{
+    global $wpdb;
+    $prefix = $wpdb->prefix . Config::TABLE_PREFIX;
+    $snapshot = [];
+    foreach (['service_zones', 'store_service_zones', 'stores', 'products', 'inventory', 'cart_items', 'orders'] as $suffix) {
+        $snapshot[$suffix] = $wpdb->get_results("SELECT * FROM {$prefix}{$suffix} ORDER BY 1, 2", ARRAY_A);
+    }
+    return hash('sha256', serialize($snapshot));
+}
+
+$commercialBaseline = cartServiceCommercialSnapshot();
+$oldSessionPath = session_save_path();
+$sessionPath = sys_get_temp_dir() . '/va-cart-service-' . bin2hex(random_bytes(8));
+assertCartService(mkdir($sessionPath, 0700), 'No se creo session.save_path aislado.');
+assertCartService(session_status() === PHP_SESSION_NONE, 'La prueba heredo una sesion activa.');
+session_save_path($sessionPath);
+session_id('');
+unset($_COOKIE[session_name()]);
 
 $cartRepository = new CartRepository();
 $inventoryRepository = new InventoryRepository();
@@ -69,6 +109,15 @@ try {
         'business_name' => $token, 'legal_name' => $token,
         'owner_name' => 'Owner', 'rut' => '1-9',
         'email' => $token . '@example.test', 'phone' => '000',
+        'mobile' => null, 'address' => null, 'commune' => null,
+        'city' => null, 'region' => null, 'status' => 'active',
+        'onboarding_status' => 'complete', 'approved_at' => $now,
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $otherMinimarketId = $storeRepository->create([
+        'business_name' => $token . '-other', 'legal_name' => $token . '-other',
+        'owner_name' => 'Owner', 'rut' => '2-7',
+        'email' => $token . '-other@example.test', 'phone' => '000',
         'mobile' => null, 'address' => null, 'commune' => null,
         'city' => null, 'region' => null, 'status' => 'active',
         'onboarding_status' => 'complete', 'approved_at' => $now,
@@ -111,6 +160,45 @@ try {
         'session_id' => null,
         'user_id' => random_int(51000000, 51999999),
     ];
+
+    assertCartServiceSame(0, (new CurrentSector())->id());
+    assertCartServiceOutOfSector(fn () =>
+        $service->addItem($sessionOwner, $firstInventoryId, 1)
+    );
+
+    $prefix = $wpdb->prefix . Config::TABLE_PREFIX;
+    $zoneId = (int) $wpdb->get_var(
+        "SELECT id FROM {$prefix}service_zones WHERE status='active' ORDER BY id LIMIT 1"
+    );
+    assertCartService($zoneId > 0, 'No existe una zona activa para el fixture.');
+    (new CurrentSector())->set($zoneId);
+    assertCartServiceSame($zoneId, (new CurrentSector())->id());
+    assertCartServiceOutOfSector(fn () =>
+        $service->addItem($sessionOwner, $firstInventoryId, 1)
+    );
+
+    assertCartServiceSame(1, $wpdb->insert(
+        $prefix . 'store_service_zones',
+        ['zone_id' => $zoneId, 'store_id' => $otherMinimarketId]
+    ));
+    assertCartServiceOutOfSector(fn () =>
+        $service->addItem($sessionOwner, $firstInventoryId, 1)
+    );
+    assertCartServiceSame(1, $wpdb->delete(
+        $prefix . 'store_service_zones',
+        ['zone_id' => $zoneId, 'store_id' => $otherMinimarketId]
+    ));
+
+    assertCartServiceSame(1, $wpdb->insert(
+        $prefix . 'store_service_zones',
+        ['zone_id' => $zoneId, 'store_id' => $minimarketId]
+    ));
+    assertCartService((new ServiceZoneRepository())->storeAllowed($zoneId, $minimarketId), 'Vinculo sectorial fixture inactivo.');
+    assertCartServiceSame(1, (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}store_service_zones WHERE zone_id=%d AND store_id=%d",
+        $zoneId,
+        $minimarketId
+    )));
 
     $sessionResult = $service->addItem(
         $sessionOwner,
@@ -208,7 +296,27 @@ try {
         $service->addItem($sessionOwner, PHP_INT_MAX, 1)
     );
 
-    echo "PASS cart-service-test\n";
 } finally {
     $wpdb->query('ROLLBACK');
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        $_SESSION = [];
+        session_destroy();
+    }
+    session_id('');
+    session_save_path($oldSessionPath);
+    foreach (glob($sessionPath . '/*') ?: [] as $sessionFile) {
+        unlink($sessionFile);
+    }
+    rmdir($sessionPath);
 }
+
+assertCartServiceSame($commercialBaseline, cartServiceCommercialSnapshot());
+assertCartServiceSame(0, (int) $wpdb->get_var($wpdb->prepare(
+    'SELECT COUNT(*) FROM ' . $wpdb->prefix . Config::TABLE_PREFIX . 'stores WHERE business_name IN (%s,%s)',
+    $token,
+    $token . '-other'
+)));
+assertCartService(! is_dir($sessionPath), 'Quedo session.save_path temporal.');
+
+echo "PASS cart-service-test anti_false_pass=4 rollback=pass\n";
+ob_end_flush();

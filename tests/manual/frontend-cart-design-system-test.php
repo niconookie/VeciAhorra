@@ -46,13 +46,83 @@ function cartDesignSources(string $root): array
     return $sources;
 }
 
+/** @param list<string> $requiredClasses @return list<string> */
+function cartDesignWrapperClasses(
+    string $source,
+    string $xpathExpression,
+    string $expectedTag,
+    array $requiredClasses,
+    string $countDiagnostic,
+    string $tagDiagnostic,
+    string $classDiagnostic
+): array
+{
+    $html = '';
+    foreach (token_get_all($source) as $token) {
+        if (is_array($token) && $token[0] === T_INLINE_HTML) {
+            $html .= $token[1];
+        }
+    }
+    $document = new DOMDocument();
+    $previous = libxml_use_internal_errors(true);
+    try {
+        assertCartDesign($document->loadHTML('<!doctype html><html><body>' . $html . '</body></html>'), 'CART_LAYOUT_PARSE');
+    } finally {
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+    }
+    $wrappers = (new DOMXPath($document))->query($xpathExpression);
+    assertCartDesign($wrappers !== false && $wrappers->length === 1, $countDiagnostic);
+    $wrapper = $wrappers->item(0);
+    assertCartDesign($wrapper instanceof DOMElement && strtolower($wrapper->tagName) === $expectedTag, $tagDiagnostic);
+    $className = $wrapper->getAttribute('class');
+    $classes = preg_split('/\s+/', trim($className), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    foreach ($requiredClasses as $requiredClass) {
+        $diagnostic = count($requiredClasses) === 1 ? $classDiagnostic : $classDiagnostic . ':' . $requiredClass;
+        assertCartDesign(in_array($requiredClass, $classes, true), $diagnostic);
+    }
+
+    $classes = array_values(array_unique($classes));
+    sort($classes, SORT_STRING);
+
+    return $classes;
+}
+
+/** @return list<string> */
+function cartDesignLayoutWrapperClasses(string $source): array
+{
+    return cartDesignWrapperClasses(
+        $source,
+        '//*[@data-va-frontend]',
+        'div',
+        ['veciahorra-frontend'],
+        'CART_LAYOUT_WRAPPER_COUNT',
+        'CART_LAYOUT_WRAPPER_TAG',
+        'CART_LAYOUT_WRAPPER_CLASS'
+    );
+}
+
+/** @return list<string> */
+function cartDesignCheckoutWrapperClasses(string $source): array
+{
+    return cartDesignWrapperClasses(
+        $source,
+        '//*[@data-va-checkout]',
+        'section',
+        ['veciahorra-frontend', 'va-checkout', 'va-design-system'],
+        'CART_CHECKOUT_WRAPPER_COUNT',
+        'CART_CHECKOUT_WRAPPER_TAG',
+        'CART_CHECKOUT_WRAPPER_CLASS'
+    );
+}
+
 /** @param array<string, string> $sources */
 function validateCartDesign(array $sources): void
 {
     $root = '<section class="veciahorra-frontend va-design-system va-public-cart"';
     assertCartDesign(substr_count($sources['view'], $root) === 1, 'CART_DESIGN_ROOT_MISSING');
-    assertCartDesign(! str_contains($sources['layout'], 'va-design-system'), 'CART_ROOT_IN_LAYOUT');
-    assertCartDesign(! str_contains($sources['checkout'], 'va-design-system'), 'CART_ROOT_IN_CHECKOUT');
+    assertCartDesign(! in_array('va-design-system', cartDesignLayoutWrapperClasses($sources['layout']), true), 'CART_ROOT_IN_LAYOUT');
+    cartDesignCheckoutWrapperClasses($sources['checkout']);
     assertCartDesign(str_contains($sources['view'], 'data-va-cart aria-labelledby="<?php echo esc_attr($titleId); ?>"'), 'CART_ARIA_LABELLEDBY_REMOVED');
     assertCartDesign(str_contains($sources['view'], '<h1 id="<?php echo esc_attr($titleId); ?>">'), 'CART_HEADING_ID_REMOVED');
     assertCartDesign(str_contains($sources['view'], 'va-public-cart__header') && str_contains($sources['view'], 'va-section-heading') && str_contains($sources['view'], 'va-product-detail__eyebrow va-eyebrow'), 'CART_HEADING_COMPONENT_MISSING');
@@ -128,12 +198,78 @@ function assertGitFileEquals(string $root, string $commit, string $path, string 
 
 $root = dirname(__DIR__, 2);
 $sources = cartDesignSources($root);
+assertCartDesign(str_contains($sources['layout'], 'va-design-system'), 'CART_HISTORICAL_FALSE_POSITIVE_NOT_REPRODUCED');
+assertCartDesign(str_contains($sources['checkout'], 'va-design-system'), 'CART_CHECKOUT_HISTORICAL_FALSE_POSITIVE_NOT_REPRODUCED');
+$wrapperCases = [
+    ['class="veciahorra-frontend"', 'class="veciahorra-frontend va-design-system"', 'CART_ROOT_IN_LAYOUT'],
+    ['class="veciahorra-frontend"', 'class="va-design-system veciahorra-frontend"', 'CART_ROOT_IN_LAYOUT'],
+    ['class="veciahorra-frontend"', 'class="  veciahorra-frontend   va-design-system  "', 'CART_ROOT_IN_LAYOUT'],
+    ['class="veciahorra-frontend"', "class='veciahorra-frontend va-design-system'", 'CART_ROOT_IN_LAYOUT'],
+    [' data-va-frontend', '', 'CART_LAYOUT_WRAPPER_COUNT'],
+    ['</div>', '</div><div class="veciahorra-frontend" data-va-frontend></div>', 'CART_LAYOUT_WRAPPER_COUNT'],
+    ['class="veciahorra-frontend"', 'class="va-layout"', 'CART_LAYOUT_WRAPPER_CLASS'],
+];
+foreach ($wrapperCases as [$search, $replace, $expected]) {
+    $candidate = $search === '</div>'
+        ? $sources['layout'] . '<div class="veciahorra-frontend" data-va-frontend></div>'
+        : cartDesignMutate($sources['layout'], $search, $replace);
+    try {
+        cartDesignLayoutWrapperClasses($candidate);
+        if ($expected === 'CART_ROOT_IN_LAYOUT') {
+            assertCartDesign(! in_array('va-design-system', cartDesignLayoutWrapperClasses($candidate), true), $expected);
+        }
+        throw new RuntimeException('CART_WRAPPER_MUTATION_ACCEPTED');
+    } catch (RuntimeException $exception) {
+        assertCartDesign($exception->getMessage() === $expected, 'CART_WRAPPER_WRONG_DIAGNOSTIC');
+    }
+}
+$allowedNestedLayout = $sources['layout'] . '<aside class="va-design-system"></aside>';
+assertCartDesign(! in_array('va-design-system', cartDesignLayoutWrapperClasses($allowedNestedLayout), true), 'CART_NESTED_CLASS_REJECTED');
+$crlfLayout = str_replace("\n", "\r\n", str_replace("\r\n", "\n", $sources['layout']));
+assertCartDesign(cartDesignLayoutWrapperClasses($sources['layout']) === cartDesignLayoutWrapperClasses($crlfLayout), 'CART_WRAPPER_EOL_DRIFT');
+$checkoutRoot = '<section class="veciahorra-frontend va-design-system va-checkout" data-va-checkout';
+$checkoutCases = [
+    ['<section class="veciahorra-frontend va-design-system va-checkout"', 'CART_CHECKOUT_WRAPPER_COUNT'],
+    ['<article class="veciahorra-frontend va-design-system va-checkout" data-va-checkout', 'CART_CHECKOUT_WRAPPER_TAG'],
+    ['<section class="veciahorra-frontend-prefixed va-design-system va-checkout" data-va-checkout', 'CART_CHECKOUT_WRAPPER_CLASS:veciahorra-frontend'],
+    ['<section class="veciahorra-frontend va-design-system va-checkout-prefixed" data-va-checkout', 'CART_CHECKOUT_WRAPPER_CLASS:va-checkout'],
+    ['<section class="veciahorra-frontend va-design-system-prefixed va-checkout" data-va-checkout', 'CART_CHECKOUT_WRAPPER_CLASS:va-design-system'],
+];
+foreach ($checkoutCases as [$replacement, $expected]) {
+    $candidate = cartDesignMutate($sources['checkout'], $checkoutRoot, $replacement);
+    try {
+        cartDesignCheckoutWrapperClasses($candidate);
+        throw new RuntimeException('CART_CHECKOUT_MUTATION_ACCEPTED');
+    } catch (RuntimeException $exception) {
+        assertCartDesign($exception->getMessage() === $expected, 'CART_CHECKOUT_WRONG_DIAGNOSTIC');
+    }
+}
+$duplicatedCheckout = $sources['checkout'] . '<section class="veciahorra-frontend va-checkout va-design-system" data-va-checkout></section>';
+try {
+    cartDesignCheckoutWrapperClasses($duplicatedCheckout);
+    throw new RuntimeException('CART_CHECKOUT_MUTATION_ACCEPTED');
+} catch (RuntimeException $exception) {
+    assertCartDesign($exception->getMessage() === 'CART_CHECKOUT_WRAPPER_COUNT', 'CART_CHECKOUT_WRONG_DIAGNOSTIC');
+}
+$reorderedCheckout = cartDesignMutate(
+    $sources['checkout'],
+    '<section class="veciahorra-frontend va-design-system va-checkout" data-va-checkout',
+    "<section   data-va-checkout class='va-checkout   veciahorra-frontend  va-design-system'"
+);
+assertCartDesign(
+    cartDesignCheckoutWrapperClasses($sources['checkout']) === cartDesignCheckoutWrapperClasses($reorderedCheckout),
+    'CART_CHECKOUT_ORDER_DRIFT'
+);
+$crlfCheckout = str_replace("\n", "\r\n", str_replace("\r\n", "\n", $sources['checkout']));
+assertCartDesign(
+    cartDesignCheckoutWrapperClasses($sources['checkout']) === cartDesignCheckoutWrapperClasses($crlfCheckout),
+    'CART_CHECKOUT_EOL_DRIFT'
+);
 validateCartDesign($sources);
 
 $cases = [
     ['view', 'veciahorra-frontend va-design-system va-public-cart', 'va-public-cart', 'CART_DESIGN_ROOT_MISSING', 'raiz ausente'],
     ['layout', 'class="veciahorra-frontend"', 'class="veciahorra-frontend va-design-system"', 'CART_ROOT_IN_LAYOUT', 'raiz en layout'],
-    ['checkout', 'class="va-checkout"', 'class="va-checkout va-design-system"', 'CART_ROOT_IN_CHECKOUT', 'raiz en checkout'],
     ['view', ' data-va-cart-loading', '', 'CART_MOUNT_REMOVED', 'mount loading ausente'],
     ['view', ' aria-labelledby="<?php echo esc_attr($titleId); ?>"', '', 'CART_ARIA_LABELLEDBY_REMOVED', 'labelledby ausente'],
     ['view', '<h1 id="<?php echo esc_attr($titleId); ?>">', '<h1>', 'CART_HEADING_ID_REMOVED', 'heading id ausente'],
@@ -165,6 +301,26 @@ foreach ($cases as [$file, $search, $replace, $diagnostic, $label]) {
     $candidate[$file] = cartDesignMutate($candidate[$file], $search, $replace);
     $adversarials[] = expectCartDesignRejection($candidate, $diagnostic, $label);
 }
+$layoutMutations = [
+    ['class="veciahorra-frontend"', 'class="va-design-system veciahorra-frontend"', 'CART_ROOT_IN_LAYOUT', 'raiz orden alternativo'],
+    ['class="veciahorra-frontend"', 'class="  veciahorra-frontend   va-design-system  "', 'CART_ROOT_IN_LAYOUT', 'raiz espacios adicionales'],
+    ['class="veciahorra-frontend"', "class='veciahorra-frontend va-design-system'", 'CART_ROOT_IN_LAYOUT', 'raiz comillas simples'],
+    [' data-va-frontend', '', 'CART_LAYOUT_WRAPPER_COUNT', 'raiz ausente'],
+    ['</div>', '</div><div class="veciahorra-frontend" data-va-frontend></div>', 'CART_LAYOUT_WRAPPER_COUNT', 'raiz duplicada'],
+    ['class="veciahorra-frontend"', 'class="va-layout"', 'CART_LAYOUT_WRAPPER_CLASS', 'clase raiz eliminada'],
+];
+foreach ($layoutMutations as [$search, $replace, $diagnostic, $label]) {
+    $candidate = $sources;
+    $candidate['layout'] = $label === 'raiz duplicada'
+        ? $candidate['layout'] . '<div class="veciahorra-frontend" data-va-frontend></div>'
+        : cartDesignMutate($candidate['layout'], $search, $replace);
+    $adversarials[] = expectCartDesignRejection($candidate, $diagnostic, $label);
+}
+$nestedAllowed = $sources;
+$nestedAllowed['layout'] .= '<aside class="va-design-system"></aside>';
+validateCartDesign($nestedAllowed);
+$crlfSources = array_map(static fn (string $source): string => str_replace("\n", "\r\n", str_replace("\r\n", "\n", $source)), $sources);
+validateCartDesign($crlfSources);
 $adversarials[] = (static function (): array {
     try {
         validateCartDesignScope([
@@ -180,7 +336,7 @@ $adversarials[] = (static function (): array {
     }
     throw new RuntimeException('CART_ADVERSARIAL_ACCEPTED: archivo fuera de alcance');
 })();
-assertCartDesign(count($adversarials) === 28, 'CART_ADVERSARIAL_COUNT');
+assertCartDesign(count($adversarials) === 33, 'CART_ADVERSARIAL_COUNT');
 
 $markup = do_shortcode('[veciahorra_cart]');
 assertCartDesign(str_contains($markup, 'class="veciahorra-frontend va-design-system va-public-cart" data-va-cart'), 'CART_RUNTIME_ROOT');

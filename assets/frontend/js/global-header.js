@@ -25,7 +25,19 @@
         var searchContext = searchForm.querySelector('[data-va-header-search-context]');
         var productQuery = searchInput.value;
         var restUrl = String(root.dataset.restUrl || '').replace(/\/+$/, '') + '/';
+        var restNonce = String(root.dataset.restNonce || '').trim();
         var sectorsLoaded = false;
+
+        function restOptions(method, body) {
+            var headers = {'Accept':'application/json'};
+            if (restNonce) headers['X-WP-Nonce'] = restNonce;
+            var options = {method:method, credentials:'same-origin', headers:headers};
+            if (body !== undefined) {
+                headers['Content-Type'] = 'application/json';
+                options.body = JSON.stringify(body);
+            }
+            return options;
+        }
 
         function closeMenu(focus) {
             navigation.classList.remove('is-open');
@@ -48,8 +60,8 @@
             if (sectorsLoaded) return;
             sectorsLoaded = true;
             Promise.all([
-                window.fetch(restUrl + 'sectors', {credentials:'same-origin'}).then(json),
-                window.fetch(restUrl + 'sector/current', {credentials:'same-origin'}).then(json)
+                window.fetch(restUrl + 'sectors', restOptions('GET')).then(json),
+                window.fetch(restUrl + 'sector/current', restOptions('GET')).then(json)
             ]).then(function (values) {
                 var zones = values[0] && values[0].data || [];
                 var current = values[1] && values[1].data || null;
@@ -98,7 +110,10 @@
             if (!/^\d+$/.test(sectorSelect.value)) return;
             sectorSelect.disabled = true;
             sectorMessage.textContent = 'Actualizando microzona…';
-            window.fetch(restUrl + 'sector/current/' + encodeURIComponent(sectorSelect.value), {method:'POST',credentials:'same-origin',headers:{'Accept':'application/json'}})
+            window.fetch(
+                restUrl + 'sector/current/' + encodeURIComponent(sectorSelect.value),
+                restOptions('POST', {sector_id: sectorSelect.value})
+            )
                 .then(json).then(function () { window.location.reload(); })
                 .catch(function (error) { sectorMessage.textContent = error.message; sectorSelect.disabled = false; });
         });

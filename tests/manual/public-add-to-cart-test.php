@@ -2,15 +2,16 @@
 
 declare(strict_types=1);
 
+$oldSessionPath = session_save_path();
+$sessionPath = sys_get_temp_dir() . '/va-public-add-' . bin2hex(random_bytes(8));
+if (! mkdir($sessionPath, 0700)) throw new RuntimeException('public_add_session_path_failed');
+session_save_path($sessionPath);
+
 use VeciAhorra\Core\Container;
 use VeciAhorra\Modules\Frontend\Assets\FrontendAssets;
 use VeciAhorra\Modules\Frontend\Controller\FrontendController;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
-
-if (session_status() === PHP_SESSION_NONE) {
-    session_save_path(sys_get_temp_dir());
-}
 
 if (! function_exists('set_current_screen')) {
     require_once ABSPATH . 'wp-admin/includes/class-wp-screen.php';
@@ -32,6 +33,7 @@ function assertPublicAddToCartContains(string $needle, string $haystack): void
     );
 }
 
+try {
 set_current_screen('front');
 wp_set_current_user(0);
 $container = new Container();
@@ -130,4 +132,12 @@ foreach ([
     assertPublicAddToCartContains($contract, $css);
 }
 
-echo "PASS public-add-to-cart-test\n";
+echo "PASS public-add-to-cart-test session=" . basename($sessionPath) . "\n";
+} finally {
+    wp_set_current_user(0);
+    if (session_status() === PHP_SESSION_ACTIVE) { $_SESSION = []; @session_destroy(); }
+    session_id('');
+    session_save_path($oldSessionPath);
+    foreach (glob($sessionPath . '/*') ?: [] as $file) if (is_file($file)) unlink($file);
+    rmdir($sessionPath);
+}

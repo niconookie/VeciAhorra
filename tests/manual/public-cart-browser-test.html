@@ -20,16 +20,35 @@
     var calls = [];
     var getQueue = [
         { success: true, data: [], total: '0.00' },
-        { success: true, data: [{ id: 7, product_name: 'Arroz', product_image_url: null, minimarket_name: 'Tienda', unit_price_snapshot: '10.25', quantity: 2, subtotal: '20.50' }], total: '20.50' },
-        { success: true, data: [{ id: 7, product_name: 'Arroz', product_image_url: null, minimarket_name: 'Tienda', unit_price_snapshot: '10.25', quantity: 1, subtotal: '10.25' }], total: '10.25' },
+        { success: true, data: [{ id: 7, product_id: 17, product_name: 'Arroz', offer_group: 'fixture-group-a', product_image_url: null, unit_price_snapshot: '10.25', quantity: 2, subtotal: '20.50', sector_compatible: true }], total: '20.50' },
+        { success: true, data: [{ id: 7, product_id: 17, product_name: 'Arroz', offer_group: 'fixture-group-a', product_image_url: null, unit_price_snapshot: '10.25', quantity: 1, subtotal: '10.25', sector_compatible: true }], total: '10.25' },
         { success: true, data: [], total: '0.00' },
-        { success: true, data: [{ id: 8, product_name: null, product_image_url: null, minimarket_name: null, unit_price_snapshot: '1.00', quantity: 1, subtotal: '1.00' }], total: '1.00' },
+        { success: true, data: [{ id: 8, product_id: 18, product_name: null, offer_group: 'fixture-group-b', product_image_url: null, unit_price_snapshot: '1.00', quantity: 1, subtotal: '1.00', sector_compatible: true }], total: '1.00' },
         { success: true, data: [], total: '0.00' }
     ];
+    function validPublicItem(item) {
+        var forbidden = ['inventory_id', 'minimarket_id', 'session_id', 'user_id', 'offer_token'];
+        return item && !forbidden.some(function (field) { return Object.hasOwn(item, field); })
+            && item.id === 7 && item.product_id === 17 && item.product_name === 'Arroz'
+            && item.offer_group === 'fixture-group-a' && item.quantity === 2
+            && item.unit_price_snapshot === '10.25' && item.subtotal === '20.50'
+            && item.sector_compatible === true;
+    }
+    var canonicalItem = getQueue[1].data[0];
+    if (!validPublicItem(canonicalItem)) throw new Error('PUBLIC_CART_FIXTURE_INVALID');
+    ['id','product_id','product_name','offer_group','quantity','unit_price_snapshot','subtotal','sector_compatible'].forEach(function (field) {
+        var mutation = Object.assign({}, canonicalItem);
+        mutation[field] = field === 'sector_compatible' ? false : '__mutated__';
+        if (validPublicItem(mutation)) throw new Error('PUBLIC_CART_MUTATION_ACCEPTED_' + field);
+    });
+    ['inventory_id','minimarket_id','session_id','user_id','offer_token'].forEach(function (field) {
+        var leak = Object.assign({}, canonicalItem); leak[field] = 'private';
+        if (validPublicItem(leak)) throw new Error('PUBLIC_CART_PRIVATE_FIELD_ACCEPTED_' + field);
+    });
     window.VeciAhorra = {
         locale: 'es-CL', currency: 'CLP',
         currentUser: { id: 0, loggedIn: false },
-        cart: { sessionHeader: 'X-Veciahorra-Cart-Session', sessionId: 'guest-session' },
+        cart: { sessionHeader: 'X-Veciahorra-Cart-Session', sessionId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
         api: {
             get: function (path, options) { calls.push({ method: 'GET', path: path, options: options }); return Promise.resolve(getQueue.shift()); },
             patch: function (path, body, options) { calls.push({ method: 'PATCH', path: path, body: body, options: options }); return Promise.resolve({ success: true, data: true }); },
@@ -50,11 +69,11 @@
         ready().then(wait).then(function () {
             assert(!root.querySelector('[data-va-cart-empty]').hidden, 'carrito vacio');
             assert(calls[0].path === '/cart', 'GET al abrir');
-            assert(calls[0].options.headers['X-Veciahorra-Cart-Session'] === 'guest-session', 'identidad invitada');
+            assert(calls[0].options.headers['X-Veciahorra-Cart-Session'] === 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'identidad invitada');
             return root.vaCart.load();
         }).then(wait).then(function () {
             assert(!root.querySelector('[data-va-cart-content]').hidden, 'render contenido');
-            assert(root.textContent.includes('Arroz') && root.textContent.includes('Tienda'), 'datos publicos');
+            assert(root.textContent.includes('Arroz'), 'datos publicos');
             assert(root.querySelectorAll('[data-cart-item-id]').length === 1, 'una fila');
             assert(root.querySelectorAll('[aria-label]').length >= 3, 'controles accesibles');
             root.querySelector('[aria-label^="Disminuir"]').click();
@@ -79,7 +98,7 @@
             return root.vaCart.load();
         }).then(wait).then(function () {
             assert(root.textContent.includes('Producto no disponible'), 'producto neutro');
-            assert(root.textContent.includes('Minimarket no disponible'), 'minimarket neutro');
+            assert(!root.textContent.includes('fixture-group'), 'agrupador opaco visible');
             root.querySelector('[data-va-cart-clear]').click();
             return wait();
         }).then(wait).then(function () {

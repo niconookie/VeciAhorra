@@ -75,8 +75,8 @@ HTML;
         && str_contains($script, "request('GET','sector/current')")
         && str_contains($script, "request('POST','sector/current/'"), 'S15_ENDPOINTS_UNCHANGED');
     $require(str_contains($script, 'window.location.reload()'), 'S16_POST_RELOAD_UNCHANGED');
-    $require(str_contains($sector, "private const SESSION='veciahorra_service_zone_id'") && str_contains($sector, 'Session::put(self::SESSION,$id)'), 'S17_SESSION_PERSISTENCE_UNCHANGED');
-    $require(str_contains($sector, "private const META='_veciahorra_service_zone_id'") && str_contains($sector, 'update_user_meta(get_current_user_id(),self::META,$id)'), 'S18_USER_META_UNCHANGED');
+    $require(str_contains($sector, "private const SESSION='veciahorra_service_zone_id'") && str_contains($sector, 'Session::putVerifiedAndClose(self::SESSION,$id)'), 'S17_SESSION_PERSISTENCE_UNCHANGED');
+    $require(str_contains($sector, "private const META='_veciahorra_service_zone_id'") && str_contains($sector, 'update_user_meta($userId,self::META,$id)') && str_contains($sector, 'get_user_meta($userId,self::META,true)'), 'S18_USER_META_UNCHANGED');
     $require(! str_contains($layout, '<style'), 'S19_NO_PRODUCTION_CSS');
     $require(! str_contains($layout, '<script') && str_contains($script, 'function mountSectorSelector()'), 'S20_NO_PRODUCTION_JS');
     preg_match_all(

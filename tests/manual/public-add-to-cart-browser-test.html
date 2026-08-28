@@ -23,8 +23,10 @@
 <pre id="result">RUNNING</pre>
 <script>
     var product = { id: 10, name: 'Producto', offers: [
-        { inventory_id: 101, minimarket_id: 1, minimarket: 'Uno', price: '1000.00', stock: 1 },
-        { inventory_id: 102, minimarket_id: 2, minimarket: 'Dos', price: '1100.00', stock: 2 }
+        { offer_token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', price: '1000.00', availability: 'available' },
+        { offer_token: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', price: '1100.00', availability: 'available' },
+        { price: '900.00', availability: 'available' },
+        { offer_token: 'invalid', price: '900.00', availability: 'available' }
     ] };
     var postCalls = [];
     var pending = null;
@@ -68,9 +70,10 @@
         }
         ready().then(wait).then(function () {
             assert(button.disabled, 'boton inicial deshabilitado');
+            assert(root.vaOfferSelector.getState().invalidOffers.length === 2, 'tokens ausente e invalido no fueron rechazados');
             button.click();
             assert(postCalls.length === 0, 'envio sin oferta seleccionada');
-            root.vaOfferSelector.select(101);
+            root.vaOfferSelector.select('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
             assert(!button.disabled, 'seleccion valida habilita boton');
             button.click();
             button.click();
@@ -80,11 +83,12 @@
             assert(root.vaOfferSelector.isAddingToCart(), 'estado isAddingToCart');
             assert(root.vaOfferSelector.getState().selectionLocked, 'seleccion bloqueada durante POST');
             assert(Array.from(root.querySelectorAll('[role="radio"]')).every(function (radio) { return radio.disabled; }), 'radios bloqueados durante POST');
-            root.vaOfferSelector.select(102);
-            assert(root.vaOfferSelector.getState().selectedInventoryId === 101, 'seleccion no cambia durante POST');
+            root.vaOfferSelector.select('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+            assert(root.vaOfferSelector.getState().selectedInventoryId === 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'seleccion no cambia durante POST');
             assert(postCalls[0].path === '/cart/items', 'endpoint real');
-            assert(JSON.stringify(Object.keys(postCalls[0].payload).sort()) === JSON.stringify(['inventory_id', 'quantity']), 'payload exacto');
-            assert(postCalls[0].payload.inventory_id === 101 && postCalls[0].payload.quantity === 1, 'valores payload');
+            assert(JSON.stringify(Object.keys(postCalls[0].payload).sort()) === JSON.stringify(['offer_token', 'quantity']), 'payload exacto');
+            assert(postCalls[0].payload.offer_token === 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' && postCalls[0].payload.quantity === 1, 'valores payload');
+            assert(!['inventory_id','minimarket_id','session_id','user_id'].some(function(field){return Object.hasOwn(postCalls[0].payload,field);}), 'payload privado');
             assert(postCalls[0].options.headers['X-Veciahorra-Cart-Session'] === 'a'.repeat(64), 'identidad invitada');
             pending.resolve({ success: true, data: { id: 1, created: true } });
             return wait();
@@ -92,11 +96,10 @@
             assert(!button.disabled && !root.vaOfferSelector.isAddingToCart(), 'restablece tras exito');
             assert(!root.vaOfferSelector.getState().selectionLocked, 'seleccion restaurada tras exito');
             assert(Array.from(root.querySelectorAll('[role="radio"]')).every(function (radio) { return !radio.disabled; }), 'radios restaurados tras exito');
-            assert(root.vaOfferSelector.getState().selectedInventoryId === 101, 'conserva seleccion');
+            assert(root.vaOfferSelector.getState().selectedInventoryId === 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'conserva seleccion');
             assert(!root.querySelector('[data-va-cart-success]').hidden, 'mensaje exito');
-            assert(root.querySelector('[data-va-cart-success]').textContent.includes('Uno'), 'mensaje asociado a la operacion');
+            assert(root.querySelector('[data-va-cart-success]').textContent.toLowerCase().includes('opci'), 'mensaje asociado a la operacion');
             assert(!root.querySelector('[data-va-view-cart]').hidden, 'acceso al carrito tras exito');
-            assert(root.querySelector('[data-va-selected-stock]').textContent === '1', 'no descuenta stock visual');
             window.VeciAhorra.currentUser = { id: 7, loggedIn: true };
             button.click();
             pending.resolve({ success: true, data: { id: 1, created: false } });
@@ -120,7 +123,7 @@
             return wait();
         }).then(function () {
             assert(!button.disabled, 'reactiva tras respuesta invalida');
-            assert(root.vaOfferSelector.getState().selectedInventoryId === 101, 'mantiene seleccion tras error');
+            assert(root.vaOfferSelector.getState().selectedInventoryId === 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'mantiene seleccion tras error');
             product.offers = [];
             return root.vaOfferSelector.reload();
         }).then(function () {

@@ -2,7 +2,22 @@
 
 declare(strict_types=1);
 
+ob_start();
+
+if (PHP_SAPI !== 'cli') {
+    throw new RuntimeException('public_cart_cli_required');
+}
+if (defined('VECIAHORRA_PUBLIC_COMMERCE_ENABLED')) {
+    throw new RuntimeException('public_cart_commerce_predefined');
+}
+$commerceDefined = define('VECIAHORRA_PUBLIC_COMMERCE_ENABLED', true);
+if ($commerceDefined !== true || constant('VECIAHORRA_PUBLIC_COMMERCE_ENABLED') !== true) {
+    throw new RuntimeException('public_cart_commerce_define_failed');
+}
+
+use VeciAhorra\Core\Config;
 use VeciAhorra\Core\Container;
+use VeciAhorra\Core\LaunchGate;
 use VeciAhorra\Modules\Cart\Repository\CartRepository;
 use VeciAhorra\Modules\Cart\Service\CartService;
 use VeciAhorra\Modules\Catalog\Security\PublicOfferToken;
@@ -16,10 +31,6 @@ use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 require_once __DIR__ . '/support/SectorizationFixture.php';
-
-if (session_status() === PHP_SESSION_NONE) {
-    session_save_path(sys_get_temp_dir());
-}
 
 function assertPublicCart(bool $condition, string $message): void
 {
@@ -53,6 +64,27 @@ function publicCartRequest(
 }
 
 global $wpdb;
+
+function publicCartPersistenceSnapshot(): string
+{
+    global $wpdb;
+    $prefix = $wpdb->prefix . Config::TABLE_PREFIX;
+    $snapshot = [];
+    foreach (['service_zones', 'store_service_zones', 'stores', 'products', 'inventory', 'cart_items', 'orders'] as $suffix) {
+        $snapshot[$suffix] = $wpdb->get_results("SELECT * FROM {$prefix}{$suffix} ORDER BY 1, 2", ARRAY_A);
+    }
+    return hash('sha256', serialize($snapshot));
+}
+
+assertPublicCart((new LaunchGate())->commerceEnabled(), 'El comercio no quedo abierto en el proceso CLI.');
+assertPublicCart(session_status() === PHP_SESSION_NONE, 'La prueba heredo una sesion activa.');
+$oldSessionPath = session_save_path();
+$sessionPath = sys_get_temp_dir() . '/va-public-cart-' . bin2hex(random_bytes(8));
+assertPublicCart(mkdir($sessionPath, 0700), 'No se creo session.save_path aislado.');
+session_save_path($sessionPath);
+session_id('');
+unset($_COOKIE[session_name()]);
+$persistenceBaseline = publicCartPersistenceSnapshot();
 
 $transaction = $wpdb->query('START TRANSACTION');
 assertPublicCart($transaction !== false, 'No se inicio transaccion.');
@@ -291,7 +323,6 @@ try {
     assertPublicCart(! preg_match('/subtotal\s*[+*\/-]/', $javascript), 'Frontend calcula subtotal.');
     assertPublicCart(! preg_match('/total\s*[+*\/-]/', $javascript), 'Frontend calcula total.');
 
-    echo "PASS public-cart-test\n";
 } finally {
     if ($customerId > 0) {
         clean_user_cache($customerId);
@@ -299,4 +330,24 @@ try {
     sectorizationFixtureClearCurrent();
     wp_set_current_user(0);
     $wpdb->query('ROLLBACK');
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        $_SESSION = [];
+        session_destroy();
+    }
+    session_id('');
+    session_save_path($oldSessionPath);
+    foreach (glob($sessionPath . '/*') ?: [] as $sessionFile) {
+        unlink($sessionFile);
+    }
+    rmdir($sessionPath);
 }
+
+assertPublicCartSame($persistenceBaseline, publicCartPersistenceSnapshot());
+assertPublicCartSame(0, (int) $wpdb->get_var($wpdb->prepare(
+    'SELECT COUNT(*) FROM ' . $wpdb->users . ' WHERE user_login=%s',
+    $token
+)));
+assertPublicCart(! is_dir($sessionPath), 'Quedo session.save_path temporal.');
+
+echo "PASS public-cart-test commerce=in_process rollback=pass\n";
+ob_end_flush();

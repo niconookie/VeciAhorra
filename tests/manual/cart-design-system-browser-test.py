@@ -65,12 +65,15 @@ INTERCEPT = r"""
   const response = (payload, status = 200) => Promise.resolve(new Response(
     JSON.stringify(payload), {status, headers: {'Content-Type': 'application/json'}}
   ));
-  const one = {id: 701, inventory_id: 99001, product_id: 501, minimarket_id: 801,
+  const one = {id: 701, product_id: 501, offer_group: 'fixture-group-a',
     product_name: 'Arroz efÃ­mero', product_image_url: null,
-    unit_price_snapshot: '1111.00', quantity: 2, subtotal: '7777.00', sector_compatible: true};
-  const two = {id: 702, inventory_id: 99002, product_id: 502, minimarket_id: 802,
+    unit_price_snapshot: '1111.00', quantity: 2, subtotal: '2222.00', sector_compatible: true};
+  const two = {id: 702, product_id: 502, offer_group: 'fixture-group-b',
     product_name: 'Aceite efÃ­mero', product_image_url: null,
-    unit_price_snapshot: '2222.00', quantity: 3, subtotal: '8888.00', sector_compatible: false};
+    unit_price_snapshot: '2222.00', quantity: 3, subtotal: '6666.00', sector_compatible: false};
+  const privateFields = ['inventory_id','minimarket_id','session_id','user_id','offer_token'];
+  if ([one,two].some(item => privateFields.some(field => Object.hasOwn(item, field)))) throw new Error('PRIVATE_CART_FIELD');
+  if (one.product_id !== 501 || one.offer_group !== 'fixture-group-a' || one.quantity !== 2 || one.unit_price_snapshot !== '1111.00' || one.subtotal !== '2222.00' || one.sector_compatible !== true) throw new Error('PUBLIC_CART_MUTATION');
   window.__vaCartCalls = [];
   window.__vaCartItems = [one, two];
   window.__vaCartGetCount = 0;
@@ -222,7 +225,7 @@ try:
     root = load("multiple")
     wait.until(lambda current: len(root.find_elements(By.CSS_SELECTOR, "[data-cart-item-id]")) == 2)
     check(root.find_element(By.CSS_SELECTOR, "[data-va-cart-total]").text and "12.345" in root.find_element(By.CSS_SELECTOR, "[data-va-cart-total]").text, "Total autoritativo no renderizado.")
-    check("7.777" in root.text and "8.888" in root.text and "1.111" in root.text and "2.222" in root.text, "Snapshots/subtotales autoritativos sustituidos.")
+    check("1.111" in root.text and "2.222" in root.text and "6.666" in root.text, "Snapshots/subtotales autoritativos sustituidos.")
     check(visible(root, ".va-cart-sector-warning"), "Warning sectorial ausente.")
     result["states"]["multiple"] = "PASS"
     result["states"]["sector-warning"] = "PASS"
