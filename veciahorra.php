@@ -3,7 +3,7 @@
  * Plugin Name: VeciAhorra
  * Plugin URI: https://veciahorra.cl
  * Description: Marketplace para múltiples minimarkets desarrollado sobre WordPress y WooCommerce.
- * Version: 0.3.2
+ * Version: 0.3.3
  * Requires at least: 6.7
  * Requires PHP: 8.2
  * Author: Nicolás Ávila

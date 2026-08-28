@@ -73,6 +73,7 @@ final class PublicPaymentStatusService
 
     private function rank(array $row): int
     {
+        if ($this->hasApprovedPaymentAuthority($row)) { return 990; }
         $fulfillment = $row['fulfillment_status'] ?? null;
         if ($fulfillment === 'completed') { return 1000; }
         if (in_array($fulfillment, ['manual_review', 'permanent_failure', 'failed'], true)) { return 950; }
@@ -93,6 +94,10 @@ final class PublicPaymentStatusService
 
     private function projectAttempt(array $row): array
     {
+        if ($this->hasApprovedPaymentAuthority($row)) {
+            return $this->state('payment_approved');
+        }
+
         $fulfillment = $row['fulfillment_status'] ?? null;
         if ($fulfillment === 'completed') { return $this->state('completed'); }
         if ($fulfillment === 'manual_review') { return $this->state('manual_review'); }
@@ -153,6 +158,14 @@ final class PublicPaymentStatusService
         return [...$this->state('redirect_ready'), 'redirect_url' => $url];
     }
 
+    private function hasApprovedPaymentAuthority(array $row): bool
+    {
+        $count = $row['approved_payment_authority_count'] ?? 0;
+
+        return (is_int($count) || (is_string($count) && ctype_digit($count)))
+            && (int) $count === 1;
+    }
+
     private function state(string $status): array
     {
         $definitions = [
@@ -160,6 +173,7 @@ final class PublicPaymentStatusService
             'redirect_ready' => [false, null, 'Tu sesion de pago esta lista.', 'redirect_to_webpay'],
             'payment_verifying' => [false, 3000, 'Estamos verificando el resultado del pago.', 'wait'],
             'payment_approved_processing' => [false, 3000, 'Tu pago fue aprobado y estamos completando tu compra.', 'wait'],
+            'payment_approved' => [true, null, 'Tu pago fue aprobado correctamente.', 'view_order'],
             'completed' => [true, null, 'Tu compra fue completada correctamente.', 'view_order'],
             'payment_rejected' => [true, null, 'El pago fue rechazado. Puedes iniciar un nuevo intento.', 'retry_payment'],
             'payment_expired' => [true, null, 'La sesion de pago vencio. Puedes iniciar un nuevo intento.', 'retry_payment'],
