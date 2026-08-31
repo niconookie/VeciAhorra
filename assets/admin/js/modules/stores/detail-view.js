@@ -94,6 +94,8 @@ export function createStoreDetailView(root, config = {}) {
                 ['Creación', item.created_at],
                 ['Última actualización', item.updated_at],
                 ['Aprobación', item.approved_at ?? 'Sin fecha de aprobación'],
+                ['Cuenta vinculada', item.account_linked ? 'Sí' : 'No'],
+                ['Estado del usuario', item.user_status],
             ]));
             const lifecycleContent = document.createDocumentFragment();
             lifecycleContent.append(node('p', presentation.description));

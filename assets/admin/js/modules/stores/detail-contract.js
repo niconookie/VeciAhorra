@@ -15,7 +15,7 @@ const actions = new Set([
 const requiredKeys = [
     'id', 'business_name', 'legal_name', 'owner_name', 'rut', 'email', 'phone', 'mobile',
     'address', 'commune', 'city', 'region', 'status', 'onboarding_status', 'approved_at',
-    'lifecycle_state', 'allowed_actions', 'created_at', 'updated_at',
+    'lifecycle_state', 'allowed_actions', 'created_at', 'updated_at', 'account_linked', 'user_status',
 ];
 const optionalTextKeys = ['mobile', 'address', 'commune', 'city', 'region'];
 const textKeys = ['business_name', 'legal_name', 'owner_name', 'rut', 'email', 'phone'];
@@ -55,6 +55,9 @@ export function validateDetailPayload(payload, expectedId) {
     }
     if (textKeys.some((key) => typeof item[key] !== 'string')) {
         throw new TypeError('invalid_detail_text');
+    }
+    if (typeof item.account_linked !== 'boolean' || typeof item.user_status !== 'string' || item.user_status.trim() === '') {
+        throw new TypeError('invalid_detail_account');
     }
     if (item.business_name.trim() === '' || item.owner_name.trim() === '' || item.email.trim() === '') {
         throw new TypeError('invalid_detail_required_text');

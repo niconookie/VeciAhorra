@@ -26,6 +26,22 @@ $enabled = is_array($config);
     </div>
 
     <?php if ($enabled) : ?>
+        <section class="va-store-detail__section" aria-labelledby="va-store-account-heading">
+            <h2 id="va-store-account-heading">Cuenta de acceso</h2>
+            <p><strong>Cuenta vinculada:</strong> <?= ! empty($account['linked']) ? 'Sí' : 'No'; ?></p>
+            <p><strong>Estado del usuario:</strong> <?= esc_html((string) ($account['status'] ?? 'Sin cuenta')); ?></p>
+            <?php if (! empty($account['linked'])) : ?>
+                <form method="post" action="<?= esc_url(admin_url('admin-post.php')); ?>">
+                    <input type="hidden" name="action" value="veciahorra_store_resend_invitation">
+                    <input type="hidden" name="store_id" value="<?= esc_attr((string) $config['storeId']); ?>">
+                    <?php wp_nonce_field('veciahorra_store_invitation_' . $config['storeId']); ?>
+                    <?php submit_button('Reenviar invitación de acceso', 'secondary', 'submit', false); ?>
+                </form>
+            <?php endif; ?>
+        </section>
+    <?php endif; ?>
+
+    <?php if ($enabled) : ?>
         <main class="va-store-detail__main" data-va-store-detail-main>
             <section class="va-store-detail__section" aria-labelledby="va-store-detail-summary-heading" tabindex="-1">
                 <h2 id="va-store-detail-summary-heading">Resumen administrativo</h2>

@@ -12,6 +12,7 @@ use VeciAhorra\Modules\Stores\Exceptions\StoreLifecycleException;
 use VeciAhorra\Modules\Stores\Models\Store;
 use VeciAhorra\Modules\Stores\Services\StoreService;
 use VeciAhorra\Modules\Stores\Services\StoreTransitionService;
+use VeciAhorra\Modules\Stores\Services\AdminStoreOwnerProvisioningService;
 use VeciAhorra\Modules\ZonalAdmin\Services\StoreDecisionCoordinator;
 
 /**
@@ -222,6 +223,7 @@ final class StoreAdminReadController
         $approvedAt = $store['approved_at'] ?? null;
         $state = $this->lifecycle->classify($status, $onboarding, $approvedAt);
 
+        $account = (new AdminStoreOwnerProvisioningService())->accountSummary((int) ($store['id'] ?? 0));
         return [
             'id' => (int) ($store['id'] ?? 0),
             'business_name' => (string) ($store['business_name'] ?? ''),
@@ -244,6 +246,8 @@ final class StoreAdminReadController
                 : $this->lifecycle->allowedActions($status, $onboarding, $approvedAt),
             'created_at' => (string) ($store['created_at'] ?? ''),
             'updated_at' => (string) ($store['updated_at'] ?? ''),
+            'account_linked' => $account['linked'],
+            'user_status' => $account['status'],
         ];
     }
 
@@ -254,6 +258,7 @@ final class StoreAdminReadController
         $approvedAt = $store['approved_at'] ?? null;
         $state = $this->lifecycle->classify($status, $onboarding, $approvedAt);
 
+        $account = (new AdminStoreOwnerProvisioningService())->accountSummary((int) ($store['id'] ?? 0));
         return [
             'id' => (int) ($store['id'] ?? 0),
             'business_name' => (string) ($store['business_name'] ?? ''),
@@ -272,6 +277,8 @@ final class StoreAdminReadController
                 : $this->lifecycle->allowedActions($status, $onboarding, $approvedAt),
             'created_at' => (string) ($store['created_at'] ?? ''),
             'updated_at' => (string) ($store['updated_at'] ?? ''),
+            'account_linked' => $account['linked'],
+            'user_status' => $account['status'],
         ];
     }
 

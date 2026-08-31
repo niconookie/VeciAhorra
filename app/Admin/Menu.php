@@ -33,6 +33,7 @@ final class Menu
 
         add_action('admin_enqueue_scripts', [$this, 'enqueueStoreAssets']);
         add_action('admin_enqueue_scripts', [$this, 'enqueueDashboardAssets']);
+        add_action('admin_post_veciahorra_store_resend_invitation', [$this, 'resendStoreInvitation']);
     }
     public function buildMenu(): void
     {
@@ -181,6 +182,11 @@ add_submenu_page(
         $controller = new StoresController();
 
         $controller->create();
+    }
+
+    public function resendStoreInvitation(): void
+    {
+        (new StoresController())->resendInvitation();
     }
 
     /**

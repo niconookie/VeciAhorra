@@ -15,6 +15,8 @@ $class = match ($flash['type']) {
 
     'error' => 'notice notice-error',
 
+    'warning' => 'notice notice-warning',
+
     default => 'notice notice-info',
 };
 

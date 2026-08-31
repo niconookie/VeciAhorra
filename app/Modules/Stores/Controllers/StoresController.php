@@ -12,6 +12,7 @@ use VeciAhorra\Modules\Stores\Requests\StoreRequest;
 use VeciAhorra\Modules\Stores\Requests\StoreAdminPageRequest;
 use VeciAhorra\Modules\Stores\Exceptions\StoreValidationException;
 use VeciAhorra\Modules\Stores\Services\StoreService;
+use VeciAhorra\Modules\Stores\Services\AdminStoreOwnerProvisioningService;
 use VeciAhorra\Core\Controller;
 use VeciAhorra\Core\Flash;
 use VeciAhorra\Core\Config;
@@ -22,6 +23,7 @@ use VeciAhorra\Core\Config;
 final class StoresController extends Controller
 {
     private ?StoreService $service = null;
+    private ?AdminStoreOwnerProvisioningService $ownerProvisioning = null;
 
     public function __construct()
     {
@@ -31,6 +33,11 @@ final class StoresController extends Controller
     private function service(): StoreService
     {
         return $this->service ??= new StoreService();
+    }
+
+    private function ownerProvisioning(): AdminStoreOwnerProvisioningService
+    {
+        return $this->ownerProvisioning ??= new AdminStoreOwnerProvisioningService();
     }
 
     /**
@@ -69,9 +76,11 @@ final class StoresController extends Controller
     {
         $valid = $request->isValidDetail();
         $config = null;
+        $account = ['linked' => false, 'status' => 'Sin cuenta'];
 
         if ($valid) {
             $id = $request->storeId();
+            $account = $this->ownerProvisioning()->accountSummary($id);
             $config = [
                 'enabled' => true,
                 'storeId' => $id,
@@ -100,6 +109,7 @@ final class StoresController extends Controller
         $this->render('detail', [
             'config' => $config,
             'returnUrl' => $request->returnUrl(),
+            'account' => $account,
             'errorMessage' => $request->screen() === StoreAdminPageRequest::SCREEN_UNKNOWN_ACTION
                 ? 'La acción administrativa solicitada no es válida.'
                 : ($valid ? null : 'Minimarket inválido.'),
@@ -227,6 +237,9 @@ final class StoresController extends Controller
      */
     public function create(): void
     {
+        if (! current_user_can('manage_options')) {
+            wp_die('No autorizado.', 403);
+        }
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     switch ($_POST['action'] ?? '') {
@@ -249,24 +262,55 @@ final class StoresController extends Controller
      */
     private function store(): void
     {
+        $result = null;
         $this->executeAction(
-            function (): void {
+            function () use (&$result): void {
                 $request = new StoreRequest();
 
                 $data = $request->validatedForCreate();
 
-                $this->service()->create($data);
+                $result = $this->ownerProvisioning()->create($data);
             },
             function (): void {
                 $this->redirect('veciahorra-store-create');
             }
         );
 
-        Flash::success(
-            'Minimarket creado correctamente.'
-        );
+        if (is_array($result) && ($result['user_created'] ?? true) === false) {
+            Flash::success('Minimarket creado correctamente y vinculado a una cuenta existente.');
+        } elseif (is_array($result) && ($result['invitation_sent'] ?? false) !== true) {
+            Flash::warning('El minimarket y su cuenta fueron creados, pero no fue posible enviar la invitación. Puedes reenviarla desde el detalle.');
+        } else {
+            Flash::success('Minimarket creado correctamente.');
+        }
 
         $this->redirect('veciahorra-stores');
+    }
+
+    public function resendInvitation(): void
+    {
+        if (! current_user_can('manage_options')) wp_die('No autorizado.', 403);
+        $allowed = ['action', 'store_id', '_wpnonce', '_wp_http_referer', 'submit'];
+        if (array_diff(array_keys($_POST), $allowed) !== []
+            || array_filter($_POST, static fn(mixed $value): bool => ! is_string($value)) !== []
+            || ($_POST['action'] ?? null) !== 'veciahorra_store_resend_invitation'
+            || preg_match('/^[1-9]\d*$/D', (string) ($_POST['store_id'] ?? '')) !== 1
+        ) {
+            Flash::error('La solicitud administrativa contiene datos no permitidos.');
+            $this->redirect('veciahorra-stores');
+        }
+        $storeId = (int) $_POST['store_id'];
+        check_admin_referer('veciahorra_store_invitation_' . $storeId);
+        try {
+            if ($this->ownerProvisioning()->resendInvitation($storeId)) {
+                Flash::success('La invitación de acceso fue reenviada.');
+            } else {
+                Flash::error('No fue posible enviar la invitación de acceso.');
+            }
+        } catch (\Throwable) {
+            Flash::error('No fue posible reenviar la invitación de acceso.');
+        }
+        $this->redirectWithQuery('veciahorra-stores', ['action' => 'view', 'id' => $storeId]);
     }
 
     /**

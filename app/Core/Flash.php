@@ -25,6 +25,11 @@ final class Flash
         self::set('error', $message);
     }
 
+    public static function warning(string $message): void
+    {
+        self::set('warning', $message);
+    }
+
     /**
      * Guarda un mensaje.
      */

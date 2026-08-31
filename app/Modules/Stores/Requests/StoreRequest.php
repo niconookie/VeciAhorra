@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace VeciAhorra\Modules\Stores\Requests;
 
+use InvalidArgumentException;
 use VeciAhorra\Modules\Stores\Exceptions\StoreValidationException;
 
 /**
@@ -17,6 +18,7 @@ final class StoreRequest
      */
     public function validatedForCreate(): array
     {
+        $this->assertClosedCreatePayload();
         check_admin_referer('veciahorra_store');
 
         return array_merge(
@@ -105,6 +107,26 @@ final class StoreRequest
         }
 
         return $fields;
+    }
+
+    private function assertClosedCreatePayload(): void
+    {
+        $allowed = [
+            'action', '_wpnonce', '_wp_http_referer', 'business_name',
+            'legal_name', 'rut', 'owner_name', 'email', 'phone', 'mobile',
+            'address', 'commune', 'city', 'region', 'submit',
+        ];
+        if (array_diff(array_keys($_POST), $allowed) !== []) {
+            throw new InvalidArgumentException('La solicitud administrativa contiene datos no permitidos.');
+        }
+        foreach ($_POST as $value) {
+            if (! is_string($value)) {
+                throw new InvalidArgumentException('La solicitud administrativa contiene datos no permitidos.');
+            }
+        }
+        if (($_POST['action'] ?? null) !== 'veciahorra_store_create') {
+            throw new InvalidArgumentException('La solicitud administrativa contiene datos no permitidos.');
+        }
     }
 
     /**

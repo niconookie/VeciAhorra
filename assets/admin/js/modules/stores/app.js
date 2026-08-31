@@ -143,6 +143,8 @@ if (root && configNode && root.dataset.initialized !== 'true') {
             ['Teléfono', item.phone || '—'],
             ['Ubicación', [item.commune, item.city].filter(Boolean).join(', ') || '—'],
             ['Estado', labels[item.lifecycle_state]?.[0] || item.lifecycle_state],
+            ['Cuenta vinculada', item.account_linked ? 'Sí' : 'No'],
+            ['Estado del usuario', item.user_status],
             ['Actualizado', item.updated_at || '—'],
         ].forEach(([term, value]) => {
             list.append(node('dt', term), node('dd', value));
@@ -189,7 +191,7 @@ if (root && configNode && root.dataset.initialized !== 'true') {
         const table = node('table', undefined, 'widefat striped va-stores__table');
         const head = node('thead');
         const headingRow = node('tr');
-        ['Minimarket', 'Identificación', 'Ubicación', 'Estado', 'Última actualización', 'Acciones'].forEach((title) => {
+        ['Minimarket', 'Identificación', 'Ubicación', 'Estado', 'Cuenta', 'Última actualización', 'Acciones'].forEach((title) => {
             const th = node('th', title);
             th.scope = 'col';
             headingRow.append(th);
@@ -208,6 +210,8 @@ if (root && configNode && root.dataset.initialized !== 'true') {
             const [label, tone] = labels[item.lifecycle_state] || labels.invalid;
             status.append(node('span', label, `va-stores__badge va-stores__badge--${tone}`));
             status.append(node('small', `${item.status} · ${item.onboarding_status}`));
+            const account = node('td');
+            account.append(node('span', item.account_linked ? 'Sí' : 'No'), node('small', item.user_status));
             const updated = node('td');
             const time = node('time', item.updated_at || '—');
             if (item.updated_at) time.dateTime = item.updated_at;
@@ -217,7 +221,7 @@ if (root && configNode && root.dataset.initialized !== 'true') {
             const edit = new URL(config.editUrl);
             edit.searchParams.set('id', String(item.id));
             actions.append(link('Editar', edit.toString()));
-            row.append(market, identity, location, status, updated, actions);
+            row.append(market, identity, location, status, account, updated, actions);
             body.append(row);
         });
         table.append(head, body);
@@ -335,5 +339,7 @@ function normalizeItem(item) {
         allowed_actions: Array.isArray(item.allowed_actions) ? [...item.allowed_actions] : [],
         created_at: text(item.created_at),
         updated_at: text(item.updated_at),
+        account_linked: item.account_linked === true,
+        user_status: text(item.user_status),
     };
 }
