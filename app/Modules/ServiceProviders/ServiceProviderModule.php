@@ -75,9 +75,18 @@ final class ServiceProviderModule
             return '<main class="va-sp va-sp-landing"><section class="va-sp-section"><p class="va-sp-eyebrow">Prestadores de servicios</p><h1>Tu talento merece ser conocido en tu barrio.</h1><p role="status">' . esc_html(LaunchGate::REGISTRATION_MESSAGE) . '</p><a class="va-sp-button secondary" href="' . esc_url(wp_login_url()) . '">Iniciar sesi&oacute;n</a></section></main>';
         }
         $logo = $this->logo();
-        $registrationUrl = $this->customerAccess->registrationUrl($this->servicesUrl());
+        $panelUrl = $this->pageUrl(self::PANEL, '/panel-prestador/');
+        $isProvider = is_user_logged_in() && current_user_can(ServiceProviderRole::CAPABILITY);
+        $registrationUrl = is_user_logged_in()
+            ? $panelUrl
+            : $this->customerAccess->registrationUrl($this->pageUrl(self::REGISTRATION, '/prestadores/'));
+        $primaryAction = $isProvider
+            ? '<a class="va-sp-button" href="' . esc_url($panelUrl) . '">Ir a mi panel</a>'
+            : (is_user_logged_in()
+                ? '<button class="va-sp-button" type="button" data-va-provider-enroll data-va-provider-panel-url="' . esc_url($panelUrl) . '">Activar mi perfil profesional</button><span role="status" data-va-provider-enroll-status></span>'
+                : '<a class="va-sp-button" href="' . esc_url($registrationUrl) . '">Crear mi perfil</a>');
         return '<main class="va-sp va-sp-landing">'
-            . '<section class="va-sp-hero" id="inicio"><div class="va-sp-hero-copy"><p class="va-sp-eyebrow">Prestadores de servicios</p><h1>Tu talento merece ser conocido en tu barrio.</h1><p class="va-sp-lead">Crea tu perfil profesional, aumenta tu visibilidad y conecta con personas que buscan servicios locales.</p><div class="va-sp-actions"><a class="va-sp-button" href="' . esc_url($registrationUrl) . '">Crear mi perfil</a><a class="va-sp-button secondary" href="#como-funciona">Conocer el proceso</a></div><div class="va-sp-trust"><span>✓ Registro general VeciAhorra</span><span>✓ Revisión antes de publicar</span><span>✓ Visibilidad local</span></div></div>'
+            . '<section class="va-sp-hero" id="inicio"><div class="va-sp-hero-copy"><p class="va-sp-eyebrow">Prestadores de servicios</p><h1>Tu talento merece ser conocido en tu barrio.</h1><p class="va-sp-lead">Crea tu perfil profesional, aumenta tu visibilidad y conecta con personas que buscan servicios locales.</p><div class="va-sp-actions">' . $primaryAction . '<a class="va-sp-button secondary" href="#como-funciona">Conocer el proceso</a></div><div class="va-sp-trust"><span>✓ Registro general VeciAhorra</span><span>✓ Revisión antes de publicar</span><span>✓ Visibilidad local</span></div></div>'
             . '<div class="va-sp-profile-stage" aria-label="Ejemplo ilustrativo de un perfil profesional"><article class="va-sp-demo-profile"><div class="va-sp-profile-cover"><span class="va-sp-service-icon" aria-hidden="true">🔧</span><span class="va-sp-badge featured">Ejemplo</span></div><div class="va-sp-profile-body"><div class="va-sp-profile-title"><div><p>Servicio profesional local</p><h2>Tu perfil puede estar aquí</h2></div></div><p>Presenta de forma clara tu especialidad, zona de atención y medios de contacto.</p><div class="va-sp-tags"><span>Información ficticia</span><span>Vista ilustrativa</span></div><a class="va-sp-button navy" href="' . esc_url($registrationUrl) . '">Quiero registrarme</a></div></article></div></section>'
             . '<section class="va-sp-section va-sp-how" id="como-funciona"><div class="va-sp-section-heading"><p class="va-sp-eyebrow">Simple y transparente</p><h2>De profesional local a prestador visible en cuatro pasos</h2><p>El proceso está diseñado para ser rápido, confiable y fácil de completar.</p></div><div class="va-sp-steps">'
             . '<article><span>01</span><h3>Elige tu plan</h3><p>Define el nivel de exposición de tu servicio.</p></article><article><span>02</span><h3>Completa tu perfil</h3><p>Cuenta qué haces, dónde atiendes y cómo contactarte.</p></article><article><span>03</span><h3>Verificamos tus datos</h3><p>Revisamos identidad, antecedentes y especialidad.</p></article><article><span>04</span><h3>Publicamos tu servicio</h3><p>Tu perfil queda visible para los vecinos de tu zona.</p></article></div></section>'
@@ -86,15 +95,15 @@ final class ServiceProviderModule
             . '<footer class="va-sp-footer"><div>' . $logo . '</div><p>Incorporación de prestadores · VeciAhorra</p></footer></main>';
     }
 
-    private function servicesUrl(): string
+    private function pageUrl(string $shortcode, string $fallback): string
     {
         $pages = get_posts(['post_type' => 'page', 'post_status' => 'publish', 'numberposts' => -1]);
         foreach ($pages as $page) {
-            if (has_shortcode($page->post_content, self::SERVICES)) {
+            if (has_shortcode($page->post_content, $shortcode)) {
                 return (string) get_permalink($page);
             }
         }
-        return home_url('/servicios/');
+        return home_url($fallback);
     }
 
     public function panel(): string

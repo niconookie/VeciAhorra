@@ -54,6 +54,23 @@
         });
     }
 
+    function setupEnrollment(button) {
+        var status = button.parentNode.querySelector('[data-va-provider-enroll-status]');
+        button.addEventListener('click', function () {
+            if (button.disabled) return;
+            button.disabled = true;
+            if (status) status.textContent = 'Activando perfil profesional...';
+            api.post('/service-provider/enroll', {}).then(function () {
+                window.location.assign(button.dataset.vaProviderPanelUrl);
+            }).catch(function (error) {
+                button.disabled = false;
+                if (status) status.textContent = error.message || 'No fue posible activar el perfil profesional.';
+            });
+        });
+    }
+
+    document.querySelectorAll('[data-va-provider-enroll]').forEach(setupEnrollment);
+
     function formPayload(form) {
         var payload = Object.fromEntries(new FormData(form));
         payload.terms_accepted = form.elements.terms_accepted.checked;
