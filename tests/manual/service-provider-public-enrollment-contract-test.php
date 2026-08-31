@@ -40,8 +40,17 @@ $assert(str_contains($module, 'current_user_can(ServiceProviderRole::CAPABILITY)
 $assert(str_contains($script, "api.post('/service-provider/enroll', {})") && str_contains($script, 'window.location.assign(button.dataset.vaProviderPanelUrl)'), 'El CTA no enrola y redirige al panel.');
 $assert(str_contains($routes, 'registration_disabled') && str_contains($routes, 'registrationEnabled()'), 'El endpoint no conserva el gate de registro.');
 $assert(str_contains($routes, 'add_role(ServiceProviderRole::ROLE)') && str_contains($routes, 'add_cap(ServiceProviderRole::CAPABILITY)'), 'El enrolamiento no conserva rol y capacidad idempotentes.');
-$assert(preg_match('/Version: 0\\.3\\.6/', $plugin) === 1 && str_contains($plugin, "define('VA_VERSION', '0.3.6')"), 'Version principal incorrecta.');
-$assert(str_contains($config, "PLUGIN_VERSION = '0.3.6'") && str_contains($config, "SCHEMA_VERSION = '0.32.0'"), 'Versiones de Config incorrectas.');
+$assert(str_contains($routes, "['/services','GET','catalog','publicPermission']"), 'El listado anonimo no usa publicPermission.');
+$assert(str_contains($routes, "['/services/(?P<id>\\d+)','GET','detail','publicPermission']"), 'El detalle anonimo no usa publicPermission.');
+$assert(str_contains($routes, "repository()->published(\$r->get_query_params())") && str_contains($routes, "array_map([\$this->service,'public']"), 'El listado no limita o proyecta perfiles publicados.');
+$assert(str_contains($routes, "\$row['status']==='published'") && str_contains($routes, "\$this->error('not_found',404)"), 'El detalle expone perfiles no publicados.');
+$assert(str_contains($routes, "['/service-provider/enroll','POST','enroll','authenticatedPermission']"), 'Enroll dejo de requerir autenticacion.');
+$assert(str_contains($routes, "['/service-provider/me','GET','me','privatePermission']"), 'Me dejo de requerir capacidad.');
+$assert(str_contains($routes, "['/service-provider/profile','POST','save','privatePermission']"), 'Profile dejo de requerir capacidad.');
+$assert(str_contains($routes, "['/service-provider/submit','POST','submit','privatePermission']"), 'Submit dejo de requerir capacidad.');
+$assert(str_contains($routes, "new WP_Error('authentication_required'") && str_contains($routes, "new WP_Error('provider_forbidden'"), 'Las rutas privadas no conservan rechazo explicito.');
+$assert(preg_match('/Version: 0\\.3\\.7/', $plugin) === 1 && str_contains($plugin, "define('VA_VERSION', '0.3.7')"), 'Version principal incorrecta.');
+$assert(str_contains($config, "PLUGIN_VERSION = '0.3.7'") && str_contains($config, "SCHEMA_VERSION = '0.32.0'"), 'Versiones de Config incorrectas.');
 $assert(! str_contains($routes, 'COMMERCE_FLAG') && ! str_contains($module, 'COMMERCE_FLAG'), 'El cambio alcanzo el gate de comercio.');
 
 echo "OK service-provider-public-enrollment-contract\n";
