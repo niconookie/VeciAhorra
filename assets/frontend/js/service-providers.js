@@ -201,6 +201,11 @@
         }).then(function (response) {
             if (response) hydrate(response.data);
         }).catch(function (error) {
+            if (error.status === 404) {
+                enrolled = true;
+                showMessage('Perfil iniciado. Completa los datos y guarda tu borrador.');
+                return;
+            }
             if (error.status === 403) {
                 return api.post('/service-provider/enroll', {}).then(function () {
                     enrolled = true;
