@@ -175,7 +175,7 @@ final class CustomerPanelService
         $orderTotal = '0.00';
         foreach ($orders as $order) {
             if ((int) $order['customer_id'] !== $userId
-                || ! in_array($order['status'], ['reserved', 'paid', 'delivered'], true)
+                || ! in_array($order['status'], ['reserved', 'paid', 'delivered', 'cancelled'], true)
             ) {
                 return true;
             }

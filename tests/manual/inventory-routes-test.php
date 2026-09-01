@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Stores\Domain\StoreLifecycleContract;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
@@ -111,16 +112,51 @@ try {
         'created_at' => $now,
         'updated_at' => $now,
     ]);
-    $minimarketId = (new StoreRepository())->create([
-        'business_name' => 'Inventory routes ' . $suffix,
-        'legal_name' => 'Inventory routes legal ' . $suffix,
+    $draftMinimarketId = (new StoreRepository())->create([
+        'business_name' => 'Inventory routes draft ' . $suffix,
+        'legal_name' => 'Inventory routes draft legal ' . $suffix,
         'owner_name' => 'Inventory routes owner',
         'rut' => '1-9',
-        'email' => $suffix . '@example.test',
+        'email' => 'draft-' . $suffix . '@example.test',
         'phone' => '000000000',
-        'status' => 'active',
-        'onboarding_status' => 'draft',
+        'status' => StoreLifecycleContract::STATUS_PENDING,
+        'onboarding_status' => StoreLifecycleContract::ONBOARDING_DRAFT,
         'approved_at' => null,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+    $draftCreate = inventoryRestRequest('POST', $collection, [
+        'product_id' => $productId,
+        'minimarket_id' => $draftMinimarketId,
+        'price' => '1200.50',
+        'stock' => '8',
+        'status' => 'active',
+    ]);
+    $draftCreateBody = $draftCreate->get_data();
+    assertInventoryRouteSame(422, $draftCreate->get_status());
+    assertInventoryRouteSame(
+        'validation_error',
+        $draftCreateBody['error']['code'] ?? null
+    );
+    assertInventoryRouteSame(
+        'El minimarket tiene un estado no compatible con esta operacion.',
+        $draftCreateBody['error']['message'] ?? null
+    );
+    assertInventoryRouteSame(
+        'inventory_store_incompatible',
+        $draftCreateBody['error']['details']['reason'] ?? null
+    );
+
+    $minimarketId = (new StoreRepository())->create([
+        'business_name' => 'Inventory routes approved ' . $suffix,
+        'legal_name' => 'Inventory routes approved legal ' . $suffix,
+        'owner_name' => 'Inventory routes owner',
+        'rut' => '1-9',
+        'email' => 'approved-' . $suffix . '@example.test',
+        'phone' => '000000000',
+        'status' => StoreLifecycleContract::STATUS_ACTIVE,
+        'onboarding_status' => StoreLifecycleContract::ONBOARDING_COMPLETE,
+        'approved_at' => $now,
         'created_at' => $now,
         'updated_at' => $now,
     ]);

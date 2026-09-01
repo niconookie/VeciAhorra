@@ -98,6 +98,10 @@ final class PublicPaymentStatusService
             return $this->state('payment_approved');
         }
 
+        $returnStatus = $row['return_result_status'] ?? null;
+        if ($returnStatus === 'aborted') { return $this->state('payment_cancelled'); }
+        if ($returnStatus === 'rejected') { return $this->state('payment_rejected'); }
+
         $fulfillment = $row['fulfillment_status'] ?? null;
         if ($fulfillment === 'completed') { return $this->state('completed'); }
         if ($fulfillment === 'manual_review') { return $this->state('manual_review'); }
@@ -118,7 +122,6 @@ final class PublicPaymentStatusService
             return $this->state('payment_verifying');
         }
 
-        $returnStatus = $row['return_result_status'] ?? null;
         $returnProcessing = $row['return_processing_status'] ?? null;
         if ($returnProcessing === 'ambiguous' || $returnStatus === 'manual_review') {
             return $this->state('manual_review');
@@ -176,6 +179,7 @@ final class PublicPaymentStatusService
             'payment_approved' => [true, null, 'Tu pago fue aprobado correctamente.', 'view_order'],
             'completed' => [true, null, 'Tu compra fue completada correctamente.', 'view_order'],
             'payment_rejected' => [true, null, 'El pago fue rechazado. Puedes iniciar un nuevo intento.', 'retry_payment'],
+            'payment_cancelled' => [true, null, 'Pago cancelado. Puedes iniciar un nuevo intento.', 'retry_payment'],
             'payment_expired' => [true, null, 'La sesion de pago vencio. Puedes iniciar un nuevo intento.', 'retry_payment'],
             'manual_review' => [true, null, 'Estamos revisando el pago. No intentes pagar nuevamente.', 'contact_support'],
             'failed' => [true, null, 'No pudimos completar la operacion. No realices otro pago hasta revisar el estado.', 'contact_support'],

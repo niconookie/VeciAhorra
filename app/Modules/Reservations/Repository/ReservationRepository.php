@@ -185,6 +185,29 @@ class ReservationRepository extends Repository
         return $result;
     }
 
+    /** @param list<int> $ids */
+    public function markReleased(array $ids, string $releasedAt): int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+        $placeholders = implode(', ', array_fill(0, count($ids), '%d'));
+        $params = ['released', $releasedAt, $releasedAt, ...$ids, 'active'];
+        $result = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s SET status = %%s, released_at = %%s, updated_at = %%s'
+                . ' WHERE id IN (%s) AND status = %%s',
+                $this->table(self::TABLE),
+                $placeholders
+            ),
+            ...$params
+        ));
+        if ($result === false || $result !== count($ids)) {
+            throw new PersistenceException('No fue posible liberar las reservas.');
+        }
+        return $result;
+    }
+
     public function deleteByOrderId(int $orderId): void
     {
         $result = $this->db()->delete(

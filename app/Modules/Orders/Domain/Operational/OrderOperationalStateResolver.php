@@ -308,7 +308,7 @@ final class OrderOperationalStateResolver
         $status = $order['status'] ?? null;
         $historical = $facts['historical_profile'] !== 'none';
         $rules = [
-            'order_status_unknown' => ! in_array($status, ['reserved', 'paid', 'delivered'], true),
+            'order_status_unknown' => ! in_array($status, ['reserved', 'paid', 'delivered', 'cancelled'], true),
             'paid_without_financial_evidence' => in_array($status, ['paid', 'delivered'], true) && $dimensions['financial'] !== 'approved',
             'approved_without_business_processing' => $dimensions['financial'] === 'approved' && ($facts['business_completion']['status'] ?? null) !== 'completed',
             'business_completed_without_paid_order' => ($facts['business_completion']['status'] ?? null) === 'completed' && ! in_array($status, ['paid', 'delivered'], true),

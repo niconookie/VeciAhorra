@@ -244,4 +244,39 @@ assertConfirmationPersistence(
     'Rollback no revirtio sesion y auditoria.'
 );
 
+assertConfirmationPersistence($wpdb->query('START TRANSACTION') !== false, 'No se inicio fixture cancelReady.');
+try {
+    $now = current_time('mysql');
+    $wpdb->insert($prefix . 'checkouts', [
+        'public_id' => 'chk_' . substr(hash('sha256', 'cancel-' . $nonce), 0, 43),
+        'owner_type' => 'user', 'user_id' => 990001, 'status' => 'payment_started',
+        'currency' => 'CLP', 'total_amount' => '1000.00', 'created_at' => $now,
+        'updated_at' => $now, 'expires_at' => gmdate('Y-m-d H:i:s', time() + 3600),
+    ]);
+    $cancelCheckoutId = (int) $wpdb->insert_id;
+    $cancelSessionId = $sessions->create([
+        'public_id' => 'ps_' . substr(hash('sha256', 'cancel-' . $nonce), 0, 43),
+        'checkout_id' => $cancelCheckoutId, 'payment_id' => null,
+        'idempotency_key' => 'cancel-' . $nonce,
+        'request_fingerprint' => hash('sha256', 'cancel-request-' . $nonce),
+        'status' => 'ready', 'provider' => 'webpay_plus',
+        'provider_session_id' => str_repeat('C', 64), 'redirect_url' => 'https://example.test/webpay',
+        'currency' => 'CLP', 'amount' => '1000.00', 'metadata' => null,
+        'created_at' => $now, 'updated_at' => $now,
+        'expires_at' => gmdate('Y-m-d H:i:s', time() + 3600),
+    ]);
+    assertConfirmationPersistence($sessions->cancelReady($cancelSessionId, $now), 'cancelReady no transiciono ready.');
+    $cancelledSession = $sessions->find($cancelSessionId);
+    assertConfirmationPersistence(
+        ($cancelledSession['status'] ?? null) === 'cancelled'
+            && array_key_exists('redirect_url', $cancelledSession)
+            && $cancelledSession['redirect_url'] === null
+            && ($cancelledSession['confirmed_at'] ?? null) === null
+            && ! $sessions->cancelReady($cancelSessionId, $now),
+        'cancelReady no fue terminal e idempotente.'
+    );
+} finally {
+    $wpdb->query('ROLLBACK');
+}
+
 echo "PASS payment-confirmation-persistence-integration-test\n";

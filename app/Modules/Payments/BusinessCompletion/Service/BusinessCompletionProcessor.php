@@ -19,6 +19,7 @@ use VeciAhorra\Modules\Payments\Reconciliation\Model\PaymentReconciliation;
 use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentReconciliationRepository;
 use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
 use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
+use VeciAhorra\Modules\Payments\Support\PaymentConfirmationFingerprint;
 
 final class BusinessCompletionProcessor implements BusinessCompletionAttemptProcessorInterface
 {
@@ -117,6 +118,30 @@ final class BusinessCompletionProcessor implements BusinessCompletionAttemptProc
                     throw new BusinessCompletionFailure('payment_state_conflict', BusinessCompletionResult::MANUAL_REVIEW);
                 }
                 $this->sessions->linkPayment((int) $session['id'], $paymentId);
+                if (($session['status'] ?? null) === PaymentSession::STATUS_READY) {
+                    $components = $reconciliation->financialResult()->components();
+                    $confirmationFingerprint = PaymentConfirmationFingerprint::make([
+                        'provider' => 'webpay_plus',
+                        'payment_session_id' => (int) $session['id'],
+                        'payment_id' => $paymentId,
+                        'checkout_id' => (int) $checkout['id'],
+                        'order_ids' => $orderIds,
+                        'amount' => $components->amountClp(),
+                        'currency' => 'CLP',
+                        'buy_order' => $components->buyOrder(),
+                        'financial_session_id' => $components->financialSessionId(),
+                        'safe_financial_reference' => $reconciliation->financialResult()->safeFinancialReference(),
+                        'transaction_date' => (string) $components->transactionDate(),
+                    ]);
+                    $this->sessions->storeConfirmationEvidence(
+                        (int) $session['id'],
+                        $paymentId,
+                        $confirmationFingerprint,
+                        PaymentConfirmationFingerprint::VERSION,
+                        $reconciliation->financialResult()->safeFinancialReference(),
+                        $now
+                    );
+                }
                 foreach ($orderIds as $orderId) {
                     $this->payments->attachOrderIdempotently($paymentId, $orderId, $now);
                 }

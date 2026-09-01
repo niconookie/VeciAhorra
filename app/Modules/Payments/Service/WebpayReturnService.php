@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Payments\Service;
 
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayException;
+use VeciAhorra\Modules\Payments\Contracts\PaymentTerminalOutcomeInterface;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnGatewayInterface;
 use VeciAhorra\Modules\Payments\Gateway\WebpayCommitResult;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnContext;
@@ -30,7 +31,8 @@ final class WebpayReturnService
         private WebpayReconciliationMaterializer $materializer,
         private ?WebpayReturnContextRepositoryInterface $contexts = null,
         private ?WebpayReturnGatewayResolverInterface $gatewayResolver = null,
-        private ?PaymentOriginContextRepository $durableOrigins = null
+        private ?PaymentOriginContextRepository $durableOrigins = null,
+        private ?PaymentTerminalOutcomeInterface $terminalOutcomes = null
     ) {
     }
 
@@ -278,6 +280,15 @@ final class WebpayReturnService
             }
         }
 
+        if ($durableOrigin?->origin() === DurablePaymentOrigin::ORIGIN_VECIAHORRA
+            && in_array($row['result_status'] ?? null, ['rejected', 'aborted'], true)
+            && isset($row['payment_session_id']) && (int) $row['payment_session_id'] > 0) {
+            $this->terminalOutcomes?->cancel(
+                (int) $row['payment_session_id'],
+                $durableOrigin->originResourceId()
+            );
+        }
+
         return new WebpayReturnResult(
             'already_processed',
             isset($row['payment_session_id'])
@@ -302,6 +313,20 @@ final class WebpayReturnService
         ?DurablePaymentOrigin $durableOrigin = null,
         ?\VeciAhorra\Modules\Payments\Gateway\WebpayCommitResult $financial = null
     ): WebpayReturnResult {
+        if ($durableOrigin?->origin() === DurablePaymentOrigin::ORIGIN_VECIAHORRA
+            && in_array($result->result, ['rejected', 'aborted'], true)
+            && $result->paymentSessionId !== null) {
+            try {
+                $this->terminalOutcomes?->cancel(
+                    $result->paymentSessionId,
+                    $durableOrigin->originResourceId()
+                );
+            } catch (\Throwable $exception) {
+                $this->returns->fail($tokenHash, current_time('mysql'));
+                throw $exception;
+            }
+        }
+
         $this->returns->complete(
             $tokenHash,
             $result->result,

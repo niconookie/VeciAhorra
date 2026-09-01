@@ -6,8 +6,10 @@ use VeciAhorra\Core\Config;
 use VeciAhorra\Core\Container;
 use VeciAhorra\Modules\Checkout\Requests\CheckoutRequest;
 use VeciAhorra\Modules\Checkout\Routes\CheckoutRoutes;
+use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+require_once __DIR__ . '/support/inventory-container.php';
 
 function assertCheckoutFoundation(bool $condition, string $message): void
 {
@@ -69,7 +71,8 @@ try {
 }
 
 assertCheckoutFoundation(
-    (new Container())->make(CheckoutRoutes::class) instanceof CheckoutRoutes,
+    manualTestInventoryContainer(new InventoryRepository())
+        ->make(CheckoutRoutes::class) instanceof CheckoutRoutes,
     'Container no resolvio CheckoutRoutes.'
 );
 
@@ -111,21 +114,13 @@ assertCheckoutFoundationSame(
 );
 
 $initialized = checkoutFoundationRequest($checkoutRoute, ['fulfillment_method' => 'pickup']);
-assertCheckoutFoundationSame(200, $initialized->get_status());
+assertCheckoutFoundationSame(503, $initialized->get_status());
 assertCheckoutFoundationSame(
-    false,
-    $initialized->get_data()['data']['valid'] ?? null
-);
-assertCheckoutFoundationSame(
-    false,
-    $initialized->get_data()['data']['reservation_created'] ?? null
-);
-assertCheckoutFoundationSame(
-    false,
-    $initialized->get_data()['data']['order_created'] ?? null
+    'commerce_disabled',
+    $initialized->get_data()['error']['code'] ?? null
 );
 
-foreach ([$validateRoute, $checkoutRoute] as $route) {
+foreach ([$validateRoute] as $route) {
     $invalid = checkoutFoundationRequest($route, [
         'items' => [],
     ]);
@@ -135,6 +130,12 @@ foreach ([$validateRoute, $checkoutRoute] as $route) {
         $invalid->get_data()['error']['code'] ?? null
     );
 }
+$closedInvalid = checkoutFoundationRequest($checkoutRoute, ['items' => []]);
+assertCheckoutFoundationSame(503, $closedInvalid->get_status());
+assertCheckoutFoundationSame(
+    'commerce_disabled',
+    $closedInvalid->get_data()['error']['code'] ?? null
+);
 
 assertCheckoutFoundationSame(
     $ordersBefore,

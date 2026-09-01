@@ -100,6 +100,9 @@ use VeciAhorra\Modules\Payments\Reconciliation\Service\WebpayReconciliationMater
 use VeciAhorra\Modules\Payments\Reconciliation\Support\SystemReconciliationClock;
 use VeciAhorra\Modules\Payments\Repository\PaymentRepository;
 use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
+use VeciAhorra\Modules\Payments\Repository\WebpayReturnRepository;
+use VeciAhorra\Modules\Payments\Service\WebpayReturnService;
+use VeciAhorra\Modules\Orders\Services\PaymentTerminalOutcomeService;
 
 /**
  * Clase principal de la aplicación.
@@ -184,6 +187,19 @@ final class Application
             )
         );
         $this->registerDurableRetryGraph();
+        $this->container->singleton(
+            WebpayReturnService::class,
+            fn (): WebpayReturnService => new WebpayReturnService(
+                $this->container->make(WebpayReturnGatewayInterface::class),
+                new PaymentSessionRepository(),
+                new WebpayReturnRepository(),
+                $this->container->make(WebpayReconciliationMaterializer::class),
+                $this->container->make(WebpayReturnContextRepositoryInterface::class),
+                $this->container->make(WebpayReturnGatewayResolverInterface::class),
+                new PaymentOriginContextRepository(),
+                new PaymentTerminalOutcomeService()
+            )
+        );
     }
 
     private function registerDurableRetryGraph(): void

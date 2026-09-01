@@ -189,6 +189,27 @@ class PaymentSessionRepository extends Repository
         }
     }
 
+    public function cancelReady(int $sessionId, string $updatedAt): bool
+    {
+        $result = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s SET status = %%s, redirect_url = NULL, updated_at = %%s'
+                . ' WHERE id = %%d AND status = %%s AND confirmed_at IS NULL',
+                $this->table(self::TABLE)
+            ),
+            PaymentSession::STATUS_CANCELLED,
+            $updatedAt,
+            $sessionId,
+            PaymentSession::STATUS_READY
+        ));
+
+        if ($result === false) {
+            throw new PersistenceException('No fue posible cancelar PaymentSession.');
+        }
+
+        return $result === 1;
+    }
+
     public function findByKey(int $checkoutId, string $key): ?array
     {
         $row = $this->db()->get_row($this->db()->prepare(

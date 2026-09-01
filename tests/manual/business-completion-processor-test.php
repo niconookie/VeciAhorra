@@ -114,6 +114,18 @@ try {
     $created['payment'] = $result->paymentId;
     $payment = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$prefix}payments WHERE id = %d", $result->paymentId), ARRAY_A);
     bcAssert($payment['status'] === 'paid' && $payment['financial_fingerprint'] === $financial->fingerprint(), 'Payment no quedo aprobado con evidencia durable.');
+    $confirmedSession = $wpdb->get_row($wpdb->prepare(
+        "SELECT status, confirmed_at, confirmation_fingerprint, confirmation_fingerprint_version, safe_financial_reference FROM {$prefix}payment_sessions WHERE id = %d",
+        $created['session']
+    ), ARRAY_A);
+    bcAssert(
+        ($confirmedSession['status'] ?? null) === 'confirmed'
+            && is_string($confirmedSession['confirmed_at'] ?? null)
+            && preg_match('/^[a-f0-9]{64}$/D', (string) ($confirmedSession['confirmation_fingerprint'] ?? '')) === 1
+            && (int) ($confirmedSession['confirmation_fingerprint_version'] ?? 0) === 1
+            && ($confirmedSession['safe_financial_reference'] ?? null) === $financial->safeFinancialReference(),
+        'PaymentSession no quedo confirmada con evidencia completa.'
+    );
     bcAssert((int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$prefix}payment_orders WHERE payment_id = %d", $result->paymentId)) === 2, 'No vinculo multiples Orders.');
     $completionRow = $completionRepository->findByReconciliation($reconciliationId);
     bcAssert(($completionRow['fulfillment_method'] ?? null) === 'delivery', 'BusinessCompletion no sello fulfillment.');

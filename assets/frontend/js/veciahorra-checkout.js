@@ -475,7 +475,13 @@
             var timedOut = false;
             if (paymentStopped || !validCheckoutPublicId(checkoutPublicId) || paymentInFlight) { return Promise.resolve(null); }
             if (paymentStartedAt > 0 && Date.now() - paymentStartedAt > 300000) {
-                stopPaymentPolling(); paymentRefresh.hidden = false; return Promise.resolve(lastPaymentState);
+                stopPaymentPolling();
+                paymentPanel.hidden = false;
+                paymentPanel.className = 'va-alert va-alert--error';
+                paymentMessage.textContent = 'La verificación está tardando más de lo esperado. Actualiza el estado antes de intentar otro pago.';
+                paymentRefresh.hidden = false;
+                paymentPanel.focus();
+                return Promise.resolve(lastPaymentState);
             }
             paymentInFlight = true;
             paymentController = new AbortController();

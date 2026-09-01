@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use VeciAhorra\Core\Application;
+use VeciAhorra\Modules\Payments\Contracts\PaymentTerminalOutcomeInterface;
 use VeciAhorra\Modules\Payments\Gateway\PaymentGatewayException;
 use VeciAhorra\Modules\Payments\Gateway\WebpayCommitResult;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnContext;
@@ -14,6 +15,9 @@ use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
 use VeciAhorra\Modules\Payments\Repository\WebpayReturnRepository;
 use VeciAhorra\Modules\Payments\Requests\WebpayReturnRequest;
 use VeciAhorra\Modules\Payments\Service\WebpayReturnService;
+use VeciAhorra\Modules\Payments\Reconciliation\DTO\DurablePaymentOrigin;
+use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentOriginContextRepository;
+use VeciAhorra\Modules\Payments\Reconciliation\Support\WordPressSiteScope;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
 
@@ -111,6 +115,7 @@ final class FakeReturnPaymentSessions extends PaymentSessionRepository
 
 final class FakeWebpayReturns extends WebpayReturnRepository
 {
+    public static array $events = [];
     private array $rows = [];
 
     public function __construct()
@@ -145,6 +150,7 @@ final class FakeWebpayReturns extends WebpayReturnRepository
         array $result,
         string $now
     ): void {
+        self::$events[] = 'complete';
         $this->rows[$tokenHash]['processing_status'] = 'completed';
         $this->rows[$tokenHash]['result_status'] = $resultStatus;
         $this->rows[$tokenHash]['result_json'] = json_encode($result);
@@ -152,6 +158,7 @@ final class FakeWebpayReturns extends WebpayReturnRepository
 
     public function fail(string $tokenHash, string $now): void
     {
+        self::$events[] = 'fail';
         $this->rows[$tokenHash]['processing_status'] = 'retryable';
     }
 
@@ -175,6 +182,31 @@ final class FakeWebpayReturns extends WebpayReturnRepository
             'result_json' => null,
         ];
     }
+
+    public function seedTerminal(string $token, string $status): void
+    {
+        $this->rows[hash('sha256', $token)] = [
+            'payment_session_id' => 91,
+            'processing_status' => 'completed',
+            'result_status' => $status,
+            'result_json' => json_encode(['result' => $status]),
+        ];
+    }
+}
+
+final class FakePaymentTerminalOutcome implements PaymentTerminalOutcomeInterface
+{
+    public int $cancellations = 0;
+    public bool $fail = false;
+
+    public function cancel(int $paymentSessionId, string $checkoutPublicId): void
+    {
+        FakeWebpayReturns::$events[] = 'cancel';
+        ++$this->cancellations;
+        if ($this->fail) {
+            throw new RuntimeException('terminal_failure');
+        }
+    }
 }
 
 $token = str_repeat('T', 64);
@@ -184,10 +216,37 @@ $buyOrder = WebpayTransactionReference::buyOrder($checkout, $key);
 $sessionId = WebpayTransactionReference::sessionId($checkout);
 $session = [
     'id' => 91,
+    'public_id' => 'ps_' . str_repeat('1', 40),
     'checkout_public_id' => $checkout,
     'idempotency_key' => $key,
     'amount' => '1000.00',
 ];
+$durableOrigin = static function (string $token) use ($checkout, $session, $buyOrder, $sessionId): int {
+    global $wpdb;
+    $wpdb->delete(
+        $wpdb->prefix . \VeciAhorra\Core\Config::TABLE_PREFIX . 'payment_origin_contexts',
+        ['token_hash' => hash('sha256', $token)]
+    );
+    $now = current_time('mysql', true);
+    return (new PaymentOriginContextRepository())->create(new DurablePaymentOrigin(
+        'poc_' . substr(hash('sha256', $token), 0, 40),
+        WordPressSiteScope::current(),
+        DurablePaymentOrigin::ORIGIN_VECIAHORRA,
+        $checkout,
+        'webpay_plus',
+        (string) $session['public_id'],
+        1000,
+        'integration',
+        hash('sha256', 'merchant-' . $token),
+        $buyOrder,
+        $sessionId,
+        hash('sha256', $token),
+        1,
+        $now,
+        $now,
+        gmdate('Y-m-d H:i:s', time() + 3600)
+    ));
+};
 $approved = new WebpayCommitResult(
     'AUTHORIZED', 0, 1000, $buyOrder, $sessionId, 'AUTH', 'VD', 0,
     '0712', '2026-07-12T20:30:00Z', '6623', 0
@@ -219,6 +278,65 @@ $rejected = (new WebpayReturnService(
     $a10Materializer
 ))->process(WebpayReturnRequest::fromArray(['token_ws' => str_repeat('R', 64)]));
 assertWebpayReturn($rejected->result === 'rejected', 'Rechazo financiero incorrecto.');
+
+$durableRejectedToken = str_repeat('D', 64);
+$durableRejectedOriginId = $durableOrigin($durableRejectedToken);
+$terminal = new FakePaymentTerminalOutcome();
+$durableReturns = new FakeWebpayReturns();
+FakeWebpayReturns::$events = [];
+$durableRejectedService = new WebpayReturnService(
+    $rejectedGateway,
+    new FakeReturnPaymentSessions($session),
+    $durableReturns,
+    $a10Materializer,
+    null,
+    null,
+    new PaymentOriginContextRepository(),
+    $terminal
+);
+$durableRejected = $durableRejectedService->process(WebpayReturnRequest::fromArray([
+    'TBK_TOKEN' => $durableRejectedToken,
+    'TBK_ORDEN_COMPRA' => $buyOrder,
+    'TBK_ID_SESION' => $sessionId,
+]));
+assertWebpayReturn(
+    $durableRejected->result === 'aborted'
+        && $terminal->cancellations === 1
+        && FakeWebpayReturns::$events === ['cancel', 'complete'],
+    'Aborto durable no cancelo antes de completar.'
+);
+$durableRejectedReplay = $durableRejectedService->process(WebpayReturnRequest::fromArray([
+    'TBK_TOKEN' => $durableRejectedToken,
+]));
+assertWebpayReturn(
+    $durableRejectedReplay->result === 'already_processed'
+        && $terminal->cancellations === 2,
+    'Replay abortado no fue idempotente.'
+);
+global $wpdb;
+$wpdb->delete($wpdb->prefix . \VeciAhorra\Core\Config::TABLE_PREFIX . 'payment_origin_contexts', ['id' => $durableRejectedOriginId]);
+
+$repeatedRejectedToken = str_repeat('E', 64);
+$repeatedRejectedOriginId = $durableOrigin($repeatedRejectedToken);
+$repeatedRejectedReturns = new FakeWebpayReturns();
+$repeatedRejectedReturns->seedTerminal($repeatedRejectedToken, 'rejected');
+$repeatedRejectedTerminal = new FakePaymentTerminalOutcome();
+$repeatedRejectedResult = (new WebpayReturnService(
+    $rejectedGateway,
+    new FakeReturnPaymentSessions($session),
+    $repeatedRejectedReturns,
+    $a10Materializer,
+    null,
+    null,
+    new PaymentOriginContextRepository(),
+    $repeatedRejectedTerminal
+))->process(WebpayReturnRequest::fromArray(['token_ws' => $repeatedRejectedToken]));
+assertWebpayReturn(
+    $repeatedRejectedResult->result === 'already_processed'
+        && $repeatedRejectedTerminal->cancellations === 1,
+    'Replay rechazado no cerro el resultado terminal.'
+);
+$wpdb->delete($wpdb->prefix . \VeciAhorra\Core\Config::TABLE_PREFIX . 'payment_origin_contexts', ['id' => $repeatedRejectedOriginId]);
 
 foreach ([999, 1001, 0, -1] as $amount) {
     $inconsistentGateway = new FakeWebpayReturnGateway(new WebpayCommitResult(

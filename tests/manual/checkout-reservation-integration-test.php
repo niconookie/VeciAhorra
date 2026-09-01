@@ -9,6 +9,7 @@ use VeciAhorra\Modules\Cart\Repository\CartRepository;
 use VeciAhorra\Modules\Cart\Service\CartService;
 use VeciAhorra\Modules\Checkout\Service\CheckoutService;
 use VeciAhorra\Modules\Checkout\Service\CheckoutValidationService;
+use VeciAhorra\Modules\Inventory\Contracts\InventoryRepositoryInterface;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
 use VeciAhorra\Modules\Orders\Services\OrderService;
@@ -19,6 +20,7 @@ use VeciAhorra\Modules\Reservations\Service\ReservationService;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+require_once __DIR__ . '/support/inventory-container.php';
 
 function assertCheckoutReservation(bool $condition, string $message): void
 {
@@ -46,19 +48,42 @@ $cartService = new CartService($cartRepository);
 $inventoryRepository = new InventoryRepository();
 $productRepository = new ProductRepository();
 $storeRepository = new StoreRepository();
-$checkoutService = (new Container())->make(CheckoutService::class);
-$validationService = (new Container())->make(
+$missingBindingDetected = false;
+try {
+    (new Container())->make(CheckoutValidationService::class);
+} catch (RuntimeException $exception) {
+    $missingBindingDetected = $exception->getMessage()
+        === 'No se puede instanciar ' . InventoryRepositoryInterface::class;
+}
+assertCheckoutReservation(
+    $missingBindingDetected,
+    'El harness sin InventoryRepositoryInterface debe fallar explicitamente.'
+);
+$testContainer = manualTestInventoryContainer($inventoryRepository);
+$checkoutService = $testContainer->make(CheckoutService::class);
+$validationService = $testContainer->make(
     CheckoutValidationService::class
 );
 $inventoryTable = $wpdb->prefix . Config::TABLE_PREFIX . 'inventory';
 $ordersTable = $wpdb->prefix . Config::TABLE_PREFIX . 'orders';
 $orderItemsTable = $wpdb->prefix . Config::TABLE_PREFIX . 'order_items';
 $reservationsTable = $wpdb->prefix . Config::TABLE_PREFIX . 'reservations';
+$serviceZonesTable = $wpdb->prefix . Config::TABLE_PREFIX . 'service_zones';
+$storeServiceZonesTable = $wpdb->prefix . Config::TABLE_PREFIX . 'store_service_zones';
 $transaction = $wpdb->query('START TRANSACTION');
 assertCheckoutReservation($transaction !== false, 'No se inicio transaccion.');
 
 try {
     $now = current_time('mysql');
+    $zoneCreated = $wpdb->insert($serviceZonesTable, [
+        'commune' => 'Test',
+        'name' => 'Checkout reservation ' . bin2hex(random_bytes(8)),
+        'status' => 'active',
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+    assertCheckoutReservation($zoneCreated === 1, 'No se creo sector de prueba.');
+    $zoneId = (int) $wpdb->insert_id;
     $minimarketBase = random_int(58000000, 58999999);
     $minimarketOffset = 0;
     $makeProduct = static function (
@@ -90,6 +115,9 @@ try {
         $inventoryRepository,
         $storeRepository,
         $minimarketBase,
+        $zoneId,
+        $storeServiceZonesTable,
+        $wpdb,
         $now,
         &$minimarketOffset
     ): int {
@@ -104,6 +132,13 @@ try {
             'status' => 'active', 'onboarding_status' => 'complete',
             'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
         ]);
+        $assigned = $wpdb->insert($storeServiceZonesTable, [
+            'store_id' => $storeId,
+            'zone_id' => $zoneId,
+            'assigned_by' => 0,
+            'assigned_at' => $now,
+        ]);
+        assertCheckoutReservation($assigned === 1, 'No se asigno sector de prueba.');
 
         return $inventoryRepository->create([
             'product_id' => $productId,
@@ -229,6 +264,8 @@ try {
     ]);
     assertCheckoutReservation($administratorIds !== [], 'Falta administrador.');
     $customerId = (int) $administratorIds[0];
+    update_user_meta($customerId, '_veciahorra_service_zone_id', $zoneId);
+    wp_set_current_user($customerId);
     $successOwner = ['session_id' => null, 'user_id' => $customerId];
     $cartService->clearCart($successOwner);
     $cartService->addItem($successOwner, $firstInventoryId, 2);
@@ -237,15 +274,21 @@ try {
         "SELECT COUNT(*) FROM {$ordersTable}"
     );
 
-    wp_set_current_user($customerId);
     $request = new WP_REST_Request('POST', '/veciahorra/v1/checkout');
     $request->set_header('content-type', 'application/json');
     $request->set_header('Idempotency-Key', 'checkout-reservation-key-0001');
     $request->set_body('{"fulfillment_method":"pickup"}');
     $response = rest_do_request($request);
-    $success = $response->get_data()['data'] ?? [];
-
-    assertCheckoutReservationSame(201, $response->get_status());
+    assertCheckoutReservationSame(503, $response->get_status());
+    assertCheckoutReservationSame(
+        'commerce_disabled',
+        $response->get_data()['error']['code'] ?? null
+    );
+    $success = $checkoutService->initialize([
+        ...$successOwner,
+        'fulfillment_method' => 'pickup',
+        'idempotency_key' => 'checkout-reservation-key-0001',
+    ]);
     assertCheckoutReservationSame(true, $success['valid']);
     assertCheckoutReservationSame(true, $success['reservation_created']);
     assertCheckoutReservationSame(true, $success['order_created']);

@@ -252,6 +252,29 @@ class OrderRepository extends Repository
         return $result;
     }
 
+    /** @param list<int> $ids */
+    public function markCancelled(array $ids, string $updatedAt): int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+        $placeholders = implode(', ', array_fill(0, count($ids), '%d'));
+        $params = ['cancelled', $updatedAt, ...$ids, 'reserved'];
+        $result = $this->db()->query($this->db()->prepare(
+            sprintf(
+                'UPDATE %s SET status = %%s, updated_at = %%s'
+                . ' WHERE id IN (%s) AND status = %%s',
+                $this->table(self::ORDERS_TABLE),
+                $placeholders
+            ),
+            ...$params
+        ));
+        if ($result === false || $result !== count($ids)) {
+            throw new PersistenceException('No fue posible cancelar los pedidos.');
+        }
+        return $result;
+    }
+
     public function markDelivered(int $id, string $updatedAt): void
     {
         $result = $this->db()->update(

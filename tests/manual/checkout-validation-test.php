@@ -10,9 +10,11 @@ use VeciAhorra\Modules\Checkout\Service\CheckoutService;
 use VeciAhorra\Modules\Inventory\Repositories\InventoryRepository;
 use VeciAhorra\Modules\Products\Models\Product;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
+use VeciAhorra\Modules\Sectorization\CurrentSector;
 use VeciAhorra\Modules\Stores\Repositories\StoreRepository;
 
 require_once dirname(__DIR__, 5) . '/wp-load.php';
+require_once __DIR__ . '/support/inventory-container.php';
 
 function assertCheckoutValidation(bool $condition, string $message): void
 {
@@ -48,12 +50,31 @@ $cartService = new CartService($cartRepository);
 $inventoryRepository = new InventoryRepository();
 $productRepository = new ProductRepository();
 $storeRepository = new StoreRepository();
-$checkoutService = (new Container())->make(CheckoutService::class);
+$checkoutService = manualTestInventoryContainer($inventoryRepository)
+    ->make(CheckoutService::class);
 $transaction = $wpdb->query('START TRANSACTION');
 assertCheckoutValidation($transaction !== false, 'No se inicio transaccion.');
 
 try {
     $now = current_time('mysql');
+    $prefix = $wpdb->prefix . Config::TABLE_PREFIX;
+    $zoneCreated = $wpdb->insert($prefix . 'service_zones', [
+        'commune' => 'Test',
+        'name' => 'Checkout validation ' . bin2hex(random_bytes(8)),
+        'status' => 'active',
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+    assertCheckoutValidation($zoneCreated === 1, 'No se creo sector de prueba.');
+    $zoneId = (int) $wpdb->insert_id;
+    $administratorIds = get_users([
+        'role' => 'administrator', 'number' => 1, 'fields' => 'ids',
+    ]);
+    assertCheckoutValidation($administratorIds !== [], 'Falta administrador.');
+    $sectorUserId = (int) $administratorIds[0];
+    update_user_meta($sectorUserId, '_veciahorra_service_zone_id', $zoneId);
+    wp_set_current_user($sectorUserId);
+    assertCheckoutValidationSame($zoneId, (new CurrentSector())->id());
     $minimarketId = random_int(57000000, 57999999);
     $sessionId = 'checkout-validation-' . bin2hex(random_bytes(8));
     $owner = ['session_id' => $sessionId, 'user_id' => null];
@@ -87,6 +108,9 @@ try {
         $inventoryRepository,
         $storeRepository,
         $minimarketId,
+        $zoneId,
+        $prefix,
+        $wpdb,
         $now,
         &$inventoryOffset
     ): int {
@@ -101,6 +125,13 @@ try {
             'status' => 'active', 'onboarding_status' => 'complete',
             'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
         ]);
+        $assigned = $wpdb->insert($prefix . 'store_service_zones', [
+            'store_id' => $storeId,
+            'zone_id' => $zoneId,
+            'assigned_by' => 0,
+            'assigned_at' => $now,
+        ]);
+        assertCheckoutValidation($assigned === 1, 'No se asigno sector de prueba.');
 
         return $inventoryRepository->create([
             'product_id' => $productId,
@@ -283,5 +314,6 @@ try {
 
     echo "PASS checkout-validation-test\n";
 } finally {
+    wp_set_current_user(0);
     $wpdb->query('ROLLBACK');
 }
