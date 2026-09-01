@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use VeciAhorra\Core\Container;
+use VeciAhorra\Core\LaunchGate;
 use VeciAhorra\Modules\Frontend\Assets\FrontendAssets;
 use VeciAhorra\Modules\Frontend\Controller\FrontendController;
 
@@ -76,12 +77,25 @@ foreach ([
     'name="phone"', 'name="email"', 'data-va-delivery-options',
     'data-va-delivery-fields', 'name="recipient_name"', 'Nombre de quien recibe',
     'name="address"', 'name="commune"',
-    'name="reference"', 'name="notes"', 'Crear pedido',
+    'name="reference"', 'name="notes"',
     'data-va-checkout-result', 'Pedido creado correctamente.',
     'aria-live="polite"', 'novalidate',
 ] as $contract) {
     assertPublicCheckoutContains($contract, $html);
 }
+$commerceEnabled = (new LaunchGate())->commerceEnabled();
+assertPublicCheckoutContains(
+    $commerceEnabled ? 'Crear pedido' : 'Disponible desde el 1 de septiembre',
+    $html
+);
+assertPublicCheckout(
+    $commerceEnabled || str_contains($html, 'aria-disabled="true"'),
+    'El checkout cerrado no conserva su bloqueo semantico.'
+);
+assertPublicCheckout(
+    ! $commerceEnabled || ! str_contains($html, 'aria-disabled="true"'),
+    'El checkout habilitado conserva un bloqueo de lanzamiento.'
+);
 assertPublicCheckout(! str_contains($html, 'name="first_name"'), 'Checkout vuelve a pedir nombre del comprador.');
 assertPublicCheckout(! str_contains($html, 'name="last_name"'), 'Checkout vuelve a pedir apellido del comprador.');
 assertPublicCheckoutContains(esc_html((string) $customers[0]->display_name), $html);
@@ -98,8 +112,14 @@ $checkoutUrlFilter = static fn (): string => home_url('/checkout-test/');
 add_filter('veciahorra_frontend_checkout_url', $checkoutUrlFilter);
 $cartHtml = $controller->renderCart();
 remove_filter('veciahorra_frontend_checkout_url', $checkoutUrlFilter);
-assertPublicCheckoutContains('data-va-cart-checkout', $cartHtml);
-assertPublicCheckoutContains('Continuar al checkout', $cartHtml);
+assertPublicCheckoutContains(
+    $commerceEnabled ? 'data-va-cart-checkout' : 'data-va-cart-checkout-unavailable',
+    $cartHtml
+);
+assertPublicCheckoutContains(
+    $commerceEnabled ? 'Continuar al checkout' : 'Disponible desde el 1 de septiembre',
+    $cartHtml
+);
 assertPublicCheckoutContains('data-va-cart-continue-shopping', $cartHtml);
 assertPublicCheckoutContains('Seguir comprando', $cartHtml);
 $unavailableUrlFilter = static fn (): string => '';
@@ -115,6 +135,7 @@ $root = dirname(__DIR__, 2);
 $javascript = (string) file_get_contents(
     $root . '/assets/frontend/js/veciahorra-checkout.js'
 );
+assertPublicCheckoutContains("var defaultSubmitText = 'Crear pedido';", $javascript);
 $css = (string) file_get_contents(
     $root . '/assets/frontend/css/veciahorra-frontend.css'
 );

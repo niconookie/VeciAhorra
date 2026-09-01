@@ -19,7 +19,7 @@ final class WebpayReturnController
     ) {
     }
 
-    public function process(array $payload): array
+    public function process(array $payload, ?string $method = null): array
     {
         try {
             if (
@@ -32,7 +32,7 @@ final class WebpayReturnController
             }
 
             $result = $this->service->process(
-                WebpayReturnRequest::fromArray($payload)
+                WebpayReturnRequest::fromArray($payload, $method)
             );
 
             $data = $result->toArray();

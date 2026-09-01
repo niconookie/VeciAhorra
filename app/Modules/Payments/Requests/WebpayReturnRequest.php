@@ -13,22 +13,42 @@ final class WebpayReturnRequest
 
     private function __construct(
         public readonly string $flow,
-        public readonly string $token,
+        public readonly ?string $token,
         public readonly ?string $buyOrder,
         public readonly ?string $sessionId
     ) {
     }
 
-    public static function fromArray(array $input): self
+    public static function fromArray(array $input, ?string $method = null): self
     {
         $normal = array_key_exists('token_ws', $input);
         $aborted = array_key_exists('TBK_TOKEN', $input);
+        $hasBuyOrder = array_key_exists('TBK_ORDEN_COMPRA', $input);
+        $hasSessionId = array_key_exists('TBK_ID_SESION', $input);
 
-        if ($normal === $aborted) {
+        if ($normal && ($aborted || $hasBuyOrder || $hasSessionId)) {
             throw new InvalidArgumentException(
-                $normal
-                    ? 'El retorno Webpay contiene parametros ambiguos.'
-                    : 'El retorno Webpay no contiene un token reconocido.'
+                'El retorno Webpay contiene parametros ambiguos.'
+            );
+        }
+
+        if (! $normal && ! $aborted) {
+            if (! $hasBuyOrder || ! $hasSessionId) {
+                throw new InvalidArgumentException(
+                    'El retorno Webpay no contiene un token reconocido.'
+                );
+            }
+            if (strtoupper((string) $method) !== 'GET') {
+                throw new InvalidArgumentException(
+                    'El retorno Webpay de timeout no usa el metodo esperado.'
+                );
+            }
+
+            return new self(
+                'timeout',
+                null,
+                self::optionalString($input, 'TBK_ORDEN_COMPRA'),
+                self::optionalString($input, 'TBK_ID_SESION')
             );
         }
 

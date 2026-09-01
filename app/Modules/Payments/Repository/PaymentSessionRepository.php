@@ -243,6 +243,22 @@ class PaymentSessionRepository extends Repository
         return $row === null ? null : $row;
     }
 
+    public function findByPublicId(string $publicId): ?array
+    {
+        $row = $this->db()->get_row($this->db()->prepare(
+            sprintf(
+                'SELECT ps.*, c.public_id AS checkout_public_id'
+                . ' FROM %s ps INNER JOIN %s c ON c.id = ps.checkout_id'
+                . ' WHERE ps.public_id = %%s LIMIT 1',
+                $this->table(self::TABLE),
+                $this->table('checkouts')
+            ),
+            $publicId
+        ), ARRAY_A);
+
+        return $row === null ? null : $row;
+    }
+
     public function findActive(int $checkoutId, string $now): ?array
     {
         $row = $this->db()->get_row($this->db()->prepare(

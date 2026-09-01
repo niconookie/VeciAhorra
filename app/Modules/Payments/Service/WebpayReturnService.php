@@ -12,6 +12,8 @@ use VeciAhorra\Modules\Payments\Gateway\WebpayReturnContext;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnContextRepositoryInterface;
 use VeciAhorra\Modules\Payments\Gateway\WebpayReturnGatewayResolverInterface;
 use VeciAhorra\Modules\Payments\Gateway\WebpayTransactionReference;
+use VeciAhorra\Modules\Payments\Gateway\WebpayPaymentGateway;
+use VeciAhorra\Modules\Payments\Models\PaymentSession;
 use VeciAhorra\Modules\Payments\Models\WebpayReturnResult;
 use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
 use VeciAhorra\Modules\Payments\Repository\WebpayReturnRepository;
@@ -38,15 +40,22 @@ final class WebpayReturnService
 
     public function process(WebpayReturnRequest $request): WebpayReturnResult
     {
-        $tokenHash = WebpayTokenReference::hash($request->token);
-        $session = $this->sessions->findByProviderSessionId($request->token);
+        if ($request->flow === 'timeout') {
+            return $this->timeout($request);
+        }
+
+        $token = $request->token ?? throw new \InvalidArgumentException(
+            'El token Webpay no es valido.'
+        );
+        $tokenHash = WebpayTokenReference::hash($token);
+        $session = $this->sessions->findByProviderSessionId($token);
         $externalContext = $session === null
             ? $this->contexts?->find($tokenHash)
             : null;
         $durableOrigin = ($this->durableOrigins
             ?? new PaymentOriginContextRepository())->findByTokenHash($tokenHash);
         $this->assertDurablePublicAttempt($durableOrigin, $session, $tokenHash);
-        $reference = WebpayTokenReference::masked($request->token);
+        $reference = WebpayTokenReference::masked($token);
         $now = current_time('mysql');
         $claim = $this->returns->claim(
             $tokenHash,
@@ -99,7 +108,7 @@ final class WebpayReturnService
         try {
             $gateway = $this->gatewayResolver?->resolve($externalContext)
                 ?? $this->gateway;
-            $financial = $gateway->commit($request->token);
+            $financial = $gateway->commit($token);
         } catch (PaymentGatewayException $exception) {
             if ($exception->errorCode() === 'webpay_incomplete_response') {
                 return $this->finalize(new WebpayReturnResult(
@@ -160,6 +169,107 @@ final class WebpayReturnService
             $reference,
             $financial->toArray()
         ), $tokenHash, $externalContext, $durableOrigin, $financial);
+    }
+
+    private function timeout(WebpayReturnRequest $request): WebpayReturnResult
+    {
+        $buyOrder = $request->buyOrder ?? '';
+        $financialSessionId = $request->sessionId ?? '';
+        $originRepository = $this->durableOrigins
+            ?? new PaymentOriginContextRepository();
+        $origin = $originRepository->findByFinancialReferences(
+            $buyOrder,
+            $financialSessionId
+        );
+
+        if ($origin === null || $origin->tokenHash() === null) {
+            throw new \InvalidArgumentException(
+                'El retorno Webpay no corresponde a un intento durable.'
+            );
+        }
+
+        $session = $this->sessions->findByPublicId($origin->paymentAttemptId());
+        $this->assertTimeoutAuthority($origin, $session);
+        $tokenHash = $origin->tokenHash();
+        $reference = 'sha256:' . substr($tokenHash, 0, 12);
+        $claim = $this->returns->claim(
+            $tokenHash,
+            (int) $session['id'],
+            'timeout',
+            current_time('mysql')
+        );
+
+        if (($claim['claimed'] ?? false) !== true) {
+            $row = is_array($claim['row'] ?? null) ? $claim['row'] : [];
+            if (($row['processing_status'] ?? null) === 'retryable'
+                && $this->returns->retry($tokenHash, current_time('mysql'))) {
+                return $this->finalize(new WebpayReturnResult(
+                    'timed_out',
+                    (int) $session['id'],
+                    $reference
+                ), $tokenHash, null, $origin);
+            }
+
+            return $this->repeated(
+                $row,
+                $reference,
+                $tokenHash,
+                $origin
+            );
+        }
+
+        return $this->finalize(new WebpayReturnResult(
+            'timed_out',
+            (int) $session['id'],
+            $reference
+        ), $tokenHash, null, $origin);
+    }
+
+    private function assertTimeoutAuthority(
+        DurablePaymentOrigin $origin,
+        ?array $session
+    ): void {
+        $providerToken = is_string($session['provider_session_id'] ?? null)
+            ? $session['provider_session_id']
+            : '';
+        $now = current_time('mysql');
+
+        if ($origin->origin() !== DurablePaymentOrigin::ORIGIN_VECIAHORRA
+            || $origin->siteScope() !== WordPressSiteScope::current()
+            || $origin->gatewayId() !== 'webpay_plus'
+            || $origin->currency() !== 'CLP'
+            || $session === null
+            || ! hash_equals(
+                $origin->paymentAttemptId(),
+                (string) ($session['public_id'] ?? '')
+            )
+            || ! hash_equals(
+                $origin->originResourceId(),
+                (string) ($session['checkout_public_id'] ?? '')
+            )
+            || ($session['provider'] ?? null) !== 'webpay_plus'
+            || ($session['status'] ?? null) !== PaymentSession::STATUS_READY
+            || ($session['payment_id'] ?? null) !== null
+            || ($session['confirmed_at'] ?? null) !== null
+            || $origin->amountClp() !== $this->amount(
+                (string) ($session['amount'] ?? '')
+            )
+            || $origin->expiresAt() !== (string) ($session['expires_at'] ?? '')
+            || $origin->expiresAt() <= $now
+            || ! hash_equals(
+                (string) $origin->tokenHash(),
+                WebpayTokenReference::hash($providerToken)
+            )
+            || ! WebpayPaymentGateway::isAllowedPaymentUrl(
+                $origin->environment(),
+                is_string($session['redirect_url'] ?? null)
+                    ? $session['redirect_url']
+                    : null
+            )) {
+            throw new \InvalidArgumentException(
+                'El retorno Webpay no corresponde a un intento durable.'
+            );
+        }
     }
 
     private function assertDurablePublicAttempt(
@@ -281,7 +391,7 @@ final class WebpayReturnService
         }
 
         if ($durableOrigin?->origin() === DurablePaymentOrigin::ORIGIN_VECIAHORRA
-            && in_array($row['result_status'] ?? null, ['rejected', 'aborted'], true)
+            && in_array($row['result_status'] ?? null, ['rejected', 'aborted', 'timed_out'], true)
             && isset($row['payment_session_id']) && (int) $row['payment_session_id'] > 0) {
             $this->terminalOutcomes?->cancel(
                 (int) $row['payment_session_id'],
@@ -314,7 +424,7 @@ final class WebpayReturnService
         ?\VeciAhorra\Modules\Payments\Gateway\WebpayCommitResult $financial = null
     ): WebpayReturnResult {
         if ($durableOrigin?->origin() === DurablePaymentOrigin::ORIGIN_VECIAHORRA
-            && in_array($result->result, ['rejected', 'aborted'], true)
+            && in_array($result->result, ['rejected', 'aborted', 'timed_out'], true)
             && $result->paymentSessionId !== null) {
             try {
                 $this->terminalOutcomes?->cancel(

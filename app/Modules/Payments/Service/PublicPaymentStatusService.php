@@ -99,6 +99,7 @@ final class PublicPaymentStatusService
         }
 
         $returnStatus = $row['return_result_status'] ?? null;
+        if ($returnStatus === 'timed_out') { return $this->state('payment_expired'); }
         if ($returnStatus === 'aborted') { return $this->state('payment_cancelled'); }
         if ($returnStatus === 'rejected') { return $this->state('payment_rejected'); }
 

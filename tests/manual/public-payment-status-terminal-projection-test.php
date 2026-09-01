@@ -86,6 +86,18 @@ terminalProjectionAssert(
     && $rejected['terminal'] === true,
     'REJECTED_REGRESSION'
 );
+$timedOut = $project->invoke($service, [
+    ...$base,
+    'return_result_status' => 'timed_out',
+    'approved_payment_authority_count' => '0',
+]);
+terminalProjectionAssert(
+    $timedOut['payment_status'] === 'payment_expired'
+    && $timedOut['terminal'] === true
+    && $timedOut['next_action'] === 'retry_payment'
+    && $timedOut['redirect_url'] === null,
+    'TIMED_OUT_NOT_RETRYABLE'
+);
 $uncertain = $project->invoke($service, [
     ...$base,
     'return_processing_status' => 'ambiguous',

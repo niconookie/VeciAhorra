@@ -37,7 +37,7 @@ $paymentObserver = static function () use (&$paymentCompleteCalls): void { $paym
 add_action('woocommerce_pre_payment_complete', $paymentObserver, 10, 0);
 
 /** @return array<string,mixed> */
-function e2eFixture(string $method, array $amounts): array
+function e2eFixture(string $method, array $amounts, bool $validDeliverySnapshot = true): array
 {
     global $wpdb, $prefix, $created;
     $nonce = bin2hex(random_bytes(10));
@@ -45,12 +45,18 @@ function e2eFixture(string $method, array $amounts): array
     $total = array_sum($amounts);
     $checkoutPublic = 'chk_' . substr(hash('sha256', 'checkout-' . $nonce), 0, 43);
     $sessionPublic = 'ps_' . substr(hash('sha256', 'session-' . $nonce), 0, 43);
+    $deliverySnapshot = $method === 'delivery' && $validDeliverySnapshot ? [
+        'delivery_recipient_name' => 'Receptor Integracion',
+        'delivery_contact_phone' => '+56911111111',
+        'delivery_address_line1' => 'Calle Integracion 123',
+        'delivery_commune' => 'Santiago',
+    ] : [];
     $wpdb->insert($prefix . 'checkouts', [
         'public_id' => $checkoutPublic, 'owner_type' => 'user', 'user_id' => 970001,
         'session_id' => null, 'status' => 'payment_started', 'fulfillment_method' => $method,
         'currency' => 'CLP', 'total_amount' => $total . '.00', 'created_at' => $now,
         'updated_at' => $now, 'expires_at' => gmdate('Y-m-d H:i:s', time() + 3600),
-    ]);
+    ] + $deliverySnapshot);
     $checkoutId = (int) $wpdb->insert_id;
     $orderIds = [];
     foreach ($amounts as $index => $amount) {
@@ -194,6 +200,24 @@ try {
     $delivery = e2eFixture('delivery', [1500, 2500, 3000]);
     $deliveryResult = e2eRun($delivery, 'b');
     e2eAssertDurable($delivery, $deliveryResult);
+
+    $invalidDelivery = e2eFixture('delivery', [1750], false);
+    $invalidLease = (new PaymentReconciliationClaimRepository())->acquireLease(
+        $invalidDelivery['reconciliationId'], 'worker_' . str_repeat('e', 32), 60
+    )->lease();
+    e2eAssert($invalidLease !== null, 'Fixture negativo no adquirio lease.');
+    (new PaymentReconciliationProcessor())->process($invalidLease);
+    $invalidBusiness = (new BusinessCompletionProcessor())->process(
+        $invalidDelivery['reconciliationId'], 'business_' . str_repeat('e', 32), 30
+    );
+    $invalidResult = (new DeliveryCompletionProcessor())->process(
+        (int) $invalidBusiness->completionId, 'worker_' . str_repeat('e', 32), 30
+    );
+    e2eAssert(
+        $invalidResult->status === DeliveryCompletionResult::MANUAL_REVIEW
+        && $invalidResult->reason === 'delivery_snapshot_invalid',
+        'Fixture sin snapshot no fue rechazado por DeliveryCompletion.'
+    );
 
     foreach ([[$pickup, $pickupResult, 'c'], [$delivery, $deliveryResult, 'd']] as [$fixture, $original, $worker]) {
         $businessId = (int) $original['business']->completionId;

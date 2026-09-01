@@ -244,7 +244,8 @@ final class PaymentRoutes
         }
 
         $result = $this->webpayReturnController->process(
-            array_intersect_key($payload, self::WEBPAY_RETURN_FIELDS)
+            array_intersect_key($payload, self::WEBPAY_RETURN_FIELDS),
+            strtoupper($request->get_method())
         );
 
         if (($result['success'] ?? false) !== true) {

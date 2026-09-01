@@ -136,6 +136,29 @@ final class PaymentOriginContextRepository extends Repository
         return $row === null ? null : $this->hydrate($row);
     }
 
+    public function findByFinancialReferences(
+        string $buyOrder,
+        string $financialSessionId
+    ): ?DurablePaymentOrigin {
+        $rows = $this->db()->get_results($this->db()->prepare(
+            sprintf(
+                'SELECT * FROM %s WHERE buy_order = %%s'
+                . ' AND financial_session_id = %%s ORDER BY id ASC LIMIT 2',
+                $this->table(self::TABLE)
+            ),
+            $buyOrder,
+            $financialSessionId
+        ), ARRAY_A);
+
+        if (count($rows) > 1) {
+            throw new PersistenceException(
+                'Las referencias Webpay no identifican un contexto unico.'
+            );
+        }
+
+        return $rows === [] ? null : $this->hydrate($rows[0]);
+    }
+
     public function bindTokenHash(
         int $originContextId,
         string $paymentAttemptId,
