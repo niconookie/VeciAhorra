@@ -39,7 +39,10 @@ final class WebpayGatewayConfiguration
             );
         }
 
-        if (preg_match('/^[A-Za-z0-9]{32,256}$/D', $apiKey) !== 1) {
+        if (preg_match(
+            '/^(?:[A-Za-z0-9]{32,256}|[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12})$/D',
+            $apiKey
+        ) !== 1) {
             throw new InvalidArgumentException(
                 'La API Key Webpay no es valida.'
             );
