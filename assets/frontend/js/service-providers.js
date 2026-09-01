@@ -3,6 +3,17 @@
 
     var api = window.VeciAhorra && window.VeciAhorra.api;
     if (!api) return;
+    var PLAN_CATALOG = Object.freeze({
+        local: Object.freeze({ label: 'Plan Local', summary: 'Plan Local · $1.000 / mes' }),
+        featured: Object.freeze({ label: 'Plan Destacado', summary: 'Plan Destacado · $2.000 / mes' }),
+        communal: Object.freeze({ label: 'Plan Comunal', summary: 'Plan Comunal · $3.000 / mes' })
+    });
+
+    function canonicalPlan(value) {
+        return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PLAN_CATALOG, value)
+            ? value
+            : null;
+    }
 
     function split(value) {
         return String(value || '').split(',').map(function (item) { return item.trim(); }).filter(Boolean);
@@ -99,6 +110,8 @@
         var current = 0;
         var categoryTools;
         var enrolled = false;
+        var requestedPlan = canonicalPlan(new URLSearchParams(window.location.search).get('plan'));
+        if (requestedPlan) form.elements.plan.value = requestedPlan;
 
         function showMessage(value, error) {
             if (!status) return;
@@ -111,7 +124,8 @@
         }
 
         function planLabel(value) {
-            return {local:'Plan Local',featured:'Plan Destacado'}[value] || 'sin seleccionar';
+            var plan = canonicalPlan(value);
+            return plan ? PLAN_CATALOG[plan].label : 'sin seleccionar';
         }
 
         function renderCurrentProfile(provider) {
@@ -122,7 +136,7 @@
             currentProfile.replaceChildren();
             currentProfile.append(el('p', 'va-sp-eyebrow', 'Ficha configurada'), el('h2', '', text(provider.business_name, provider.full_name)));
             var facts = el('div', 'va-sp-current-profile__facts');
-            [['Prestador',provider.full_name],['Categoría',category],['Comuna',provider.commune],['Teléfono',provider.phone],['Correo',provider.email]].forEach(function(item){var fact=el('p');fact.append(el('strong','',item[0]),el('span','',text(item[1],'Sin información')));facts.append(fact);});
+            [['Prestador',provider.full_name],['Plan',planLabel(provider.plan)],['Categoría',category],['Comuna',provider.commune],['Teléfono',provider.phone],['Correo',provider.email]].forEach(function(item){var fact=el('p');fact.append(el('strong','',item[0]),el('span','',text(item[1],'Sin información')));facts.append(fact);});
             currentProfile.append(facts);
             currentProfile.hidden = false;
         }
@@ -178,9 +192,10 @@
             var review = form.querySelector('[data-va-provider-review]');
             if (!review) return;
             var data = formPayload(form);
+            var selectedPlan = canonicalPlan(data.plan);
             review.replaceChildren();
             [
-                ['Plan seleccionado', data.plan === 'featured' ? 'Plan Destacado · $2.000 / mes' : 'Plan Local · $1.000 / mes'],
+                ['Plan seleccionado', selectedPlan ? PLAN_CATALOG[selectedPlan].summary : 'Sin plan seleccionado'],
                 ['Titular', text(data.full_name) + ' · ' + text(data.email)],
                 ['Servicio', text(data.business_name) + ' · ' + text(data.commune)],
                 ['Especialidades', split(data.specialties).join(', ') || 'Sin especialidades declaradas']
@@ -261,7 +276,9 @@
 
         document.querySelectorAll('[data-va-choose-plan]').forEach(function (link) {
             link.addEventListener('click', function () {
-                var plan = form.querySelector('[name="plan"][value="' + link.dataset.vaChoosePlan + '"]');
+                var selected = canonicalPlan(link.dataset.vaChoosePlan);
+                if (!selected) return;
+                var plan = form.querySelector('[name="plan"][value="' + selected + '"]');
                 if (plan) plan.checked = true;
                 if (wizard) showStep(0);
             });

@@ -789,6 +789,7 @@ return array(
     'VeciAhorra\\Modules\\Sectorization\\ServiceZoneRepository' => $baseDir . '/app/Modules/Sectorization/ServiceZoneRepository.php',
     'VeciAhorra\\Modules\\ServiceProviders\\Admin\\ServiceProviderAdminPage' => $baseDir . '/app/Modules/ServiceProviders/Admin/ServiceProviderAdminPage.php',
     'VeciAhorra\\Modules\\ServiceProviders\\Domain\\ServiceCatalog' => $baseDir . '/app/Modules/ServiceProviders/Domain/ServiceCatalog.php',
+    'VeciAhorra\\Modules\\ServiceProviders\\Domain\\ServicePlanCatalog' => $baseDir . '/app/Modules/ServiceProviders/Domain/ServicePlanCatalog.php',
     'VeciAhorra\\Modules\\ServiceProviders\\Identity\\ServiceProviderRole' => $baseDir . '/app/Modules/ServiceProviders/Identity/ServiceProviderRole.php',
     'VeciAhorra\\Modules\\ServiceProviders\\Repository\\ServiceProviderRepository' => $baseDir . '/app/Modules/ServiceProviders/Repository/ServiceProviderRepository.php',
     'VeciAhorra\\Modules\\ServiceProviders\\Routes\\ServiceProviderRoutes' => $baseDir . '/app/Modules/ServiceProviders/Routes/ServiceProviderRoutes.php',

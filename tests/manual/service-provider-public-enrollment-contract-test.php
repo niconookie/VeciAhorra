@@ -33,7 +33,7 @@ $assert(str_contains($unauthorizedBranch, 'Inicia sesi') && ! str_contains($unau
 $assert(str_contains($submitFlow, 'if (!enrolled)') && str_contains($submitFlow, "api.post('/service-provider/profile', formPayload(form))"), 'El primer submit autorizado no llama profile.');
 $assert(substr_count($forbiddenBranch, "api.post('/service-provider/enroll', {})") === 1, '403 puede duplicar enroll.');
 
-$assert(str_contains($module, "registrationUrl(\$this->pageUrl(self::REGISTRATION, '/prestadores/'))"), 'El registro no retorna a prestadores.');
+$assert(str_contains($module, "\$this->pageUrl(self::REGISTRATION, '/prestadores/')") && str_contains($module, 'customerAccess->registrationUrl($returnUrl)'), 'El registro no retorna a prestadores.');
 $assert(! str_contains($module, 'registrationUrl($this->servicesUrl())'), 'Permanece el retorno incorrecto a servicios.');
 $assert(str_contains($module, 'data-va-provider-enroll') && str_contains($module, 'Activar mi perfil profesional'), 'Falta CTA de enrolamiento autenticado.');
 $assert(str_contains($module, 'current_user_can(ServiceProviderRole::CAPABILITY)') && str_contains($module, 'Ir a mi panel'), 'Falta acceso directo del prestador.');
@@ -49,8 +49,8 @@ $assert(str_contains($routes, "['/service-provider/me','GET','me','privatePermis
 $assert(str_contains($routes, "['/service-provider/profile','POST','save','privatePermission']"), 'Profile dejo de requerir capacidad.');
 $assert(str_contains($routes, "['/service-provider/submit','POST','submit','privatePermission']"), 'Submit dejo de requerir capacidad.');
 $assert(str_contains($routes, "new WP_Error('authentication_required'") && str_contains($routes, "new WP_Error('provider_forbidden'"), 'Las rutas privadas no conservan rechazo explicito.');
-$assert(preg_match('/Version: 0\\.3\\.7/', $plugin) === 1 && str_contains($plugin, "define('VA_VERSION', '0.3.7')"), 'Version principal incorrecta.');
-$assert(str_contains($config, "PLUGIN_VERSION = '0.3.7'") && str_contains($config, "SCHEMA_VERSION = '0.32.0'"), 'Versiones de Config incorrectas.');
+$assert(preg_match('/Version: 0\\.3\\.11/', $plugin) === 1 && str_contains($plugin, "define('VA_VERSION', '0.3.11')"), 'Version principal incorrecta.');
+$assert(str_contains($config, "PLUGIN_VERSION = '0.3.11'") && str_contains($config, "SCHEMA_VERSION = '0.32.0'"), 'Versiones de Config incorrectas.');
 $assert(! str_contains($routes, 'COMMERCE_FLAG') && ! str_contains($module, 'COMMERCE_FLAG'), 'El cambio alcanzo el gate de comercio.');
 
 echo "OK service-provider-public-enrollment-contract\n";

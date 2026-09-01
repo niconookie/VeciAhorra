@@ -859,6 +859,7 @@ class ComposerStaticInit82175e0df2c9cb76839979e7207e74c4
         'VeciAhorra\\Modules\\Sectorization\\ServiceZoneRepository' => __DIR__ . '/../..' . '/app/Modules/Sectorization/ServiceZoneRepository.php',
         'VeciAhorra\\Modules\\ServiceProviders\\Admin\\ServiceProviderAdminPage' => __DIR__ . '/../..' . '/app/Modules/ServiceProviders/Admin/ServiceProviderAdminPage.php',
         'VeciAhorra\\Modules\\ServiceProviders\\Domain\\ServiceCatalog' => __DIR__ . '/../..' . '/app/Modules/ServiceProviders/Domain/ServiceCatalog.php',
+        'VeciAhorra\\Modules\\ServiceProviders\\Domain\\ServicePlanCatalog' => __DIR__ . '/../..' . '/app/Modules/ServiceProviders/Domain/ServicePlanCatalog.php',
         'VeciAhorra\\Modules\\ServiceProviders\\Identity\\ServiceProviderRole' => __DIR__ . '/../..' . '/app/Modules/ServiceProviders/Identity/ServiceProviderRole.php',
         'VeciAhorra\\Modules\\ServiceProviders\\Repository\\ServiceProviderRepository' => __DIR__ . '/../..' . '/app/Modules/ServiceProviders/Repository/ServiceProviderRepository.php',
         'VeciAhorra\\Modules\\ServiceProviders\\Routes\\ServiceProviderRoutes' => __DIR__ . '/../..' . '/app/Modules/ServiceProviders/Routes/ServiceProviderRoutes.php',
