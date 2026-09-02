@@ -33,6 +33,7 @@ use VeciAhorra\Database\Migrations\CreateStoreOnboardingFoundation;
 use VeciAhorra\Database\Migrations\CreateStoreOnboardingEmailVerificationFoundation;
 use VeciAhorra\Database\Migrations\CreateStoreOnboardingActivationSessionFoundation;
 use VeciAhorra\Database\Migrations\CreateStoreOnboardingRateLimitFoundation;
+use VeciAhorra\Database\Migrations\AddCheckoutFeesFoundation;
 
 /**
  * Gestiona la versión instalada de la base de datos.
@@ -129,6 +130,7 @@ final class MigrationManager
             new CreateStoreOnboardingEmailVerificationFoundation(),
             new CreateStoreOnboardingActivationSessionFoundation(),
             new CreateStoreOnboardingRateLimitFoundation(),
+            new AddCheckoutFeesFoundation(),
         ];
     }
 }

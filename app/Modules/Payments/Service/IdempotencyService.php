@@ -60,14 +60,15 @@ final class IdempotencyService
         string $currency,
         string $amount,
         array $orderIds,
-        ?string $fulfillmentMethod = null
+        ?string $fulfillmentMethod = null,
+        array $financialComponents = []
     ): string {
         sort($orderIds, SORT_NUMERIC);
         $stableOwner = $owner['owner_type'] === 'user'
             ? (string) $owner['user_id']
             : (string) $owner['session_id'];
         $canonical = [
-            'operation' => 'payment_session.start.v1',
+            'operation' => $financialComponents === [] ? 'payment_session.start.v1' : 'payment_session.start.v2',
             'checkout_public_id' => $checkoutPublicId,
             'owner' => [
                 'type' => $owner['owner_type'],
@@ -79,6 +80,9 @@ final class IdempotencyService
             'fulfillment_method' => $fulfillmentMethod,
             'gateway' => 'webpay_plus',
         ];
+        if ($financialComponents !== []) {
+            $canonical['financial_components'] = $financialComponents;
+        }
 
         return hash('sha256', (string) wp_json_encode(
             $canonical,

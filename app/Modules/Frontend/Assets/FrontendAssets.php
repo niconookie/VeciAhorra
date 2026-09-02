@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Frontend\Assets;
 
 use VeciAhorra\Modules\Checkout\Service\FulfillmentPolicy;
+use VeciAhorra\Modules\Checkout\Service\CheckoutFeeConfiguration;
 
 use VeciAhorra\Core\Config;
 use VeciAhorra\Core\LaunchGate;
@@ -308,6 +309,7 @@ final class FrontendAssets
     {
         $userId = get_current_user_id();
         $minimumDeliveryAmount = (new FulfillmentPolicy())->minimumDeliveryAmount();
+        $fees = (new CheckoutFeeConfiguration())->current();
 
         return [
             'restUrl' => esc_url_raw(rest_url(self::REST_NAMESPACE . '/')),
@@ -335,6 +337,8 @@ final class FrontendAssets
             ],
             'checkout' => [
                 'minimumDeliveryAmount' => max(0, $minimumDeliveryAmount),
+                'platformFeeClp' => $fees['platform_fee_clp'],
+                'deliveryFeeClp' => $fees['delivery_fee_clp'],
             ],
             'cart' => [
                 'sessionHeader' => 'X-Veciahorra-Cart-Session',

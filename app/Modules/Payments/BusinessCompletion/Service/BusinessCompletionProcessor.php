@@ -216,7 +216,9 @@ final class BusinessCompletionProcessor implements BusinessCompletionAttemptProc
             }
             $total += $this->clp((string) $order['total']);
         }
-        if ($total !== $this->clp((string) $checkout['total_amount'])) {
+        $historical = ! is_string($checkout['product_subtotal'] ?? null) || $checkout['product_subtotal'] === '';
+        $expectedProductSubtotal = $historical ? (string) $checkout['total_amount'] : (string) $checkout['product_subtotal'];
+        if ($total !== $this->clp($expectedProductSubtotal)) {
             throw new BusinessCompletionFailure('orders_amount_mismatch', BusinessCompletionResult::MANUAL_REVIEW);
         }
     }

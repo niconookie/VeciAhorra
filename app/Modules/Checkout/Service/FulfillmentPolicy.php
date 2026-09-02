@@ -13,28 +13,16 @@ final class FulfillmentPolicy
 
     public function minimumDeliveryAmount(): int
     {
-        $value = apply_filters('veciahorra_minimum_delivery_amount', 8000);
-
-        if (is_int($value) && $value >= 0) {
-            return $value;
-        }
-        if (is_float($value) && is_finite($value) && $value >= 0 && floor($value) === $value && $value <= PHP_INT_MAX) {
-            return (int) $value;
-        }
-        if (is_string($value) && preg_match('/^(0|[1-9]\d*)$/D', $value) === 1 && (int) $value >= 0) {
-            return (int) $value;
-        }
-
-        return 8000;
+        return (new CheckoutFeeConfiguration())->current()['delivery_minimum_subtotal_clp'];
     }
 
-    public function authorize(string $method, string $total): string
+    public function authorize(string $method, string $productSubtotal): string
     {
         if (! in_array($method, [self::PICKUP, self::DELIVERY], true)) {
             throw new InvalidArgumentException('fulfillment_method no es valido.');
         }
-        if (preg_match('/^(0|[1-9]\d*)\.00$/D', $total, $matches) !== 1) {
-            throw new InvalidArgumentException('El total CLP no es valido.');
+        if (preg_match('/^(0|[1-9]\d*)\.00$/D', $productSubtotal, $matches) !== 1) {
+            throw new InvalidArgumentException('El subtotal CLP no es valido.');
         }
         if ($method === self::DELIVERY && (int) $matches[1] < $this->minimumDeliveryAmount()) {
             throw new InvalidArgumentException('Delivery no esta autorizado para el total del Checkout.');

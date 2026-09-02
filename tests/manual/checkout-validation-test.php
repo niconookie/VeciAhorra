@@ -257,7 +257,10 @@ try {
     assertCheckoutValidationSame(7, $result['summary']['item_count']);
     assertCheckoutValidationSame(1, $result['summary']['valid_item_count']);
     assertCheckoutValidationSame(6, $result['summary']['invalid_item_count']);
-    assertCheckoutValidationSame('2000.00', $result['summary']['total']);
+    assertCheckoutValidationSame('2000.00', $result['summary']['product_subtotal']);
+    assertCheckoutValidationSame('700.00', $result['summary']['platform_fee']);
+    assertCheckoutValidationSame('0.00', $result['summary']['delivery_fee']);
+    assertCheckoutValidationSame('2700.00', $result['summary']['total']);
     assertCheckoutValidationSame(7, count($result['items']));
 
     foreach ([

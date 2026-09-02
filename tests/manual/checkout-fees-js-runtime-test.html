@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Checkout fees JS runtime</title></head>
+<body><output id="result">PENDING</output>
+<script>
+window.__vaErrors = [];
+window.addEventListener('error', function (event) { window.__vaErrors.push(event.message); });
+</script>
+<script src="../../assets/frontend/js/veciahorra-cart.js"></script>
+<script src="../../assets/frontend/js/veciahorra-checkout.js"></script>
+<script src="../../assets/frontend/js/customer-panel.js"></script>
+<script type="module" src="../../assets/admin/js/modules/orders/detail-view.js"></script>
+<script>
+window.addEventListener('load', function () {
+    document.getElementById('result').textContent = window.__vaErrors.length === 0
+        ? 'PASS checkout-fees-js-runtime errors=0'
+        : 'FAIL ' + window.__vaErrors.join(' | ');
+});
+</script></body></html>

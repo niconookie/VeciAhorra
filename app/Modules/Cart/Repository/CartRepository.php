@@ -91,12 +91,15 @@ final class CartRepository extends Repository
                         inventory.price AS inventory_price,
                         inventory.stock AS inventory_stock,
                         inventory.status AS inventory_status,
+                        inventory.delivery_enabled AS inventory_delivery_enabled,
                         products.id AS resolved_product_id,
                         products.status AS product_status,
+                        products.delivery_enabled AS product_delivery_enabled,
                         stores.id AS resolved_minimarket_id,
                         stores.status AS minimarket_status,
                         stores.onboarding_status AS minimarket_onboarding_status,
                         stores.approved_at AS minimarket_approved_at
+                        , stores.delivery_enabled AS minimarket_delivery_enabled
                      FROM %s AS inventory
                      LEFT JOIN %s AS products
                        ON products.id = inventory.product_id
@@ -241,13 +244,28 @@ final class CartRepository extends Repository
                 cart.created_at AS created_at,
                 cart.updated_at AS updated_at,
                 products.name AS product_name,
-                products.image_id AS product_image_id
+                products.image_id AS product_image_id,
+                products.status AS product_status,
+                products.delivery_enabled AS product_delivery_enabled,
+                inventory.status AS inventory_status,
+                inventory.stock AS inventory_stock,
+                inventory.delivery_enabled AS inventory_delivery_enabled,
+                stores.status AS minimarket_status,
+                stores.onboarding_status AS minimarket_onboarding_status,
+                stores.approved_at AS minimarket_approved_at,
+                stores.delivery_enabled AS minimarket_delivery_enabled
              FROM %s AS cart
              LEFT JOIN %s AS products ON products.id = cart.product_id
+             LEFT JOIN %s AS inventory ON inventory.id = cart.inventory_id
+               AND inventory.product_id = cart.product_id
+               AND inventory.minimarket_id = cart.minimarket_id
+             LEFT JOIN %s AS stores ON stores.id = cart.minimarket_id
              WHERE cart.%s = %s
              ORDER BY cart.id ASC',
             $this->table(self::TABLE),
             $this->table('products'),
+            $this->table('inventory'),
+            $this->table('stores'),
             $field,
             $placeholder
         );

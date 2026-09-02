@@ -23,7 +23,11 @@ final class Checkout
         public readonly string $totalAmount,
         public readonly string $createdAt,
         public readonly string $updatedAt,
-        public readonly string $expiresAt
+        public readonly string $expiresAt,
+        public readonly ?string $productSubtotal = null,
+        public readonly string $platformFee = '0.00',
+        public readonly string $deliveryFee = '0.00',
+        public readonly ?string $feePolicyVersion = null
     ) {
     }
 
@@ -41,7 +45,11 @@ final class Checkout
             (string) $data['total_amount'],
             (string) $data['created_at'],
             (string) $data['updated_at'],
-            (string) $data['expires_at']
+            (string) $data['expires_at'],
+            isset($data['product_subtotal']) ? (string) $data['product_subtotal'] : null,
+            (string) ($data['platform_fee'] ?? '0.00'),
+            (string) ($data['delivery_fee'] ?? '0.00'),
+            isset($data['fee_policy_version']) ? (string) $data['fee_policy_version'] : null
         );
     }
 

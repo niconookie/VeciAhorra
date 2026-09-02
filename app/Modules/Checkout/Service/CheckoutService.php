@@ -64,7 +64,7 @@ final class CheckoutService
         if ($validation['valid']) {
             $this->fulfillmentPolicy->authorize(
                 $this->method($payload),
-                (string) $validation['summary']['total']
+                (string) $validation['summary']['product_subtotal']
             );
         }
         return $validation;
@@ -106,7 +106,7 @@ final class CheckoutService
         }
         $this->fulfillmentPolicy->authorize(
             $method,
-            (string) $validation['summary']['total']
+            (string) $validation['summary']['product_subtotal']
         );
 
         $customerId = $payload['user_id'] ?? null;
@@ -185,7 +185,7 @@ final class CheckoutService
         }
 
         $checkout = $this->createPersistent(
-            [...$payload, 'fulfillment_method' => $method],
+            [...$payload, 'fulfillment_method' => $method, 'financial_snapshot' => $validation['summary']],
             array_map(
                 static fn (array $order): int => (int) $order['id'],
                 $orders
@@ -282,18 +282,51 @@ final class CheckoutService
                     : min($expiresAt, $order['reservation_expires_at']);
             }
 
+            if ($totalCents % 100 !== 0) {
+                throw new \InvalidArgumentException('El subtotal CLP debe ser entero.');
+            }
+            $productSubtotal = $this->formatCents($totalCents);
+            $providedFinancial = $ownerInput['financial_snapshot'] ?? null;
+            if (is_array($providedFinancial)) {
+                if (($providedFinancial['product_subtotal'] ?? null) !== $productSubtotal
+                    || ($providedFinancial['fulfillment_method'] ?? null) !== $method) {
+                    throw new ConflictException('El snapshot financiero no coincide con los pedidos.', 'state_conflict');
+                }
+                $financial = $providedFinancial;
+            } else {
+                if ($method === FulfillmentPolicy::DELIVERY) {
+                    throw new ConflictException('El despacho requiere un snapshot financiero autorizado.', 'state_conflict');
+                }
+                $financial = (new CheckoutFeeCalculator())->calculate(intdiv($totalCents, 100), $method, false);
+            }
+            foreach (['product_subtotal', 'platform_fee', 'delivery_fee', 'total', 'fee_policy_version'] as $field) {
+                if (! is_string($financial[$field] ?? null) || $financial[$field] === '') {
+                    throw new ConflictException('El snapshot financiero esta incompleto.', 'state_conflict');
+                }
+            }
+            if (CheckoutFeeCalculator::clp($financial['product_subtotal'])
+                + CheckoutFeeCalculator::clp($financial['platform_fee'])
+                + CheckoutFeeCalculator::clp($financial['delivery_fee'])
+                !== CheckoutFeeCalculator::clp($financial['total'])) {
+                throw new ConflictException('La suma del snapshot financiero no coincide.', 'state_conflict');
+            }
+
             $now = current_time('mysql');
             $key = isset($ownerInput['idempotency_key'])
                 ? $this->idempotencyService->key((string) $ownerInput['idempotency_key'])
                 : 'internal:' . hash('sha256', implode(',', $orderIds));
             $ownerKey = $this->ownerKey($owner);
             $fingerprint = hash('sha256', (string) wp_json_encode([
-                'operation' => 'checkout.create.v1',
+                'operation' => 'checkout.create.v2',
                 'owner_key' => $ownerKey,
                 'fulfillment_method' => $method,
                 'delivery' => $this->deliverySnapshot($ownerInput, $method),
                 'currency' => 'CLP',
-                'total_amount' => $this->formatCents($totalCents),
+                'product_subtotal' => $financial['product_subtotal'],
+                'platform_fee' => $financial['platform_fee'],
+                'delivery_fee' => $financial['delivery_fee'],
+                'total_amount' => $financial['total'],
+                'fee_policy_version' => $financial['fee_policy_version'],
                 'orders' => $orderIds,
             ], JSON_UNESCAPED_SLASHES));
             $snapshot = $this->deliverySnapshot($ownerInput, $method);
@@ -314,7 +347,11 @@ final class CheckoutService
                 'idempotency_key' => $key,
                 'request_fingerprint' => $fingerprint,
                 'currency' => 'CLP',
-                'total_amount' => $this->formatCents($totalCents),
+                'product_subtotal' => $financial['product_subtotal'],
+                'platform_fee' => $financial['platform_fee'],
+                'delivery_fee' => $financial['delivery_fee'],
+                'fee_policy_version' => $financial['fee_policy_version'],
+                'total_amount' => $financial['total'],
                 'created_at' => $now,
                 'updated_at' => $now,
                 'expires_at' => $expiresAt,
@@ -363,12 +400,23 @@ final class CheckoutService
             current_time('mysql')
         );
 
+        $historical = ! is_string($checkout['product_subtotal'] ?? null)
+            || $checkout['product_subtotal'] === '';
+        $productSubtotal = $historical
+            ? (string) $checkout['total_amount'] : (string) $checkout['product_subtotal'];
+        $platformFee = $historical ? '0.00' : (string) ($checkout['platform_fee'] ?? '0.00');
+        $deliveryFee = $historical ? '0.00' : (string) ($checkout['delivery_fee'] ?? '0.00');
+
         return [
             'checkout_id' => (string) $checkout['public_id'],
             'status' => (string) $checkout['status'],
             'fulfillment_method' => $checkout['fulfillment_method'] ?? null,
             'currency' => (string) $checkout['currency'],
             'total_amount' => (string) $checkout['total_amount'],
+            'product_subtotal' => $productSubtotal,
+            'platform_fee' => $platformFee,
+            'delivery_fee' => $deliveryFee,
+            'fee_policy_version' => $historical ? null : ($checkout['fee_policy_version'] ?? null),
             'order_count' => $orderCount,
             'payment_session_id' => $activeSession['public_id'] ?? null,
             'expires_at' => (string) $checkout['expires_at'],
@@ -492,7 +540,15 @@ final class CheckoutService
             'expires_at' => $checkout['expires_at'],
             'orders' => $this->orderRepository->findMany($orderIds),
             'reservations' => [],
-            'summary' => ['total' => $checkout['total_amount']],
+            'summary' => [
+                'product_subtotal' => $checkout['product_subtotal'] ?? $checkout['total_amount'],
+                'platform_fee' => $checkout['platform_fee'] ?? '0.00',
+                'delivery_fee' => $checkout['delivery_fee'] ?? '0.00',
+                'total' => $checkout['total_amount'],
+                'currency' => $checkout['currency'],
+                'fulfillment_method' => $checkout['fulfillment_method'],
+                'fee_policy_version' => $checkout['fee_policy_version'] ?? null,
+            ],
             'checkout' => $this->publicData($checkout, count($orderIds)),
         ];
     }

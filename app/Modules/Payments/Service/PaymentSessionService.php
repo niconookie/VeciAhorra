@@ -167,7 +167,13 @@ final class PaymentSessionService
             );
             $orders = $this->orderRepository->findManyForUpdate($orderIds);
             $this->assertOrderOwnership($checkout, $orders, $orderIds);
-            $amount = $this->ordersAmount($orders, $orderIds);
+            $ordersAmount = $this->ordersAmount($orders, $orderIds);
+            $historical = ! is_string($checkout['product_subtotal'] ?? null) || $checkout['product_subtotal'] === '';
+            $productSubtotal = $historical ? (string) $checkout['total_amount'] : (string) $checkout['product_subtotal'];
+            $amount = (string) $checkout['total_amount'];
+            if ($ordersAmount !== $productSubtotal) {
+                throw new ConflictException('El subtotal del Checkout no coincide con sus Orders.', 'idempotency_conflict');
+            }
             $this->assertActiveReservations($orderIds);
             $fingerprint = $this->idempotencyService->fingerprint(
                 $checkoutPublicId,
@@ -177,7 +183,13 @@ final class PaymentSessionService
                 $orderIds,
                 isset($checkout['fulfillment_method'])
                     ? (string) $checkout['fulfillment_method']
-                    : null
+                    : null,
+                $historical ? [] : [
+                    'product_subtotal' => $productSubtotal,
+                    'platform_fee' => (string) ($checkout['platform_fee'] ?? '0.00'),
+                    'delivery_fee' => (string) ($checkout['delivery_fee'] ?? '0.00'),
+                    'fee_policy_version' => $checkout['fee_policy_version'] ?? null,
+                ]
             );
             $now = current_time('mysql');
 
@@ -225,12 +237,6 @@ final class PaymentSessionService
                 return ['data' => $this->localAttemptData(
                     $byKey, $checkoutPublicId, true
                 )];
-            }
-
-            if ((string) $checkout['total_amount'] !== $amount) {
-                throw new InvalidArgumentException(
-                    'El total del Checkout no coincide con sus Orders.'
-                );
             }
 
             $active = $this->sessionRepository->findActive($checkoutId, $now);

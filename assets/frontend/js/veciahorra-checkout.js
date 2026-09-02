@@ -210,6 +210,9 @@
         var summary;
         var normalized;
         var summaryCents;
+        var productSubtotalCents;
+        var platformFeeCents;
+        var deliveryFeeCents;
 
         previousItems.forEach(function (item) {
             var id = positiveInteger(item && item.id);
@@ -261,11 +264,18 @@
 
         summary = data.summary;
         summaryCents = decimalToCents(summary.total);
+        productSubtotalCents = decimalToCents(summary.product_subtotal);
+        platformFeeCents = decimalToCents(summary.platform_fee);
+        deliveryFeeCents = decimalToCents(summary.delivery_fee);
         if (
             nonNegativeInteger(summary.item_count) === null
             || nonNegativeInteger(summary.valid_item_count) === null
             || nonNegativeInteger(summary.invalid_item_count) === null
             || summaryCents === null
+            || productSubtotalCents === null
+            || platformFeeCents === null
+            || deliveryFeeCents === null
+            || typeof summary.delivery_eligible !== 'boolean'
             || summary.item_count !== items.length
             || summary.valid_item_count + summary.invalid_item_count !== summary.item_count
         ) {
@@ -273,16 +283,12 @@
         }
 
         normalized = normalizedGroups(items, true);
-        if (!normalized.valid || normalized.totalCents !== summaryCents) {
+        if (!normalized.valid || normalized.totalCents !== productSubtotalCents
+            || productSubtotalCents + platformFeeCents + deliveryFeeCents !== summaryCents) {
             throw { code: 'invalid_response', message: 'Los importes validados no son consistentes.' };
         }
-        if (
-            data.valid !== (
-                summary.item_count > 0
-                && summary.invalid_item_count === 0
-            )
-            || (data.valid && errors.length !== 0)
-        ) {
+        if ((data.valid && (summary.item_count === 0 || summary.invalid_item_count !== 0 || errors.length !== 0))
+            || (!data.valid && errors.length === 0)) {
             throw { code: 'invalid_response', message: 'El estado de validación no es consistente.' };
         }
 
@@ -291,7 +297,11 @@
             errors: errors,
             items: items,
             groups: normalized.groups,
-            totalCents: summaryCents
+            totalCents: summaryCents,
+            productSubtotalCents: productSubtotalCents,
+            platformFeeCents: platformFeeCents,
+            deliveryFeeCents: deliveryFeeCents,
+            deliveryEligible: summary.delivery_eligible
         };
     }
 
@@ -328,6 +338,9 @@
         var content = root.querySelector('[data-va-checkout-content]');
         var groupsRoot = root.querySelector('[data-va-checkout-groups]');
         var totalRoot = root.querySelector('[data-va-checkout-total]');
+        var productSubtotalRoot = root.querySelector('[data-va-checkout-product-subtotal]');
+        var platformFeeRoot = root.querySelector('[data-va-checkout-platform-fee]');
+        var deliveryFeeRoot = root.querySelector('[data-va-checkout-delivery-fee]');
         var optionsRoot = root.querySelector('[data-va-delivery-options]');
         var minimumMessage = root.querySelector('[data-va-delivery-minimum]');
         var deliveryFields = root.querySelector('[data-va-delivery-fields]');
@@ -606,6 +619,9 @@
                 groupsRoot.append(section);
             });
             totalRoot.textContent = moneyFromCents(summary.totalCents);
+            productSubtotalRoot.textContent = moneyFromCents(summary.productSubtotalCents);
+            platformFeeRoot.textContent = moneyFromCents(summary.platformFeeCents);
+            deliveryFeeRoot.textContent = moneyFromCents(summary.deliveryFeeCents);
         }
 
         function deliveryOption(value, label, checked) {
@@ -621,7 +637,7 @@
 
         function selectedMethod() {
             var selected = form.querySelector('input[name="delivery_method"]:checked');
-            return selected ? selected.value : 'pickup';
+            return selected ? selected.value : null;
         }
 
         function checkoutPayload() {
@@ -643,11 +659,11 @@
         }
 
         function renderDelivery(summary, preferredMethod) {
-            deliveryEligible = summary.totalCents >= minimumCents;
+            deliveryEligible = summary.deliveryEligible === true;
             optionsRoot.replaceChildren(deliveryOption(
                 'pickup',
                 'Retiro en minimarket',
-                preferredMethod !== 'delivery' || !deliveryEligible
+                preferredMethod === 'pickup' || !deliveryEligible
             ));
             if (deliveryEligible) {
                 optionsRoot.append(deliveryOption(
@@ -680,12 +696,15 @@
             var previousMethod = selectedMethod();
             var changed = previousTotal !== result.totalCents
                 || previousSignature !== monetarySignature(result.items);
-            var forcedPickup = previousMethod === 'delivery'
-                && result.totalCents < minimumCents;
+            var forcedPickup = previousMethod === 'delivery' && !result.deliveryEligible;
 
             calculated = {
                 groups: result.groups,
                 totalCents: result.totalCents,
+                productSubtotalCents: result.productSubtotalCents,
+                platformFeeCents: result.platformFeeCents,
+                deliveryFeeCents: result.deliveryFeeCents,
+                deliveryEligible: result.deliveryEligible,
                 valid: true
             };
             visibleItems = result.items;
@@ -852,7 +871,7 @@
                 submit.disabled = true;
                 return Promise.resolve(null);
             }
-            if (calculated.totalCents < minimumCents && selectedMethod() !== 'pickup') {
+            if (!calculated.deliveryEligible && selectedMethod() !== 'pickup') {
                 invalidateValidation();
                 renderDelivery(calculated, 'pickup');
                 showValidationErrors([{ message: 'El total validado requiere retiro. Valida nuevamente la compra.' }]);
@@ -949,6 +968,9 @@
 
         function validateForm(showErrors) {
             var valid = calculated !== null && calculated.valid && calculated.groups.length > 0;
+            if (deliveryEligible && selectedMethod() === null) {
+                valid = false;
+            }
             form.querySelectorAll('[data-va-field]').forEach(function (input) {
                 var fieldValid = validateField(input);
                 if (!showErrors && !fieldValid && input.value.trim() === '') {
@@ -989,9 +1011,24 @@
                 return;
             }
             calculated = normalizedGroups(items);
+            var cartSummary = payload && payload.summary;
+            var productSubtotalCents = cartSummary ? decimalToCents(cartSummary.product_subtotal) : null;
+            var platformFeeCents = cartSummary ? decimalToCents(cartSummary.platform_fee) : null;
+            var deliveryFeeCents = cartSummary ? decimalToCents(cartSummary.delivery_fee) : null;
+            var totalCents = cartSummary ? decimalToCents(cartSummary.total) : null;
+            if (productSubtotalCents !== calculated.totalCents || platformFeeCents === null
+                || deliveryFeeCents === null || totalCents !== productSubtotalCents + platformFeeCents + deliveryFeeCents) {
+                showError('El servidor devolvió un desglose monetario no válido.');
+                return;
+            }
+            calculated.productSubtotalCents = productSubtotalCents;
+            calculated.platformFeeCents = platformFeeCents;
+            calculated.deliveryFeeCents = deliveryFeeCents;
+            calculated.totalCents = totalCents;
+            calculated.deliveryEligible = cartSummary.delivery_eligible === true;
             visibleItems = items.slice();
             renderGroups(calculated);
-            renderDelivery(calculated, 'pickup');
+            renderDelivery(calculated, calculated.deliveryEligible ? null : 'pickup');
             empty.hidden = true;
             content.hidden = false;
             if (!calculated.valid) {

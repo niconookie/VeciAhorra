@@ -118,7 +118,10 @@ try {
     assertPublicCheckoutValidationSame(true, $payload['success']);
     assertPublicCheckoutValidationSame(true, $payload['data']['valid']);
     assertPublicCheckoutValidationSame([], $payload['data']['errors']);
-    assertPublicCheckoutValidationSame('8000.00', $payload['data']['summary']['total']);
+    assertPublicCheckoutValidationSame('8000.00', $payload['data']['summary']['product_subtotal']);
+    assertPublicCheckoutValidationSame('700.00', $payload['data']['summary']['platform_fee']);
+    assertPublicCheckoutValidationSame('0.00', $payload['data']['summary']['delivery_fee']);
+    assertPublicCheckoutValidationSame('8700.00', $payload['data']['summary']['total']);
     assertPublicCheckoutValidationSame('4000.00', $payload['data']['items'][0]['unit_price_snapshot']);
     assertPublicCheckoutValidationSame('8000.00', $payload['data']['items'][0]['subtotal']);
 

@@ -85,6 +85,9 @@ final class StoresTable implements TableInterface
         ->string('onboarding_status', 30)
             ->default('draft')
 
+        ->boolean('delivery_enabled')
+            ->default('1')
+
         /*
         |--------------------------------------------------------------------------
         | Auditoría

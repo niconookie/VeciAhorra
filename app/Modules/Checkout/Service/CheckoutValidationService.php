@@ -19,7 +19,8 @@ final class CheckoutValidationService
         private CartService $cartService,
         private InventoryService $inventoryService,
         private ProductService $productService,
-        private StoreRepository $storeRepository
+        private StoreRepository $storeRepository,
+        private ?CheckoutFeeCalculator $feeCalculator = null
     ) {
     }
 
@@ -56,16 +57,22 @@ final class CheckoutValidationService
                 ($store['onboarding_status'] ?? null) === 'complete'
                 && ! empty($store['approved_at'])
         );
-        $activeMinimarketIds = array_fill_keys(array_map(
-            static fn (array $store): int => (int) $store['id'],
-            $eligibleStores
-        ), true);
+        $activeMinimarketIds = [];
+        $deliveryMinimarketIds = [];
+        foreach ($eligibleStores as $store) {
+            $storeId = (int) $store['id'];
+            $activeMinimarketIds[$storeId] = true;
+            if ((int) ($store['delivery_enabled'] ?? 1) === 1) {
+                $deliveryMinimarketIds[$storeId] = true;
+            }
+        }
 
         foreach ($cartItems as $cartItem) {
             $result = $this->validateItem(
                 $cartItem,
                 $activeMinimarketIds,
                 $allowedSectorStores,
+                $deliveryMinimarketIds,
                 $ownerScope
             );
             $items[] = $result;
@@ -83,9 +90,12 @@ final class CheckoutValidationService
             }
         }
 
+        $deliveryItemsEligible = true;
         $items = array_map(
-            static function (array $item): array {
+            static function (array $item) use (&$deliveryItemsEligible): array {
+                $deliveryItemsEligible = $deliveryItemsEligible && $item['_delivery_eligible'];
                 unset($item['_subtotal_cents']);
+                unset($item['_delivery_eligible']);
 
                 return $item;
             },
@@ -94,15 +104,33 @@ final class CheckoutValidationService
         $itemCount = count($items);
         $invalidCount = $itemCount - $validCount;
 
+        $method = is_string($owner['fulfillment_method'] ?? null)
+            ? $owner['fulfillment_method'] : FulfillmentPolicy::PICKUP;
+        $zoneEligible = $zoneId > 0;
+        $deliveryEligible = $invalidCount === 0 && $zoneEligible && $deliveryItemsEligible;
+        $minimum = (new CheckoutFeeConfiguration())->current()['delivery_minimum_subtotal_clp'];
+        $minimumEligible = intdiv($totalCents, 100) >= $minimum;
+        $checkoutValid = $invalidCount === 0;
+        if ($method === FulfillmentPolicy::DELIVERY && (! $deliveryEligible || ! $minimumEligible)) {
+            $errors[] = $this->error('delivery_not_eligible', 'El carrito no cumple las condiciones de despacho.');
+            $checkoutValid = false;
+        }
+        $financial = ($this->feeCalculator ?? new CheckoutFeeCalculator())->calculate(
+            intdiv($totalCents, 100),
+            $method === FulfillmentPolicy::DELIVERY && $deliveryEligible && $minimumEligible
+                ? FulfillmentPolicy::DELIVERY : FulfillmentPolicy::PICKUP,
+            $deliveryEligible
+        );
+
         return [
-            'valid' => $invalidCount === 0,
+            'valid' => $checkoutValid,
             'errors' => $errors,
             'items' => $items,
             'summary' => [
                 'item_count' => $itemCount,
                 'valid_item_count' => $validCount,
                 'invalid_item_count' => $invalidCount,
-                'total' => $this->formatCents($totalCents),
+                ...$financial,
             ],
         ];
     }
@@ -110,11 +138,13 @@ final class CheckoutValidationService
     /**
      * @param array<int, true> $activeMinimarketIds
      * @param array<int, true> $allowedSectorStores
+     * @param array<int, true> $deliveryMinimarketIds
      */
     private function validateItem(
         array $cartItem,
         array $activeMinimarketIds,
         array $allowedSectorStores,
+        array $deliveryMinimarketIds,
         string $ownerScope
     ): array
     {
@@ -244,6 +274,9 @@ final class CheckoutValidationService
         $subtotalCents = $snapshotCents !== null && $quantity > 0
             ? $snapshotCents * $quantity
             : 0;
+        $deliveryEligible = isset($allowedSectorStores[$minimarketId], $deliveryMinimarketIds[$minimarketId])
+            && (int) ($inventory['delivery_enabled'] ?? 1) === 1
+            && (int) ($product?->delivery_enabled ?? 1) === 1;
 
         return [
             'id' => $id,
@@ -263,6 +296,7 @@ final class CheckoutValidationService
             'valid' => $errors === [],
             'errors' => $errors,
             '_subtotal_cents' => $subtotalCents,
+            '_delivery_eligible' => $deliveryEligible,
         ];
     }
 
@@ -282,6 +316,14 @@ final class CheckoutValidationService
                 'valid_item_count' => 0,
                 'invalid_item_count' => 0,
                 'total' => '0.00',
+                'product_subtotal' => '0.00',
+                'platform_fee' => '0.00',
+                'delivery_fee' => '0.00',
+                'currency' => 'CLP',
+                'fulfillment_method' => FulfillmentPolicy::PICKUP,
+                'delivery_eligible' => false,
+                'delivery_minimum_subtotal' => (new CheckoutFeeConfiguration())->current()['delivery_minimum_subtotal_clp'] . '.00',
+                'fee_policy_version' => CheckoutFeeConfiguration::POLICY_VERSION,
             ],
         ];
     }

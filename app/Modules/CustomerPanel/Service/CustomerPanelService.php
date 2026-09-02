@@ -194,7 +194,12 @@ final class CustomerPanelService
                 return true;
             }
         }
-        if ($orderTotal !== $this->money((string) $checkout['total_amount'])) {
+        $historical = ! is_string($checkout['product_subtotal'] ?? null) || $checkout['product_subtotal'] === '';
+        $productSubtotal = $this->money($historical ? (string) $checkout['total_amount'] : (string) $checkout['product_subtotal']);
+        $platformFee = $this->money($historical ? '0.00' : (string) ($checkout['platform_fee'] ?? '0.00'));
+        $deliveryFee = $this->money($historical ? '0.00' : (string) ($checkout['delivery_fee'] ?? '0.00'));
+        if ($orderTotal !== $productSubtotal
+            || $this->add($this->add($productSubtotal, $platformFee), $deliveryFee) !== $this->money((string) $checkout['total_amount'])) {
             return true;
         }
         if ($payment !== null) {
@@ -348,7 +353,7 @@ final class CustomerPanelService
         return new CustomerPurchaseListItem(
             (string) $checkout['public_id'],
             $this->date((string) $checkout['created_at']),
-            new CustomerPurchaseAmountSummary($this->money((string) $checkout['total_amount']), (string) $checkout['currency']),
+            $this->amountSummary($checkout),
             $quantity,
             count($orders),
             count($minimarketsById),
@@ -393,7 +398,7 @@ final class CustomerPanelService
             $this->date((string) $checkout['created_at']),
             $visibleStatus,
             $checkout['fulfillment_method'] === null ? null : (string) $checkout['fulfillment_method'],
-            new CustomerPurchaseAmountSummary($this->money((string) $checkout['total_amount']), (string) $checkout['currency']),
+            $this->amountSummary($checkout),
             array_sum(array_map('intval', array_column($projection['items'], 'quantity'))),
             count(array_unique(array_map('intval', array_column($projection['orders'], 'minimarket_id')))),
             $orderDtos,
@@ -479,6 +484,18 @@ final class CustomerPanelService
         return $minor === null
             ? ''
             : intdiv($minor, 100) . '.' . str_pad((string) ($minor % 100), 2, '0', STR_PAD_LEFT);
+    }
+
+    private function amountSummary(array $checkout): CustomerPurchaseAmountSummary
+    {
+        $historical = ! is_string($checkout['product_subtotal'] ?? null) || $checkout['product_subtotal'] === '';
+        return new CustomerPurchaseAmountSummary(
+            $this->money((string) $checkout['total_amount']),
+            (string) $checkout['currency'],
+            $this->money($historical ? (string) $checkout['total_amount'] : (string) $checkout['product_subtotal']),
+            $this->money($historical ? '0.00' : (string) ($checkout['platform_fee'] ?? '0.00')),
+            $this->money($historical ? '0.00' : (string) ($checkout['delivery_fee'] ?? '0.00'))
+        );
     }
 
     private function add(string $left, string $right): string

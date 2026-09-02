@@ -229,14 +229,18 @@ try {
         [$orderOne]
     );
     assertPublicPaymentBackendSame(1, $single['order_count']);
-    assertPublicPaymentBackendSame('1000.00', $single['total_amount']);
+    assertPublicPaymentBackendSame('1000.00', $single['product_subtotal']);
+    assertPublicPaymentBackendSame('700.00', $single['platform_fee']);
+    assertPublicPaymentBackendSame('1700.00', $single['total_amount']);
 
     $multiple = $checkoutService->createPersistent(
         ['user_id' => $ownerId, 'session_id' => null],
         [$orderTwo, $orderThree]
     );
     assertPublicPaymentBackendSame(2, $multiple['order_count']);
-    assertPublicPaymentBackendSame('5000.00', $multiple['total_amount']);
+    assertPublicPaymentBackendSame('5000.00', $multiple['product_subtotal']);
+    assertPublicPaymentBackendSame('700.00', $multiple['platform_fee']);
+    assertPublicPaymentBackendSame('5700.00', $multiple['total_amount']);
 
     $rollbackCheckout = $checkoutService->createPersistent(
         ['user_id' => $ownerId, 'session_id' => null],
@@ -298,16 +302,22 @@ try {
 
     for ($index = 0; $index < 2; $index++) {
         $pipes = [];
-        $process = proc_open([
+        $workerCommand = [
             PHP_BINARY,
             '-d',
             'session.save_path=' . sys_get_temp_dir(),
+        ];
+        if (getenv('VECIAHORRA_TEST_PLUGIN_ROOT')) {
+            $workerCommand[] = __DIR__ . '/support/isolated-test-runner.php';
+        }
+        $workerCommand = [...$workerCommand,
             $worker,
             $multiple['checkout_id'],
             $key,
             (string) $ownerId,
             $callCounter,
-        ], $descriptors, $pipes);
+        ];
+        $process = proc_open($workerCommand, $descriptors, $pipes);
         assertPublicPaymentBackend(
             is_resource($process),
             'No se inicio el worker concurrente.'
@@ -417,7 +427,7 @@ try {
     assertPublicPaymentBackend(is_array($origin), 'No se creo PaymentOriginContext.');
     assertPublicPaymentBackendSame('veciahorra_checkout', $origin['origin']);
     assertPublicPaymentBackendSame($multiple['checkout_id'], $origin['origin_resource_id']);
-    assertPublicPaymentBackendSame('5000', (string) $origin['amount_clp']);
+    assertPublicPaymentBackendSame('5700', (string) $origin['amount_clp']);
     assertPublicPaymentBackend(
         is_string($origin['token_hash'])
             && preg_match('/^[a-f0-9]{64}$/D', $origin['token_hash']) === 1,

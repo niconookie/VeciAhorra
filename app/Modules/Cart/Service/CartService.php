@@ -7,6 +7,7 @@ namespace VeciAhorra\Modules\Cart\Service;
 use InvalidArgumentException;
 use VeciAhorra\Exceptions\RecordNotFoundException;
 use VeciAhorra\Modules\Cart\Repository\CartRepository;
+use VeciAhorra\Modules\Checkout\Service\CheckoutFeeCalculator;
 
 final class CartService
 {
@@ -145,6 +146,7 @@ final class CartService
         $allowedSectorStores = $zoneId > 0
             ? array_fill_keys((new \VeciAhorra\Modules\Sectorization\ServiceZoneRepository())->allowedStoreIds($zoneId), true)
             : [];
+        $deliveryEligible = $zoneId > 0;
         foreach ($items as &$item) {
             $quantity = $this->cartQuantity($item['quantity'] ?? null);
             $unitCents = $this->decimalToCents(
@@ -173,12 +175,24 @@ final class CartService
                 ? null
                 : $this->formatCents($subtotalCents);
             $item['sector_compatible'] = isset($allowedSectorStores[(int) ($item['minimarket_id'] ?? 0)]);
+            $itemDeliveryEligible = $item['sector_compatible']
+                && $subtotalCents !== null
+                && (int) ($item['inventory_stock'] ?? 0) >= (int) $quantity
+                && ($item['product_status'] ?? null) === 'active'
+                && ($item['inventory_status'] ?? null) === 'active'
+                && ($item['minimarket_status'] ?? null) === 'active'
+                && ($item['minimarket_onboarding_status'] ?? null) === 'complete'
+                && ! empty($item['minimarket_approved_at'])
+                && (int) ($item['product_delivery_enabled'] ?? 1) === 1
+                && (int) ($item['inventory_delivery_enabled'] ?? 1) === 1
+                && (int) ($item['minimarket_delivery_enabled'] ?? 1) === 1;
+            $deliveryEligible = $deliveryEligible && $itemDeliveryEligible;
             $item['offer_group'] = hash_hmac(
                 'sha256',
                 $ownerScope . '|cart-store|' . (string) ($item['minimarket_id'] ?? 0),
                 wp_salt('auth')
             );
-            unset($item['inventory_id'], $item['minimarket_id'], $item['session_id'], $item['user_id']);
+            unset($item['inventory_id'], $item['minimarket_id'], $item['session_id'], $item['user_id'], $item['product_status'], $item['product_delivery_enabled'], $item['inventory_status'], $item['inventory_stock'], $item['inventory_delivery_enabled'], $item['minimarket_status'], $item['minimarket_onboarding_status'], $item['minimarket_approved_at'], $item['minimarket_delivery_enabled']);
 
             if (
                 $subtotalCents !== null
@@ -189,9 +203,25 @@ final class CartService
         }
         unset($item);
 
+        if ($totalCents % 100 !== 0) {
+            throw new InvalidArgumentException('El subtotal CLP debe ser entero.');
+        }
+        $summary = $items === [] ? [
+            'product_subtotal' => '0.00',
+            'platform_fee' => '0.00',
+            'delivery_fee' => '0.00',
+            'total' => '0.00',
+            'currency' => 'CLP',
+            'fulfillment_method' => 'pickup',
+            'delivery_eligible' => false,
+            'delivery_minimum_subtotal' => (new \VeciAhorra\Modules\Checkout\Service\CheckoutFeeConfiguration())->current()['delivery_minimum_subtotal_clp'] . '.00',
+            'fee_policy_version' => \VeciAhorra\Modules\Checkout\Service\CheckoutFeeConfiguration::POLICY_VERSION,
+        ] : (new CheckoutFeeCalculator())->calculate(intdiv($totalCents, 100), 'pickup', $deliveryEligible);
+
         return [
             'items' => $items,
-            'total' => $this->formatCents($totalCents),
+            'total' => $summary['product_subtotal'],
+            'summary' => $summary,
         ];
     }
 

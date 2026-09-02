@@ -27,6 +27,7 @@ final class CartController
                 'success' => true,
                 'data' => $cart['items'],
                 'total' => $cart['total'],
+                'summary' => $cart['summary'],
             ];
         } catch (Throwable $exception) {
             return $this->error($exception);

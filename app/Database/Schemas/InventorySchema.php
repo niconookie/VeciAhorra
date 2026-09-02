@@ -26,6 +26,7 @@ final class InventorySchema implements TableInterface
             ->decimal('price', 10, 2)
             ->integer('stock')
                 ->default('0')
+            ->boolean('delivery_enabled')->default('1')
             ->string('status', 20)
                 ->default('active')
             ->datetime('created_at')

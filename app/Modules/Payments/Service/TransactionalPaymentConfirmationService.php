@@ -326,11 +326,15 @@ final class TransactionalPaymentConfirmationService
             $this->clp((string) $session['amount']),
             $this->clp((string) $payment['amount']),
             $this->clp((string) $checkout['total_amount']),
-            $this->ordersAmount($orders),
         ];
 
         if (count(array_unique($amounts, SORT_REGULAR)) !== 1
             || $amounts[0] !== $financial->amount) {
+            throw new PaymentConfirmationFailure('amount_mismatch');
+        }
+        $historical = ! is_string($checkout['product_subtotal'] ?? null) || $checkout['product_subtotal'] === '';
+        $productSubtotal = $this->clp($historical ? (string) $checkout['total_amount'] : (string) $checkout['product_subtotal']);
+        if ($this->ordersAmount($orders) !== $productSubtotal) {
             throw new PaymentConfirmationFailure('amount_mismatch');
         }
 
@@ -540,7 +544,7 @@ final class TransactionalPaymentConfirmationService
         array $checkout,
         array $orderIds
     ): string {
-        return PaymentConfirmationFingerprint::make([
+        $payload = [
             'provider' => $financial->provider,
             'payment_session_id' => (int) $session['id'],
             'payment_id' => (int) $payment['id'],
@@ -553,7 +557,18 @@ final class TransactionalPaymentConfirmationService
             'safe_financial_reference' =>
                 $financial->safeFinancialReference,
             'transaction_date' => $financial->transactionDate,
-        ]);
+        ];
+        if (is_string($checkout['product_subtotal'] ?? null) && $checkout['product_subtotal'] !== '') {
+            $payload = [
+                ...$payload,
+                'product_subtotal' => $checkout['product_subtotal'],
+                'platform_fee' => $checkout['platform_fee'] ?? '0.00',
+                'delivery_fee' => $checkout['delivery_fee'] ?? '0.00',
+                'fulfillment_method' => $checkout['fulfillment_method'] ?? null,
+                'checkout_total' => $checkout['total_amount'],
+            ];
+        }
+        return PaymentConfirmationFingerprint::make($payload);
     }
 
     private function audit(

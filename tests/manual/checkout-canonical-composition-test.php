@@ -320,8 +320,25 @@ try {
     $validation = $service->validate($payload);
     canonicalAssert($validation['valid'] === true, 'C16', 'validate valido');
     canonicalSame(2, count($validation['items']), 'C17', 'dos items validos');
-    canonicalSame('9500.00', $validation['summary']['total'], 'C18', 'total 9500 CLP');
+    canonicalSame('9500.00', $validation['summary']['product_subtotal'], 'C18', 'subtotal productos 9500 CLP');
+    canonicalSame('700.00', $validation['summary']['platform_fee'], 'C18', 'cargo plataforma unico');
+    canonicalSame('1000.00', $validation['summary']['delivery_fee'], 'C18', 'cargo despacho unico');
+    canonicalSame('11200.00', $validation['summary']['total'], 'C18', 'total global 11200 CLP');
     canonicalSame(2, count(array_unique(array_column($validation['items'], 'minimarket_id'))), 'C19', 'dos minimarkets permitidos');
+    foreach ([
+        [$tables['products'], $fixture['productIds'][0]],
+        [$tables['inventory'], $fixture['inventoryIds'][0]],
+        [$tables['stores'], $fixture['storeIds'][0]],
+    ] as [$deliveryTable, $deliveryId]) {
+        $wpdb->update($deliveryTable, ['delivery_enabled' => 0], ['id' => $deliveryId]);
+        $blockedDelivery = $service->validate($payload);
+        canonicalAssert($blockedDelivery['valid'] === false && $blockedDelivery['summary']['delivery_eligible'] === false, 'C19', 'flag durable bloquea despacho completo');
+        $wpdb->update($deliveryTable, ['delivery_enabled' => 1], ['id' => $deliveryId]);
+    }
+    update_user_meta((int) $fixture['userId'], '_veciahorra_service_zone_id', 0);
+    $invalidZoneDelivery = $service->validate($payload);
+    canonicalAssert($invalidZoneDelivery['valid'] === false && $invalidZoneDelivery['summary']['delivery_eligible'] === false, 'C19', 'zona invalida bloquea despacho');
+    update_user_meta((int) $fixture['userId'], '_veciahorra_service_zone_id', $fixture['zoneId']);
     $result = $service->initialize($payload);
     canonicalAssert($result['valid'] === true, 'C20', 'initialize exitoso');
     canonicalSame(2, count($result['reservations']), 'C21', 'dos reservas activas');
@@ -346,7 +363,7 @@ try {
     canonicalSame(['4500.00','5000.00'], $itemPrices, 'C24', 'dos order items con snapshots');
     canonicalSame([], canonicalRows($tables['cart_items'], 'user_id=%d', $fixture['userId']), 'C25', 'carrito vacio');
     $checkout = canonicalRows($tables['checkouts'], 'user_id=%d', $fixture['userId']);
-    canonicalAssert(count($checkout) === 1 && $checkout[0]['status'] === 'pending' && (int)$checkout[0]['user_id'] === $fixture['userId'] && $checkout[0]['total_amount'] === '9500.00', 'C26', 'Checkout pending, owner y total correctos');
+    canonicalAssert(count($checkout) === 1 && $checkout[0]['status'] === 'pending' && (int)$checkout[0]['user_id'] === $fixture['userId'] && $checkout[0]['product_subtotal'] === '9500.00' && $checkout[0]['platform_fee'] === '700.00' && $checkout[0]['delivery_fee'] === '1000.00' && $checkout[0]['total_amount'] === '11200.00', 'C26', 'Checkout pending, owner y desglose global correctos');
     canonicalSame($delivery, ['recipient_name'=>$checkout[0]['delivery_recipient_name'],'contact_phone'=>$checkout[0]['delivery_contact_phone'],'address_line1'=>$checkout[0]['delivery_address_line1'],'commune'=>$checkout[0]['delivery_commune'],'reference'=>$checkout[0]['delivery_reference'],'notes'=>$checkout[0]['delivery_notes']], 'C27', 'delivery snapshot exacto');
     canonicalSame(2, canonicalCount($tables['checkout_orders'], 'checkout_id=%d', $checkout[0]['id']), 'C28', 'dos checkout_orders');
     canonicalSame(0, canonicalCount($tables['payment_sessions'], 'checkout_id=%d', $checkout[0]['id']), 'C29', 'ninguna PaymentSession automatica');

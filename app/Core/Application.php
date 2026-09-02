@@ -17,6 +17,7 @@ use VeciAhorra\Modules\ProductCatalogs\UnitTaxonomy;
 use VeciAhorra\Modules\Inventory\Routes\InventoryRoutes;
 use VeciAhorra\Modules\Cart\Routes\CartRoutes;
 use VeciAhorra\Modules\Checkout\Routes\CheckoutRoutes;
+use VeciAhorra\Modules\Checkout\Admin\CheckoutFeeSettingsPage;
 use VeciAhorra\Modules\CustomerPanel\Routes\CustomerPanelRoutes;
 use VeciAhorra\Modules\Delivery\Routes\DeliveryRoutes;
 use VeciAhorra\Modules\Orders\Routes\OrderRoutes;
@@ -474,6 +475,7 @@ final class Application
 
         $this->container->make(OrdersPage::class)->register();
         $this->container->make(ZonalStoresPage::class)->register();
+        $this->container->make(CheckoutFeeSettingsPage::class)->register();
 
         /*
         |--------------------------------------------------------------------------

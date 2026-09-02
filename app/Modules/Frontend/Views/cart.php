@@ -44,9 +44,11 @@ $titleId = $instanceId . '-title';
                 <tbody data-va-cart-items></tbody>
             </table>
         </div>
-        <footer class="va-public-cart__total">
-            <strong><?php esc_html_e('Total', 'veciahorra'); ?></strong>
-            <strong data-va-cart-total></strong>
+        <footer class="va-public-cart__total" data-va-cart-breakdown>
+            <span><?php esc_html_e('Subtotal productos', 'veciahorra'); ?></span><strong data-va-cart-product-subtotal></strong>
+            <span><?php esc_html_e('Cargo por uso de VeciAhorra', 'veciahorra'); ?></span><strong data-va-cart-platform-fee></strong>
+            <span><?php esc_html_e('Despacho', 'veciahorra'); ?></span><strong data-va-cart-delivery-fee></strong>
+            <strong><?php esc_html_e('Total a pagar', 'veciahorra'); ?></strong><strong data-va-cart-total></strong>
         </footer>
         <div class="va-public-cart__checkout">
             <a class="va-button va-button--secondary" href="<?php echo esc_url($catalogUrl); ?>" data-va-cart-continue-shopping><?php esc_html_e('Seguir comprando', 'veciahorra'); ?></a>

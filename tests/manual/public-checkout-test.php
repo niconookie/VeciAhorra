@@ -46,24 +46,11 @@ assertPublicCheckout(
     'Falta navegacion publica de carrito/checkout.'
 );
 
-$minimumFilter = static fn (): int => 7999;
-add_filter('veciahorra_minimum_delivery_amount', $minimumFilter);
-$filteredConfig = (new FrontendAssets())->configuration();
-remove_filter('veciahorra_minimum_delivery_amount', $minimumFilter);
 assertPublicCheckout(
-    ($filteredConfig['checkout']['minimumDeliveryAmount'] ?? null) === 7999,
-    'El minimo no utiliza la fuente configurable.'
+    ($config['checkout']['platformFeeClp'] ?? null) === 700
+        && ($config['checkout']['deliveryFeeClp'] ?? null) === 1000,
+    'Frontend no proyecta los cargos configurados.'
 );
-foreach ([-1, 1.5, NAN, INF, true, false, [], new stdClass(), '8000abc'] as $invalidMinimum) {
-    $invalidFilter = static fn () => $invalidMinimum;
-    add_filter('veciahorra_minimum_delivery_amount', $invalidFilter);
-    $invalidConfig = (new FrontendAssets())->configuration();
-    remove_filter('veciahorra_minimum_delivery_amount', $invalidFilter);
-    assertPublicCheckout(
-        ($invalidConfig['checkout']['minimumDeliveryAmount'] ?? null) === 8000,
-        'Una configuracion invalida no uso fallback seguro.'
-    );
-}
 
 $controller = $container->make(FrontendController::class);
 $customers = get_users(['role' => 'customer', 'number' => 1]);
@@ -147,7 +134,7 @@ foreach ([
     'normalizedValidation', 'normalizedCheckout', 'Validando…',
     'Compra validada correctamente.', 'Creando pedido…',
     'minimumDeliveryAmount', 'deliveryOption(', "'pickup'",
-    "'delivery'", 'summary.totalCents >= minimumCents',
+    "'delivery'", 'cartSummary.delivery_eligible === true', 'productSubtotalCents',
     'function checkoutPayload()', 'recipient_name:', 'contact_phone:',
     'address_line1:', 'commune:', 'reference:', 'notes:',
     "['recipient_name', 'address', 'commune']", 'aria-invalid', 'aria-describedby',

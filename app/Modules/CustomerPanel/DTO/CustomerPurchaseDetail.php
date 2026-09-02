@@ -38,7 +38,10 @@ final readonly class CustomerPurchaseDetail
                 },
             ],
             'summary' => [
-                'subtotal' => $this->total->amount,
+                'subtotal' => $this->total->productSubtotal ?? $this->total->amount,
+                'product_subtotal' => $this->total->productSubtotal ?? $this->total->amount,
+                'platform_fee' => $this->total->platformFee ?? '0.00',
+                'delivery_fee' => $this->total->deliveryFee ?? '0.00',
                 'total' => $this->total->amount,
                 'currency' => $this->total->currency,
                 'product_quantity' => $this->productQuantity,

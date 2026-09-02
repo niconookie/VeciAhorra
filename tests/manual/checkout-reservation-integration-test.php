@@ -294,7 +294,9 @@ try {
     assertCheckoutReservationSame(true, $success['order_created']);
     assertCheckoutReservationSame(2, count($success['orders']));
     assertCheckoutReservationSame(2, count($success['reservations']));
-    assertCheckoutReservationSame('2750.00', $success['summary']['total']);
+    assertCheckoutReservationSame('2750.00', $success['summary']['product_subtotal']);
+    assertCheckoutReservationSame('700.00', $success['summary']['platform_fee']);
+    assertCheckoutReservationSame('3450.00', $success['summary']['total']);
     assertCheckoutReservationSame(3, $stock($firstInventoryId));
     assertCheckoutReservationSame(3, $stock($secondInventoryId));
     assertCheckoutReservationSame(

@@ -728,7 +728,9 @@
 
         summarySection.append(visualHeading('h3', 'Resumen', 'summary'));
         summary.append(
-            detailValue('Subtotal', formatTotal({amount: detail.summary.subtotal, currency: detail.summary.currency}, state.config)),
+            detailValue('Subtotal productos', formatTotal({amount: detail.summary.product_subtotal || detail.summary.subtotal, currency: detail.summary.currency}, state.config)),
+            detailValue('Cargo por uso de VeciAhorra', formatTotal({amount: detail.summary.platform_fee || '0.00', currency: detail.summary.currency}, state.config)),
+            detailValue('Despacho', formatTotal({amount: detail.summary.delivery_fee || '0.00', currency: detail.summary.currency}, state.config)),
             detailIconValue('Total', formatTotal({amount: detail.summary.total, currency: detail.summary.currency}, state.config), 'total', 'total'),
             detailValue('Moneda', detail.summary.currency),
             detailValue('Cantidad de productos', String(detail.summary.product_quantity)),

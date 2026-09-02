@@ -92,6 +92,15 @@ final class CheckoutRepository extends Repository
         return $row === null ? null : $row;
     }
 
+    public function findForUpdate(int $id): ?array
+    {
+        $row = $this->db()->get_row($this->db()->prepare(
+            sprintf('SELECT * FROM %s WHERE id = %%d LIMIT 1 FOR UPDATE', $this->table(self::TABLE)),
+            $id
+        ), ARRAY_A);
+        return $row === null ? null : $row;
+    }
+
     public function findByIdempotency(string $ownerKey, string $key): ?array
     {
         $row = $this->db()->get_row($this->db()->prepare(

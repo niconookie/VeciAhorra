@@ -34,7 +34,12 @@ $deliveryLegendId = $instanceId . '-delivery-legend';
         <section class="va-checkout__summary va-card" aria-labelledby="<?php echo esc_attr($instanceId . '-summary-title'); ?>">
             <h2 id="<?php echo esc_attr($instanceId . '-summary-title'); ?>"><?php esc_html_e('Resumen', 'veciahorra'); ?></h2>
             <div data-va-checkout-groups></div>
-            <p class="va-checkout__total"><strong><?php esc_html_e('Total checkout', 'veciahorra'); ?></strong> <strong data-va-checkout-total></strong></p>
+            <div class="va-checkout__total" data-va-checkout-breakdown>
+                <p><span><?php esc_html_e('Subtotal productos', 'veciahorra'); ?></span> <strong data-va-checkout-product-subtotal></strong></p>
+                <p><span><?php esc_html_e('Cargo por uso de VeciAhorra', 'veciahorra'); ?></span> <strong data-va-checkout-platform-fee></strong></p>
+                <p><span><?php esc_html_e('Despacho', 'veciahorra'); ?></span> <strong data-va-checkout-delivery-fee></strong></p>
+                <p><strong><?php esc_html_e('Total a pagar', 'veciahorra'); ?></strong> <strong data-va-checkout-total></strong></p>
+            </div>
             <p class="va-alert va-alert--info" data-va-checkout-reservation><?php esc_html_e('La disponibilidad y el tiempo de reserva se confirmarán al continuar.', 'veciahorra'); ?></p>
         </section>
 

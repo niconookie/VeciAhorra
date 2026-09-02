@@ -37,6 +37,7 @@ final class ProductsTable implements TableInterface
                 ->nullable()
             ->bigIntegerUnsigned('image_id')
                 ->nullable()
+            ->boolean('delivery_enabled')->default('1')
             ->string('status', 20)
                 ->default('draft')
             ->datetime('created_at')

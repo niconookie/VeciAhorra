@@ -96,6 +96,9 @@
         var content = root.querySelector('[data-va-cart-content]');
         var itemsBody = root.querySelector('[data-va-cart-items]');
         var total = root.querySelector('[data-va-cart-total]');
+        var productSubtotal = root.querySelector('[data-va-cart-product-subtotal]');
+        var platformFee = root.querySelector('[data-va-cart-platform-fee]');
+        var deliveryFee = root.querySelector('[data-va-cart-delivery-fee]');
         var clear = root.querySelector('[data-va-cart-clear]');
         var status = root.querySelector('[data-va-cart-status]');
         var busy = false;
@@ -223,7 +226,7 @@
         function render(payload) {
             var items = payload && Array.isArray(payload.data) ? payload.data : null;
 
-            if (items === null || typeof payload.total === 'undefined') {
+            if (items === null || !payload.summary || typeof payload.total === 'undefined') {
                 showError({ message: 'El servidor devolvió un carrito no válido.' });
                 return;
             }
@@ -239,7 +242,10 @@
             }
 
             items.forEach(function (item) { itemsBody.append(renderItem(item)); });
-            total.textContent = money(payload.total);
+            productSubtotal.textContent = money(payload.summary.product_subtotal);
+            platformFee.textContent = money(payload.summary.platform_fee);
+            deliveryFee.textContent = money(payload.summary.delivery_fee);
+            total.textContent = money(payload.summary.total);
             empty.hidden = true;
             content.hidden = false;
             clear.hidden = false;
