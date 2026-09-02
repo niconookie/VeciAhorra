@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\CustomerAccess;
 
 use VeciAhorra\Core\LaunchGate;
+use VeciAhorra\Modules\ServiceProviders\Domain\ServicePlanCatalog;
 
 final class CustomerAccessModule
 {
@@ -157,6 +158,14 @@ final class CustomerAccessModule
                 . '</section>';
         }
 
+        $providerPlan = $this->requestedProviderPlan();
+        $redirectUrl = $this->requestedRedirectUrl();
+        $formNonce = wp_create_nonce('veciahorra_customer_registration');
+        $isProviderRegistration = $providerPlan !== null;
+        $title = $isProviderRegistration ? 'Crear cuenta de prestador' : 'Crear cuenta de cliente';
+        $description = $isProviderRegistration
+            ? 'Crea tu cuenta VeciAhorra para continuar con el registro de tu servicio.'
+            : 'Regístrate para consultar tus compras y comprar en los comercios de tu barrio.';
         $messages = '';
         if ($this->errors !== []) {
             $messages = '<div class="va-alert va-alert--error" role="alert"><ul>';
@@ -168,15 +177,17 @@ final class CustomerAccessModule
         ?>
         <section class="va-customer-registration" aria-labelledby="va-customer-registration-title">
             <header class="va-customer-registration__header">
-                <p class="va-customer-registration__eyebrow">Cuenta VeciAhorra</p>
-                <h1 id="va-customer-registration-title">Crear cuenta de cliente</h1>
-                <p>Regístrate para consultar tus compras y comprar en los comercios de tu barrio.</p>
+                <p class="va-customer-registration__eyebrow"><?php echo esc_html($isProviderRegistration ? 'CUENTA VECIAHORRA' : 'Cuenta VeciAhorra'); ?></p>
+                <h1 id="va-customer-registration-title"><?php echo esc_html($title); ?></h1>
+                <p><?php echo esc_html($description); ?></p>
+                <?php if ($providerPlan !== null): ?><p><?php echo esc_html('Plan seleccionado: ' . ServicePlanCatalog::label($providerPlan)); ?></p><?php endif; ?>
             </header>
             <?php echo $messages; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
             <form method="post" action="">
-                <?php wp_nonce_field('veciahorra_customer_registration', '_va_customer_nonce'); ?>
+                <input type="hidden" name="_va_customer_nonce" value="<?php echo esc_attr($formNonce); ?>">
                 <input type="hidden" name="veciahorra_customer_registration" value="1">
-                <input type="hidden" name="redirect_to" value="<?php echo esc_attr($this->requestedRedirectUrl()); ?>">
+                <input type="hidden" name="redirect_to" value="<?php echo esc_attr($redirectUrl); ?>">
+                <input type="hidden" name="_va_registration_context" value="<?php echo esc_attr($this->redirectSignature($redirectUrl, $formNonce)); ?>">
                 <div class="va-customer-registration__grid">
                     <label class="va-customer-registration__field">Nombre *<input name="first_name" type="text" required autocomplete="given-name" value="<?php echo esc_attr(wp_unslash((string) ($_POST['first_name'] ?? ''))); ?>"></label>
                     <label class="va-customer-registration__field">Apellido *<input name="last_name" type="text" required autocomplete="family-name" value="<?php echo esc_attr(wp_unslash((string) ($_POST['last_name'] ?? ''))); ?>"></label>
@@ -188,7 +199,7 @@ final class CustomerAccessModule
                     <button class="va-button" type="submit">Crear mi cuenta</button>
                 </div>
             </form>
-            <p class="va-customer-registration__login">¿Ya tienes una cuenta? <a href="<?php echo esc_url(wp_login_url($this->customerPanelUrl())); ?>">Iniciar sesión</a></p>
+            <p class="va-customer-registration__login">¿Ya tienes una cuenta? <a href="<?php echo esc_url(wp_login_url($redirectUrl)); ?>">Iniciar sesión</a></p>
         </section>
         <?php
         return (string) ob_get_clean();
@@ -196,7 +207,13 @@ final class CustomerAccessModule
 
     public function loginRedirect(string $redirectTo, string $requested, \WP_User|\WP_Error $user): string
     {
-        return $user instanceof \WP_User ? $this->destinationFor($user) : $redirectTo;
+        if (! $user instanceof \WP_User) {
+            return $redirectTo;
+        }
+        $provider = $this->providerRedirect($requested);
+        return $provider !== null && ! $this->isBusinessUser($user)
+            ? $provider['url']
+            : $this->destinationFor($user);
     }
 
     public function redirectBusinessUsersFromAdmin(): void
@@ -575,8 +592,107 @@ final class CustomerAccessModule
             return $this->customerPanelUrl();
         }
 
-        $url = esc_url_raw(wp_unslash($value));
-        return $url !== '' ? wp_validate_redirect($url, $this->customerPanelUrl()) : $this->customerPanelUrl();
+        $url = wp_unslash($value);
+        if (isset($_POST['veciahorra_customer_registration'])) {
+            $signature = $_POST['_va_registration_context'] ?? null;
+            $nonce = $_POST['_va_customer_nonce'] ?? null;
+            if (! is_string($signature) || ! is_string($nonce) || ! hash_equals($this->redirectSignature($url, $nonce), $signature)) {
+                return $this->customerPanelUrl();
+            }
+        }
+
+        $provider = $this->providerRedirect($url);
+        if ($provider !== null) {
+            return $provider['url'];
+        }
+
+        return $this->safeInternalRedirect($url) ?? $this->customerPanelUrl();
+    }
+
+    private function safeInternalRedirect(string $raw): ?string
+    {
+        if ($raw === '' || str_starts_with($raw, '//') || str_contains($raw, '\\') || preg_match('/[\x00-\x20\x7f]/', $raw)) {
+            return null;
+        }
+        $parts = wp_parse_url($raw);
+        if (! is_array($parts) || isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment'])) {
+            return null;
+        }
+        $path = (string) ($parts['path'] ?? '');
+        if ($path === '' || str_contains($path, '%') || preg_match('#(?:^|/)\.\.?(/|$)#', $path)) {
+            return null;
+        }
+        $sanitized = esc_url_raw($raw);
+        if ($sanitized === '') {
+            return null;
+        }
+        $validated = wp_validate_redirect($sanitized, '');
+        return $validated !== '' ? $validated : null;
+    }
+
+    private function requestedProviderPlan(): ?string
+    {
+        $provider = $this->providerRedirect($this->requestedRedirectUrl());
+        return $provider['plan'] ?? null;
+    }
+
+    /** @return array{url:string,plan:string}|null */
+    private function providerRedirect(string $raw): ?array
+    {
+        if ($raw === '' || str_starts_with($raw, '//') || str_contains($raw, '\\') || preg_match('/[\x00-\x20\x7f]/', $raw)) {
+            return null;
+        }
+        $parts = wp_parse_url($raw);
+        if (! is_array($parts) || isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment'])) {
+            return null;
+        }
+
+        $home = wp_parse_url(home_url('/'));
+        if (! is_array($home)) {
+            return null;
+        }
+        $absolute = isset($parts['scheme']) || isset($parts['host']) || isset($parts['port']);
+        if ($absolute && (
+            ! isset($parts['scheme'], $parts['host'])
+            || ! in_array(strtolower((string) $parts['scheme']), ['http', 'https'], true)
+            || strtolower((string) $parts['scheme']) !== strtolower((string) ($home['scheme'] ?? ''))
+            || strtolower((string) $parts['host']) !== strtolower((string) ($home['host'] ?? ''))
+            || $this->effectivePort($parts) !== $this->effectivePort($home)
+        )) {
+            return null;
+        }
+
+        $path = (string) ($parts['path'] ?? '');
+        if ($path === '' || $path[0] !== '/' || str_contains($path, '%') || preg_match('#(?:^|/)\.\.?(/|$)#', $path)) {
+            return null;
+        }
+        $providerUrl = $this->pageUrlByShortcode('veciahorra_service_provider_registration', '/prestadores/');
+        $providerPath = (string) (wp_parse_url($providerUrl, PHP_URL_PATH) ?: '/prestadores/');
+        if (untrailingslashit($path) !== untrailingslashit($providerPath)) {
+            return null;
+        }
+
+        $query = (string) ($parts['query'] ?? '');
+        if (preg_match('/\Aplan=(local|featured|communal)\z/D', $query, $match) !== 1) {
+            return null;
+        }
+        $plan = ServicePlanCatalog::canonical($match[1]);
+        if ($plan === null) {
+            return null;
+        }
+        return ['url' => add_query_arg('plan', $plan, $providerUrl), 'plan' => $plan];
+    }
+
+    /** @param array<string,mixed> $parts */
+    private function effectivePort(array $parts): int
+    {
+        if (isset($parts['port'])) return (int) $parts['port'];
+        return strtolower((string) ($parts['scheme'] ?? '')) === 'https' ? 443 : 80;
+    }
+
+    private function redirectSignature(string $redirect, string $nonce): string
+    {
+        return hash_hmac('sha256', $redirect . '|' . $nonce, wp_salt('nonce'));
     }
 
     private function customerPanelUrl(): string

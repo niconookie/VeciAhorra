@@ -34,13 +34,14 @@ function registrationRequest(string $url, ?array $payload = null): array
     ];
 }
 
-/** @return array{nonce:string,redirect_to:string} */
+/** @return array{nonce:string,redirect_to:string,context:string} */
 function registrationForm(string $url): array
 {
     $response = registrationRequest($url);
     if (
         preg_match('/name="_va_customer_nonce" value="([^"]+)"/', $response['body'], $nonce) !== 1
         || preg_match('/name="redirect_to" value="([^"]*)"/', $response['body'], $redirect) !== 1
+        || preg_match('/name="_va_registration_context" value="([^"]*)"/', $response['body'], $context) !== 1
     ) {
         throw new RuntimeException('No fue posible obtener el formulario, nonce o redirect_to.');
     }
@@ -56,16 +57,17 @@ function registrationForm(string $url): array
     ) {
         throw new RuntimeException('Falta estructura o asset visual del registro.');
     }
-    return ['nonce' => html_entity_decode($nonce[1]), 'redirect_to' => html_entity_decode($redirect[1])];
+    return ['nonce' => html_entity_decode($nonce[1]), 'redirect_to' => html_entity_decode($redirect[1]), 'context' => html_entity_decode($context[1])];
 }
 
 /** @return array<string,string> */
-function registrationPayload(string $email, string $nonce, string $redirectTo): array
+function registrationPayload(string $email, string $nonce, string $redirectTo, string $context): array
 {
     return [
         '_va_customer_nonce' => $nonce,
         'veciahorra_customer_registration' => '1',
         'redirect_to' => $redirectTo,
+        '_va_registration_context' => $context,
         'first_name' => 'Prueba',
         'last_name' => 'P0',
         'email' => $email,
@@ -93,7 +95,7 @@ require_once ABSPATH . 'wp-admin/includes/user.php';
 try {
     $validForm = registrationForm(add_query_arg('redirect_to', $servicesUrl, $registrationUrl));
     if ($validForm['redirect_to'] !== $servicesUrl) throw new RuntimeException('GET interno no se conservó en hidden.');
-    $valid = registrationRequest($registrationUrl, registrationPayload($emails['valid'], $validForm['nonce'], $validForm['redirect_to']));
+    $valid = registrationRequest($registrationUrl, registrationPayload($emails['valid'], $validForm['nonce'], $validForm['redirect_to'], $validForm['context']));
     if (! str_contains($valid['status'], '302') || untrailingslashit($valid['location']) !== untrailingslashit($servicesUrl) || ! $valid['auth_cookie']) {
         throw new RuntimeException('Registro con redirect_to interno no terminó en /servicios/.');
     }
@@ -103,7 +105,7 @@ try {
     wp_clear_auth_cookie();
     $externalForm = registrationForm(add_query_arg('redirect_to', 'https://evil.example/', $registrationUrl));
     if (untrailingslashit($externalForm['redirect_to']) !== untrailingslashit($panelUrl)) throw new RuntimeException('URL externa no cayó en el fallback.');
-    $external = registrationRequest($registrationUrl, registrationPayload($emails['external'], $externalForm['nonce'], 'https://evil.example/'));
+    $external = registrationRequest($registrationUrl, registrationPayload($emails['external'], $externalForm['nonce'], 'https://evil.example/', $externalForm['context']));
     if (! str_contains($external['status'], '302') || untrailingslashit($external['location']) !== untrailingslashit($panelUrl)) {
         throw new RuntimeException('POST externo no cayó en /mis-compras/.');
     }
@@ -120,7 +122,7 @@ try {
 
     $defaultForm = registrationForm($registrationUrl);
     if (untrailingslashit($defaultForm['redirect_to']) !== untrailingslashit($panelUrl)) throw new RuntimeException('Registro normal no conservó /mis-compras/.');
-    $default = registrationRequest($registrationUrl, registrationPayload($emails['default'], $defaultForm['nonce'], $defaultForm['redirect_to']));
+    $default = registrationRequest($registrationUrl, registrationPayload($emails['default'], $defaultForm['nonce'], $defaultForm['redirect_to'], $defaultForm['context']));
     if (! str_contains($default['status'], '302') || untrailingslashit($default['location']) !== untrailingslashit($panelUrl)) {
         throw new RuntimeException('Registro normal no terminó en /mis-compras/.');
     }
@@ -128,7 +130,8 @@ try {
 
     wp_set_current_user(0);
     wp_clear_auth_cookie();
-    $invalidNonce = registrationRequest($registrationUrl, registrationPayload($emails['invalid_nonce'], 'invalid', $servicesUrl));
+    $invalidNonceForm = registrationForm(add_query_arg('redirect_to', $servicesUrl, $registrationUrl));
+    $invalidNonce = registrationRequest($registrationUrl, registrationPayload($emails['invalid_nonce'], 'invalid', $invalidNonceForm['redirect_to'], $invalidNonceForm['context']));
     if (
         get_user_by('email', $emails['invalid_nonce'])
         || $invalidNonce['location'] !== ''
