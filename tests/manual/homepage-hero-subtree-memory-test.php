@@ -183,6 +183,16 @@ if (! is_array($initial)) {
 $final = $initial;
 $final['settings']['classes']['value'][] = 'va-home-hero';
 
+$heroCss = (string) file_get_contents(dirname(__DIR__, 2) . '/assets/frontend/css/homepage-hero.css');
+if (! str_contains($heroCss, '.elementor .va-home-hero.va-home-hero') || ! str_contains($heroCss, 'min-height: auto;')) {
+    throw new RuntimeException('hero intrinsic desktop height missing');
+}
+foreach (['margin-top: -', 'position: absolute', 'translateY('] as $forbiddenLayoutHack) {
+    if (str_contains($heroCss, $forbiddenLayoutHack)) {
+        throw new RuntimeException('hero layout hack detected');
+    }
+}
+
 $shadow = ['$$type' => 'box-shadow', 'value' => [[
     '$$type' => 'shadow',
     'value' => [

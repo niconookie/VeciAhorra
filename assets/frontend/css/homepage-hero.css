@@ -1,3 +1,7 @@
+.elementor .va-home-hero.va-home-hero {
+    min-height: auto;
+}
+
 .va-home-hero .va-public-route-link {
     background-color: #3f7f16;
     color: #ffffff;

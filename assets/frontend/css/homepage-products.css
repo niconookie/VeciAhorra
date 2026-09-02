@@ -1,7 +1,8 @@
 .va-home-products {
     box-sizing: border-box;
     color: var(--va-color-text, #10233a);
-    padding-block: clamp(2.5rem, 6vw, 5rem);
+    padding-block-start: clamp(2.5rem, 4vw, 4rem);
+    padding-block-end: clamp(2.5rem, 6vw, 5rem);
     width: 100%;
 }
 
