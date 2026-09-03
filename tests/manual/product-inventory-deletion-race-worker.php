@@ -6,7 +6,10 @@ use VeciAhorra\Modules\Inventory\Services\InventoryService;
 use VeciAhorra\Modules\Products\Repositories\ProductRepository;
 use VeciAhorra\Modules\Products\Services\ProductService;
 
-require_once dirname(__DIR__, 5) . '/wp-load.php';
+$isolatedWordPress = getenv('VECIAHORRA_TEST_WORDPRESS_ROOT');
+require_once is_string($isolatedWordPress) && is_file($isolatedWordPress . '/wp-load.php')
+    ? $isolatedWordPress . '/wp-load.php'
+    : dirname(__DIR__, 5) . '/wp-load.php';
 
 [$script, $mode, $productId, $storeId, $updatedAt, $readyFile] = $argv;
 $repository = new ProductRepository();

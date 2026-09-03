@@ -11,7 +11,10 @@ use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentReconciliationC
 use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentReconciliationProcessor;
 use VeciAhorra\Modules\Payments\Reconciliation\Service\PaymentReconciliationTechnicalEvaluator;
 
-require_once dirname(__DIR__, 5) . '/wp-load.php';
+$isolatedWordPress = getenv('VECIAHORRA_TEST_WORDPRESS_ROOT');
+require_once is_string($isolatedWordPress) && is_file($isolatedWordPress . '/wp-load.php')
+    ? $isolatedWordPress . '/wp-load.php'
+    : dirname(__DIR__, 5) . '/wp-load.php';
 require_once __DIR__ . '/payment-reconciliation-test-completion-handler.php';
 
 final class ObservableProcessorEvaluator implements

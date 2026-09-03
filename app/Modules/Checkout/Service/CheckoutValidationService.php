@@ -62,7 +62,7 @@ final class CheckoutValidationService
         foreach ($eligibleStores as $store) {
             $storeId = (int) $store['id'];
             $activeMinimarketIds[$storeId] = true;
-            if ((int) ($store['delivery_enabled'] ?? 1) === 1) {
+            if ((int) ($store['delivery_enabled'] ?? 0) === 1) {
                 $deliveryMinimarketIds[$storeId] = true;
             }
         }
@@ -275,8 +275,8 @@ final class CheckoutValidationService
             ? $snapshotCents * $quantity
             : 0;
         $deliveryEligible = isset($allowedSectorStores[$minimarketId], $deliveryMinimarketIds[$minimarketId])
-            && (int) ($inventory['delivery_enabled'] ?? 1) === 1
-            && (int) ($product?->delivery_enabled ?? 1) === 1;
+            && (int) ($inventory['delivery_enabled'] ?? 0) === 1
+            && (int) ($product?->delivery_enabled ?? 0) === 1;
 
         return [
             'id' => $id,

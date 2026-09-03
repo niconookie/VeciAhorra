@@ -49,8 +49,8 @@ $assert(str_contains($routes, "['/service-provider/me','GET','me','privatePermis
 $assert(str_contains($routes, "['/service-provider/profile','POST','save','privatePermission']"), 'Profile dejo de requerir capacidad.');
 $assert(str_contains($routes, "['/service-provider/submit','POST','submit','privatePermission']"), 'Submit dejo de requerir capacidad.');
 $assert(str_contains($routes, "new WP_Error('authentication_required'") && str_contains($routes, "new WP_Error('provider_forbidden'"), 'Las rutas privadas no conservan rechazo explicito.');
-$assert(preg_match('/Version: 0\\.3\\.12/', $plugin) === 1 && str_contains($plugin, "define('VA_VERSION', '0.3.12')"), 'Version principal incorrecta.');
-$assert(str_contains($config, "PLUGIN_VERSION = '0.3.12'") && str_contains($config, "SCHEMA_VERSION = '0.32.0'"), 'Versiones de Config incorrectas.');
+$assert(preg_match('/Version: 0\\.3\\.13/', $plugin) === 1 && str_contains($plugin, "define('VA_VERSION', '0.3.13')"), 'Version principal incorrecta.');
+$assert(str_contains($config, "PLUGIN_VERSION = '0.3.13'") && str_contains($config, "SCHEMA_VERSION = '0.33.0'"), 'Versiones de Config incorrectas.');
 $assert(! str_contains($routes, 'COMMERCE_FLAG') && ! str_contains($module, 'COMMERCE_FLAG'), 'El cambio alcanzo el gate de comercio.');
 
 echo "OK service-provider-public-enrollment-contract\n";

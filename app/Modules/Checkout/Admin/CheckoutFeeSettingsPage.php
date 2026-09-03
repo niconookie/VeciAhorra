@@ -24,6 +24,9 @@ final class CheckoutFeeSettingsPage
 
     public function save(): void
     {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            wp_die(esc_html__('Método no permitido.', 'veciahorra'), '', ['response' => 405]);
+        }
         if (! current_user_can('manage_options')) {
             wp_die(esc_html__('No autorizado.', 'veciahorra'), '', ['response' => 403]);
         }

@@ -204,6 +204,7 @@ function canonicalFixture(string $token): array
             'email' => "store{$index}-{$token}@example.test", 'phone' => '000000000',
             'mobile' => null, 'address' => 'Local fixture', 'commune' => 'Santiago',
             'city' => 'Santiago', 'region' => 'RM', 'status' => 'active',
+            'delivery_enabled' => 1,
             'onboarding_status' => 'complete', 'approved_at' => $now,
             'created_at' => $now, 'updated_at' => $now,
         ]);
@@ -226,13 +227,20 @@ function canonicalFixture(string $token): array
             'slug' => $token . '-' . ($index + 1), 'sku' => null, 'description' => $token,
             'category_id' => null, 'brand_id' => null, 'unit_id' => null,
             'image_id' => null, 'status' => Product::STATUS_ACTIVE,
+            'delivery_enabled' => 1,
             'created_at' => $now, 'updated_at' => $now,
         ]);
         $inventoryIds[] = $inventoryId = $inventory->create([
             'product_id' => $productId, 'minimarket_id' => $storeIds[$index],
             'price' => (float) $price, 'stock' => 5, 'status' => 'active',
+            'delivery_enabled' => 1,
             'created_at' => $now, 'updated_at' => $now,
         ]);
+        $wpdb->update(
+            $wpdb->prefix . Config::TABLE_PREFIX . 'inventory',
+            ['delivery_enabled' => 1],
+            ['id' => $inventoryId]
+        );
         $cartIds[] = $cart->addItem(['user_id' => (int) $userId], $inventoryId, 1)['id'];
     }
     return compact('token', 'userId', 'zoneId', 'storeIds', 'productIds', 'inventoryIds', 'cartIds');
@@ -305,7 +313,14 @@ try {
     canonicalAssert($schemaVersionBefore !== '', 'C02', 'autoridad de schema disponible');
     canonicalAssert(count($tables) === count($suffixes), 'C03', 'inventario de tablas resuelto');
     canonicalAssert(preg_match('/^\d+\.\d+\.\d+$/', Config::SCHEMA_VERSION) === 1, 'C04', 'schema vigente valido');
-    canonicalAssert(strtolower((string) DB_HOST) === 'localhost' && str_contains(strtolower(home_url('/')), 'localhost'), 'C05', 'entorno WordPress localhost');
+    $databaseHost = strtolower((string) DB_HOST);
+    $siteHost = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
+    canonicalAssert(
+        (str_starts_with($databaseHost, 'localhost') || str_starts_with($databaseHost, '127.0.0.1'))
+            && in_array($siteHost, ['localhost', '127.0.0.1'], true),
+        'C05',
+        'entorno WordPress local'
+    );
     foreach (['inventory','reservations','orders','order_items','cart_items','checkouts','checkout_orders','payment_sessions'] as $suffix) {
         $engine = $wpdb->get_var($wpdb->prepare('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s', $tables[$suffix]));
         canonicalSame('InnoDB', $engine, 'C07', 'tablas transaccionales InnoDB');

@@ -52,6 +52,7 @@ try {
         'rut' => '1-9', 'email' => $token . '@example.test', 'phone' => '000',
         'mobile' => null, 'address' => null, 'commune' => null, 'city' => null,
         'region' => null, 'status' => 'active', 'onboarding_status' => 'complete',
+        'delivery_enabled' => 1,
         'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
     ]);
     $productId = $products->create([
@@ -59,13 +60,20 @@ try {
         'slug' => $token, 'sku' => null, 'description' => null,
         'category_id' => null, 'brand_id' => null, 'unit_id' => null,
         'image_id' => null, 'status' => Product::STATUS_ACTIVE,
+        'delivery_enabled' => 1,
         'created_at' => $now, 'updated_at' => $now,
     ]);
     $inventoryId = $inventory->create([
         'product_id' => $productId, 'minimarket_id' => $storeId,
         'price' => 4000.0, 'stock' => 5, 'status' => 'active',
+        'delivery_enabled' => 1,
         'created_at' => $now, 'updated_at' => $now,
     ]);
+    $wpdb->update(
+        $wpdb->prefix . Config::TABLE_PREFIX . 'inventory',
+        ['delivery_enabled' => 1],
+        ['id' => $inventoryId]
+    );
     sectorizationFixtureSelect([$storeId], $token);
     $cartService->addItem(
         ['session_id' => $session, 'user_id' => null],

@@ -10,9 +10,6 @@ if ($target === '' || ! is_file($target) || $wordpressRoot === '' || ! is_file($
     exit(2);
 }
 
-if (! defined('WP_PLUGIN_DIR')) {
-    define('WP_PLUGIN_DIR', str_replace('\\', '/', $pluginRoot));
-}
 $commerce = getenv('VECIAHORRA_TEST_COMMERCE_ENABLED');
 if ($commerce !== false && ! defined('VECIAHORRA_PUBLIC_COMMERCE_ENABLED')) {
     define('VECIAHORRA_PUBLIC_COMMERCE_ENABLED', $commerce === '1');

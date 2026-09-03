@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 use VeciAhorra\Modules\Payments\Reconciliation\Repository\PaymentReconciliationClaimRepository;
 
-require_once dirname(__DIR__, 5) . '/wp-load.php';
+$isolatedWordPress = getenv('VECIAHORRA_TEST_WORDPRESS_ROOT');
+require_once is_string($isolatedWordPress) && is_file($isolatedWordPress . '/wp-load.php')
+    ? $isolatedWordPress . '/wp-load.php'
+    : dirname(__DIR__, 5) . '/wp-load.php';
 
 [
     $script,

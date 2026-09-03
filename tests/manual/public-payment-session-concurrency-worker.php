@@ -12,7 +12,10 @@ putenv('webpay_environment=integration');
 putenv('webpay_commerce_code=597055555532');
 putenv('webpay_api_key=' . str_repeat('A', 32));
 putenv('webpay_return_url=https://example.test/webpay/return');
-require_once dirname(__DIR__, 5) . '/wp-load.php';
+$isolatedWordPress = getenv('VECIAHORRA_TEST_WORDPRESS_ROOT');
+require_once is_string($isolatedWordPress) && is_file($isolatedWordPress . '/wp-load.php')
+    ? $isolatedWordPress . '/wp-load.php'
+    : dirname(__DIR__, 5) . '/wp-load.php';
 
 [$script, $checkoutId, $idempotencyKey, $userId, $counter] = array_pad($argv, 5, null);
 

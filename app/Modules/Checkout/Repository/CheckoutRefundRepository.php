@@ -21,6 +21,18 @@ final class CheckoutRefundRepository extends Repository
         return $row === null ? null : $row;
     }
 
+    public function hasPaidPayment(int $checkoutId): bool
+    {
+        $value = $this->db()->get_var($this->db()->prepare(
+            sprintf("SELECT 1 FROM %s WHERE checkout_id = %%d AND status = 'paid' LIMIT 1", $this->table('payments')),
+            $checkoutId
+        ));
+        if ($this->db()->last_error !== '') {
+            throw new PersistenceException('No fue posible verificar el pago del Checkout.');
+        }
+        return (string) $value === '1';
+    }
+
     /** @return array{product_refund:string,platform_fee_refund:string,delivery_fee_refund:string} */
     public function totals(int $checkoutId): array
     {

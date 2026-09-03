@@ -102,6 +102,7 @@ try {
             'unit_id' => null,
             'image_id' => null,
             'status' => $status,
+            'delivery_enabled' => 1,
             'created_at' => $now,
             'updated_at' => $now,
         ]);
@@ -130,6 +131,7 @@ try {
             'phone' => '000', 'mobile' => null, 'address' => null,
             'commune' => null, 'city' => null, 'region' => null,
             'status' => 'active', 'onboarding_status' => 'complete',
+            'delivery_enabled' => 1,
             'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
         ]);
         $assigned = $wpdb->insert($storeServiceZonesTable, [
@@ -140,15 +142,23 @@ try {
         ]);
         assertCheckoutReservation($assigned === 1, 'No se asigno sector de prueba.');
 
-        return $inventoryRepository->create([
+        $inventoryId = $inventoryRepository->create([
             'product_id' => $productId,
             'minimarket_id' => $storeId,
             'price' => $price,
             'stock' => $stock,
             'status' => $status,
+            'delivery_enabled' => 1,
             'created_at' => $now,
             'updated_at' => $now,
         ]);
+        $wpdb->update(
+            $wpdb->prefix . Config::TABLE_PREFIX . 'inventory',
+            ['delivery_enabled' => 1],
+            ['id' => $inventoryId]
+        );
+
+        return $inventoryId;
     };
     $stock = static fn (int $inventoryId): int => (int) $wpdb->get_var(
         $wpdb->prepare(

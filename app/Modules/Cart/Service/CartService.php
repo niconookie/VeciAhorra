@@ -183,9 +183,9 @@ final class CartService
                 && ($item['minimarket_status'] ?? null) === 'active'
                 && ($item['minimarket_onboarding_status'] ?? null) === 'complete'
                 && ! empty($item['minimarket_approved_at'])
-                && (int) ($item['product_delivery_enabled'] ?? 1) === 1
-                && (int) ($item['inventory_delivery_enabled'] ?? 1) === 1
-                && (int) ($item['minimarket_delivery_enabled'] ?? 1) === 1;
+                && (int) ($item['product_delivery_enabled'] ?? 0) === 1
+                && (int) ($item['inventory_delivery_enabled'] ?? 0) === 1
+                && (int) ($item['minimarket_delivery_enabled'] ?? 0) === 1;
             $deliveryEligible = $deliveryEligible && $itemDeliveryEligible;
             $item['offer_group'] = hash_hmac(
                 'sha256',

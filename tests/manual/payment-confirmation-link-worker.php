@@ -5,7 +5,10 @@ declare(strict_types=1);
 use VeciAhorra\Exceptions\PersistenceException;
 use VeciAhorra\Modules\Payments\Repository\PaymentSessionRepository;
 
-require_once dirname(__DIR__, 5) . '/wp-load.php';
+$isolatedWordPress = getenv('VECIAHORRA_TEST_WORDPRESS_ROOT');
+require_once is_string($isolatedWordPress) && is_file($isolatedWordPress . '/wp-load.php')
+    ? $isolatedWordPress . '/wp-load.php'
+    : dirname(__DIR__, 5) . '/wp-load.php';
 
 [$script, $sessionId, $paymentId] = array_pad($argv, 3, null);
 

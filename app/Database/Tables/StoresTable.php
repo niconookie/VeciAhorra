@@ -86,7 +86,7 @@ final class StoresTable implements TableInterface
             ->default('draft')
 
         ->boolean('delivery_enabled')
-            ->default('1')
+            ->default('0')
 
         /*
         |--------------------------------------------------------------------------

@@ -35,6 +35,9 @@ final class CheckoutRefundService
             if ($checkout === null) {
                 throw new RecordNotFoundException('El Checkout no existe.');
             }
+            if (! $refunds->hasPaidPayment($checkoutId)) {
+                throw new ConflictException('El Checkout no posee un pago confirmado.', 'checkout_not_paid');
+            }
             $existing = $refunds->findByKey($checkoutId, $idempotencyKey);
             if ($existing !== null) {
                 if (CheckoutFeeCalculator::clp((string) $existing['product_refund']) !== $requestedClp) {

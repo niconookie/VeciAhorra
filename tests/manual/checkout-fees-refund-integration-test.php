@@ -10,6 +10,7 @@ $originalPrefix = $wpdb->prefix;
 $prefix = 'vafr_' . strtolower(wp_generate_password(8, false, false)) . '_';
 $checkoutTable = $prefix . 'va_checkouts';
 $refundTable = $prefix . 'va_checkout_refunds';
+$paymentTable = $prefix . 'va_payments';
 $assertions = 0;
 $assert = static function (bool $condition, string $message) use (&$assertions): void {
     $assertions++;
@@ -17,7 +18,7 @@ $assert = static function (bool $condition, string $message) use (&$assertions):
 };
 
 try {
-    foreach ([[new \VeciAhorra\Database\Schemas\CheckoutSchema(), $checkoutTable], [new \VeciAhorra\Database\Schemas\CheckoutRefundSchema(), $refundTable]] as [$schema, $table]) {
+    foreach ([[new \VeciAhorra\Database\Schemas\CheckoutSchema(), $checkoutTable], [new \VeciAhorra\Database\Schemas\CheckoutRefundSchema(), $refundTable], [new \VeciAhorra\Database\Schemas\PaymentSchema(), $paymentTable]] as [$schema, $table]) {
         $builder = \VeciAhorra\Database\Builder\TableBuilder::make($table);
         $schema->define($builder);
         dbDelta($builder->build($wpdb->get_charset_collate()));
@@ -32,6 +33,11 @@ try {
         'expires_at' => gmdate('Y-m-d H:i:s', time() + 3600),
     ]);
     $checkoutId = (int) $wpdb->insert_id;
+    $wpdb->insert($paymentTable, [
+        'payment_reference'=>'pay_refund_test','checkout_id'=>$checkoutId,'customer_id'=>1,
+        'amount'=>'9700.00','currency'=>'CLP','status'=>'paid','provider'=>'internal-test',
+        'paid_at'=>$now,'created_at'=>$now,'updated_at'=>$now,
+    ]);
     $wpdb->set_prefix($prefix);
     $service = new \VeciAhorra\Modules\Checkout\Service\CheckoutRefundService();
     $partial = $service->record($checkoutId, 'refund_partial_001', '3000.00');
@@ -44,6 +50,7 @@ try {
     $assert((string) $wpdb->get_var("SELECT SUM(total_refund) FROM `{$refundTable}`") === '9700.00', 'Refund aggregate does not equal checkout total.');
 } finally {
     $wpdb->set_prefix($originalPrefix);
+    $wpdb->query('DROP TABLE IF EXISTS `' . str_replace('`', '``', $paymentTable) . '`');
     $wpdb->query('DROP TABLE IF EXISTS `' . str_replace('`', '``', $refundTable) . '`');
     $wpdb->query('DROP TABLE IF EXISTS `' . str_replace('`', '``', $checkoutTable) . '`');
 }
