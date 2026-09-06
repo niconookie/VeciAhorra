@@ -1,4 +1,4 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Checkout fees browser</title></head><body>
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Checkout delivery totals regression</title></head><body>
 <div class="veciahorra-frontend"><section data-va-checkout>
 <div data-va-checkout-loading></div><div data-va-checkout-error hidden><p data-va-checkout-error-message></p><button data-va-checkout-retry></button></div><div data-va-checkout-empty hidden></div>
 <div data-va-checkout-content hidden><div data-va-checkout-groups></div>
@@ -9,13 +9,123 @@
 <div data-va-delivery-options></div><p data-va-delivery-minimum hidden></p><section data-va-delivery-fields hidden><div class="va-field"><input name="recipient_name" data-va-field><p data-va-field-error hidden></p></div><div class="va-field"><input name="address" data-va-field><p data-va-field-error hidden></p></div><div class="va-field"><input name="commune" data-va-field><p data-va-field-error hidden></p></div><div class="va-field"><input name="reference" data-va-field><p data-va-field-error hidden></p></div><div class="va-field"><textarea name="notes" data-va-field></textarea><p data-va-field-error hidden></p></div></section>
 <button data-va-checkout-submit type="submit">Continuar</button><p data-va-checkout-status hidden></p></form></div></section></div><output id="result">RUNNING</output>
 <script>
-const item={id:1,product_id:10,inventory_id:20,minimarket_id:30,minimarket_name:'Demo',product_name:'Producto',offer_group:'store-demo',quantity:1,unit_price_snapshot:'8000.00',subtotal:'8000.00'};
-const validated={...item,valid:true,errors:[]}; let posts=[];
-window.VeciAhorra={locale:'es-CL',currency:'CLP',currentUser:{id:1,loggedIn:true},launch:{commerceEnabled:true},cart:{sessionHeader:'X',sessionId:''},checkout:{minimumDeliveryAmount:8000},api:{
-get:()=>Promise.resolve({success:true,data:[item],total:'8700.00',summary:{product_subtotal:'8000.00',platform_fee:'700.00',delivery_fee:'0.00',total:'8700.00',delivery_eligible:true}}),
-post:(path,body)=>{posts.push({path,body});if(path!=='/checkout/validate')return new Promise(()=>{});return Promise.resolve({success:true,data:{valid:true,errors:[],items:[validated],summary:{item_count:1,valid_item_count:1,invalid_item_count:0,product_subtotal:'8000.00',platform_fee:'700.00',delivery_fee:'1000.00',total:'9700.00',delivery_eligible:true}}});}}};
-</script><script src="../../assets/frontend/js/veciahorra-checkout.js"></script><script>
-const pause=()=>new Promise(r=>setTimeout(r,60)); const assert=(v,m)=>{if(!v)throw new Error(m)};
-pause().then(()=>{const root=document.querySelector('[data-va-checkout]'),form=root.querySelector('form'),submit=form.querySelector('button');assert(!form.querySelector('input[name=delivery_method]:checked'),'modalidad preseleccionada');assert(submit.disabled,'sin modalidad no bloquea');assert(root.querySelector('[data-va-checkout-product-subtotal]').textContent.includes('8.000'),'subtotal');assert(root.querySelector('[data-va-checkout-platform-fee]').textContent.includes('700'),'plataforma');assert(root.querySelector('[data-va-checkout-delivery-fee]').textContent.includes('0'),'retiro despacho cero');
-for(const [n,v] of Object.entries({first_name:'Ana',last_name:'Demo',phone:'+56912345678',email:'ana@example.test',recipient_name:'Ana Demo',address:'Demo 123',commune:'Santiago'})){form.elements[n].value=v;form.elements[n].dispatchEvent(new Event('input',{bubbles:true}));}const delivery=form.querySelector('input[value=delivery]');delivery.checked=true;delivery.dispatchEvent(new Event('change',{bubbles:true}));assert(!submit.disabled,'formulario delivery');form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));return pause();}).then(()=>{const root=document.querySelector('[data-va-checkout]'),posted=posts[0];assert(posted.path==='/checkout/validate','endpoint');assert(posted.body.fulfillment_method==='delivery'&&!('total' in posted.body)&&!('platform_fee' in posted.body),'cliente envio dinero');assert(root.querySelector('[data-va-checkout-delivery-fee]').textContent.includes('1.000'),'despacho');assert(root.querySelector('[data-va-checkout-total]').textContent.includes('9.700'),'total');document.body.dataset.result='PASS';document.getElementById('result').textContent='PASS checkout-fees-browser explicit_method=1 client_money=0';}).catch(e=>{document.body.dataset.result='FAIL';document.getElementById('result').textContent='FAIL '+e.message});
+// Open this file locally in a browser. All API calls are in-memory; no server is needed.
+const metrics = {get: 0, post: 0, fetch: 0, payment: 0, checkout: 0, timers: 0, listeners: 0};
+const add = EventTarget.prototype.addEventListener;
+EventTarget.prototype.addEventListener = function(type, listener, options) {
+    if (this.matches && this.matches('[data-va-checkout-form]') && type === 'change') metrics.listeners++;
+    return add.call(this, type, listener, options);
+};
+const nativeTimeout = window.setTimeout.bind(window);
+window.setTimeout = function(...args) { metrics.timers++; return nativeTimeout(...args); };
+const nativeInterval = window.setInterval.bind(window);
+window.setInterval = function(...args) { metrics.timers++; return nativeInterval(...args); };
+window.fetch = function() { metrics.fetch++; throw new Error('Unexpected fetch'); };
+let subtotal = 500, eligible = true, posted = null, assertions = 0, validateExistingFees = false;
+const item = () => ({id:1, product_id:10, inventory_id:20, minimarket_id:30,
+    minimarket_name:'Demo', product_name:'Producto', offer_group:'store-demo', quantity:1,
+    unit_price_snapshot:subtotal+'.00', subtotal:subtotal+'.00'});
+window.VeciAhorra = {locale:'es-CL', currency:'CLP', currentUser:{id:1,loggedIn:true},
+    launch:{commerceEnabled:true}, cart:{sessionHeader:'X',sessionId:''},
+    checkout:{minimumDeliveryAmount:500, platformFeeClp:700, deliveryFeeClp:1000}, api:{
+        get: () => { metrics.get++; return Promise.resolve({success:true,data:[item()],
+            summary:{product_subtotal:subtotal+'.00',platform_fee:'700.00',delivery_fee:'0.00',
+                total:(subtotal+700)+'.00',delivery_eligible:eligible}}); },
+        post: (path, body) => {
+            metrics.post++; posted = {path, body};
+            if (path.includes('payment')) metrics.payment++;
+            if (path !== '/checkout/validate') metrics.checkout++;
+            if (validateExistingFees) {
+                if (path !== '/checkout/validate') return new Promise(() => {});
+                assert(body.fulfillment_method === 'delivery' && !('total' in body) && !('platform_fee' in body), 'existing validation payload excludes money');
+                return Promise.resolve({success:true,data:{valid:true,errors:[],items:[{...item(),valid:true,errors:[]}],
+                    summary:{item_count:1,valid_item_count:1,invalid_item_count:0,product_subtotal:'8000.00',
+                        platform_fee:'700.00',delivery_fee:'1000.00',total:'9700.00',delivery_eligible:true}}});
+            }
+            // Capture the real payload without allowing validation to create a checkout.
+            return Promise.reject({message:'Intentional local payload capture'});
+        }
+    }};
+</script>
+<script src="../../assets/frontend/js/veciahorra-checkout.js"></script>
+<script>
+const assert = (value, message) => { assertions++; if (!value) throw new Error(message); };
+const root = document.querySelector('[data-va-checkout]'), form = root.querySelector('form');
+const text = name => root.querySelector('[data-va-checkout-'+name+']').textContent;
+const clp = amount => new Intl.NumberFormat('es-CL', {style:'currency',currency:'CLP',minimumFractionDigits:0,maximumFractionDigits:2}).format(amount);
+const snapshot = () => JSON.stringify(metrics);
+function select(method, fee, total) {
+    const radio = form.querySelector('input[value="'+method+'"]');
+    assert(!!radio, method+' radio exists');
+    const before = snapshot();
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change', {bubbles:true}));
+    assert(snapshot() === before, 'toggle has no API/fetch/payment/timer/listener effects');
+    assert(text('total') === clp(total), method+' total '+total);
+    assert(text('delivery-fee') === clp(fee), method+' delivery fee '+fee);
+    assert(root.querySelector('[data-va-delivery-fields]').hidden === (method === 'pickup'), method+' fields');
+    assert(form.elements.recipient_name.required === (method === 'delivery'), method+' required accessible fields');
+    assert(root.vaCheckout.getSummary().totalCents === total*100, method+' summary consistent');
+}
+(async function() {
+    await new Promise(resolve => nativeTimeout(resolve, 30));
+    const initialTimers = metrics.timers;
+    assert(!form.querySelector('input[name=delivery_method]:checked'), 'existing explicit method required');
+    assert(form.querySelector('button').disabled, 'existing no method blocks submit');
+    assert(text('product-subtotal') === clp(500), 'initial products');
+    assert(text('platform-fee') === clp(700), 'initial platform');
+    assert(text('delivery-fee') === clp(0) && text('total') === clp(1200), 'initial pickup amounts');
+    select('pickup', 0, 1200);
+    select('delivery', 1000, 2200);
+    select('pickup', 0, 1200);
+    for (let i=0;i<6;i++) { select('delivery',1000,2200); select('pickup',0,1200); }
+    select('delivery',1000,2200);
+    // Repeated delivery events must not add the fee twice, even without a pickup event.
+    select('delivery',1000,2200);
+    assert(!text('total').includes('3.200'), 'no accumulated fee');
+    window.VeciAhorra.publicCheckout.initialize();
+    assert(metrics.listeners === 1, 'one change listener after reinitialization');
+    assert(metrics.get === 1 && metrics.post === 0 && metrics.fetch === 0 && metrics.timers === initialTimers,
+        'all toggles synchronous without requests or timers');
+    for (const [name,value] of Object.entries({first_name:'Ana',last_name:'Demo',phone:'+56912345678',
+        email:'ana@example.test',recipient_name:'Ana Demo',address:'Demo 123',commune:'Santiago'})) form.elements[name].value=value;
+    root.querySelector('[data-va-checkout-total]').textContent = '$1';
+    root.querySelector('[data-va-checkout-delivery-fee]').textContent = '$0';
+    window.VeciAhorra.checkout.deliveryFeeClp = 7;
+    await root.vaCheckout.validatePurchase();
+    assert(posted && posted.path === '/checkout/validate', 'real validation payload captured');
+    assert(posted.body.fulfillment_method === 'delivery', 'delivery payload uses existing API fulfillment_method');
+    assert(Object.keys(posted.body).sort().join(',') === 'delivery,fulfillment_method', 'tampered money never sent');
+    assert(posted.body.delivery.address_line1 === 'Demo 123', 'delivery data retained');
+    window.VeciAhorra.checkout.deliveryFeeClp = 1000;
+    select('pickup',0,1200);
+    await root.vaCheckout.validatePurchase();
+    assert(JSON.stringify(posted.body) === '{"fulfillment_method":"pickup"}', 'pickup payload');
+    // A different server-emitted fee rules out hardcoded production fees.
+    window.VeciAhorra.checkout.deliveryFeeClp = 1234;
+    select('delivery',1234,2434);
+    window.VeciAhorra.checkout.deliveryFeeClp = 1000;
+    subtotal = 499; eligible = false;
+    await root.vaCheckout.load();
+    assert(!form.querySelector('input[value="delivery"]'), 'below minimum has no delivery option');
+    assert(form.querySelector('input[value="pickup"]').checked, 'below minimum selects pickup');
+    assert(text('total') === clp(1199) && text('delivery-fee') === clp(0), 'below minimum honest pickup total');
+    assert(root.querySelector('[data-va-delivery-fields]').hidden, 'below minimum fields hidden');
+    assert(!root.querySelector('[data-va-delivery-minimum]').hidden, 'minimum requirement visible');
+    assert(metrics.payment === 0 && metrics.checkout === 0 && metrics.fetch === 0, 'no payments or checkout creation');
+    // Retain the existing fees regression: authoritative validation replaces the summary.
+    subtotal = 8000; eligible = true;
+    await root.vaCheckout.load();
+    select('delivery',1000,9700);
+    validateExistingFees = true;
+    root.vaCheckout.validatePurchase();
+    await new Promise(resolve => nativeTimeout(resolve, 30));
+    assert(text('delivery-fee') === clp(1000) && text('total') === clp(9700), 'existing authoritative fees summary');
+    assert(metrics.payment === 0, 'existing validation never starts payment');
+    document.body.dataset.result = 'PASS';
+    document.getElementById('result').textContent = 'PASS delivery-total assertions='+assertions+' '+JSON.stringify(metrics);
+})().catch(error => {
+    document.body.dataset.result = 'FAIL';
+    document.getElementById('result').textContent = 'FAIL delivery-total assertions='+assertions+' '+error.message;
+});
 </script></body></html>

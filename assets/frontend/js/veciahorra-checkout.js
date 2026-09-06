@@ -995,6 +995,26 @@
             return valid;
         }
 
+        function updateDeliverySummary() {
+            if (!calculated) {
+                return;
+            }
+            var products = nonNegativeInteger(calculated.productSubtotalCents / 100);
+            var platform = nonNegativeInteger(calculated.platformFeeCents / 100);
+            var delivery = deliveryEligible && selectedMethod() === 'delivery';
+            var fee = delivery ? nonNegativeInteger(config.checkout && config.checkout.deliveryFeeClp) : 0;
+            var total = products + platform + fee;
+            if (products === null || platform === null || fee === null
+                || !Number.isSafeInteger(total) || total > 99999999) {
+                showError('El servidor devolvió un desglose monetario no válido.');
+                return;
+            }
+            calculated.deliveryFeeCents = fee * 100;
+            calculated.totalCents = total * 100;
+            deliveryFeeRoot.textContent = moneyFromCents(calculated.deliveryFeeCents);
+            totalRoot.textContent = moneyFromCents(calculated.totalCents);
+        }
+
         function updateDeliveryFields() {
             var delivery = deliveryEligible && selectedMethod() === 'delivery';
             deliveryFields.hidden = !delivery;
@@ -1073,6 +1093,7 @@
             if (event.target.name === 'delivery_method') {
                 invalidateValidation();
                 updateDeliveryFields();
+                updateDeliverySummary();
             } else if (event.target.matches('[data-va-field]')) {
                 invalidateValidation();
                 validateForm(false);
