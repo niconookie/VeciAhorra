@@ -468,7 +468,7 @@ final class OrderOperationalStateResolver
         $versionFacts = [
             'policy' => 'orders-operational-v1',
             'order' => $pick($facts['order'], ['id', 'status', 'updated_at', 'total', 'minimarket_id']),
-            'checkout' => $pick($facts['checkout'], ['id', 'status', 'fulfillment_method', 'updated_at', 'total_amount']),
+            'checkout' => $pick($facts['checkout'], ['id', 'status', 'fulfillment_method', 'updated_at', 'total_amount', 'orders_total', 'product_subtotal', 'platform_fee', 'delivery_fee']),
             'order_items' => array_map(static fn (array $row): array => $pick($row, ['id', 'updated_at', 'quantity', 'unit_price', 'subtotal']), $facts['order_items']),
             'reservations' => array_map(static fn (array $row): array => $pick($row, ['id', 'status', 'updated_at', 'quantity']), $facts['reservations']),
             'payment_session' => $pick($facts['payment_session'], ['id', 'status', 'updated_at', 'create_version']),
@@ -509,7 +509,7 @@ final class OrderOperationalStateResolver
     private function normalizeVersionRow(array $row): array
     {
         $integerFields = ['id', 'minimarket_id', 'quantity', 'create_version', 'lease_version', 'courier_id'];
-        $moneyFields = ['total', 'total_amount', 'unit_price', 'subtotal', 'amount'];
+        $moneyFields = ['total', 'total_amount', 'unit_price', 'subtotal', 'amount', 'orders_total', 'product_subtotal', 'platform_fee', 'delivery_fee'];
         foreach ($row as $key => $value) {
             if ($value === null) {
                 continue;
@@ -592,9 +592,17 @@ final class OrderOperationalStateResolver
         if ($facts['checkout'] === null) {
             return false;
         }
-        $orderTotal = $this->money($facts['order']['total'] ?? '0');
-        $checkoutTotal = $this->money($facts['checkout']['total_amount'] ?? '0');
-        return $orderTotal !== $checkoutTotal || (($facts['checkout']['currency'] ?? 'CLP') !== ($facts['order']['currency'] ?? 'CLP'));
+        $checkout = $facts['checkout'];
+        $ordersTotal = $this->money($checkout['orders_total'] ?? $facts['order']['total'] ?? '0');
+        $subtotal = $this->money($checkout['product_subtotal'] ?? $checkout['total_amount'] ?? '0');
+        $fees = $this->money($checkout['platform_fee'] ?? '0') + $this->money($checkout['delivery_fee'] ?? '0');
+        $total = $this->money($checkout['total_amount'] ?? '0');
+        $session = $facts['payment_session'];
+        return $ordersTotal !== $subtotal || $subtotal + $fees !== $total
+            || (($checkout['currency'] ?? 'CLP') !== ($facts['order']['currency'] ?? 'CLP'))
+            || ($session !== null && isset($session['amount'])
+                && ($this->money($session['amount']) !== $total
+                    || ($session['currency'] ?? 'CLP') !== ($checkout['currency'] ?? 'CLP')));
     }
 
     private function orderStoreMismatch(array $facts): bool

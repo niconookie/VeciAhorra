@@ -764,6 +764,11 @@
             }) : [{ message: 'La compra ya no es válida. Debes validarla nuevamente.' }];
         }
 
+        function creationUnavailable(error) {
+            return error && ['commerce_disabled', 'webpay_production_disabled',
+                'payment_temporarily_unavailable'].indexOf(error.code) !== -1;
+        }
+
         function startPayment(checkoutId) {
             var controller = new AbortController();
             var timer;
@@ -804,6 +809,12 @@
                     'La sesión de pago se está preparando. Confirmando estado…'
                 ).then(function () { return payload; });
             }).catch(function (requestError) {
+                if (creationUnavailable(requestError)) {
+                    renderPaymentState({payment_status: 'failed', terminal: true,
+                        next_action: 'contact_support', message: requestError.message,
+                        poll_after_ms: null, redirect_url: null});
+                    return null;
+                }
                 return resumePaymentStatus(
                     checkoutId,
                     'El pedido fue creado. Estamos verificando si el pago pudo iniciarse…'
@@ -905,9 +916,9 @@
                     result.data.checkout && result.data.checkout.checkout_id
                 );
             }).catch(function (requestError) {
-                ambiguousAttempt = timedOut || !requestError
+                ambiguousAttempt = !creationUnavailable(requestError) && (timedOut || !requestError
                     || [400, 401, 403, 409, 422].indexOf(requestError.status) === -1
-                    || requestError.code === 'invalid_response';
+                    || requestError.code === 'invalid_response');
                 showValidationErrors([{
                     message: ambiguousAttempt
                         ? 'No fue posible confirmar el resultado de la creación. La solicitud pudo haberse procesado. Recarga la página y revisa tus pedidos antes de volver a intentarlo.'

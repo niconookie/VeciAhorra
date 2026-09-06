@@ -72,6 +72,7 @@ final class CheckoutService
 
     public function initialize(array $payload): array
     {
+        \VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration::assertCheckoutCreationAvailable();
         return $this->checkoutRepository->transaction(
             fn (): array => $this->initializeTransaction($payload)
         );
@@ -210,6 +211,7 @@ final class CheckoutService
         array $orderIds,
         bool $transactional = true
     ): array {
+        \VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration::assertCheckoutCreationAvailable();
         $callback = function () use ($ownerInput, $orderIds): array {
             $owner = $this->idempotencyService->owner($ownerInput);
             $method = $this->method($ownerInput);

@@ -143,12 +143,17 @@ final class OrderAdminReadRepository extends Repository implements OrderAdminRea
              c.public_id AS checkout_public_id, c.status AS checkout_status,
              c.fulfillment_method, c.currency, c.product_subtotal, c.platform_fee,
              c.delivery_fee, c.fee_policy_version, c.total_amount,
+             (SELECT SUM(linked_order.total) FROM %s linked_checkout
+              JOIN %s linked_order ON linked_order.id=linked_checkout.order_id
+              WHERE linked_checkout.checkout_id=c.id) AS checkout_orders_total,
              c.owner_type, c.user_id, c.created_at AS checkout_created_at,
              c.updated_at AS checkout_updated_at, c.expires_at AS checkout_expires_at,
              s.id AS resolved_store_id, s.business_name AS store_name,
              s.status AS store_status,
              (SELECT COUNT(*) FROM %s oi WHERE oi.order_id = o.id) AS line_count,
              (SELECT COALESCE(SUM(oi.quantity),0) FROM %s oi WHERE oi.order_id = o.id) AS unit_count',
+            $this->table('checkout_orders'),
+            $this->table('orders'),
             $this->table('order_items'),
             $this->table('order_items')
         );

@@ -267,6 +267,7 @@ final class CheckoutRoutes
                 'resource_not_found' => 404,
                 'order_already_attached', 'state_conflict' => 409,
                 'validation_error' => 422,
+                'commerce_disabled', 'webpay_production_disabled', 'payment_temporarily_unavailable' => 503,
                 default => 500,
             };
 

@@ -34,13 +34,7 @@ final class WebpayPaymentGateway implements
     public function createSession(
         PaymentSessionContext $context
     ): GatewaySessionResult {
-        if ($this->configuration->environment === 'production'
-            && ! $this->configuration->productionCreationEnabled) {
-            throw $this->failure(
-                'Webpay productivo no esta habilitado para nuevas sesiones.',
-                'webpay_production_disabled'
-            );
-        }
+        $this->assertCreationAvailable();
 
         $amount = $this->amount($context->amount);
         $buyOrder = $context->buyOrder ?? WebpayTransactionReference::buyOrder(
@@ -72,6 +66,16 @@ final class WebpayPaymentGateway implements
             $url,
             $context->expiresAt
         );
+    }
+
+    public function assertCreationAvailable(): void
+    {
+        if ($this->configuration->environment === 'production'
+            && ! $this->configuration->productionCreationEnabled) {
+            throw new \VeciAhorra\Exceptions\ConflictException(
+                'El pago se encuentra temporalmente no disponible.', 'payment_temporarily_unavailable'
+            );
+        }
     }
 
     public static function supportsEnvironment(string $environment): bool

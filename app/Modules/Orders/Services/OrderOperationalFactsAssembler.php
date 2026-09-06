@@ -74,6 +74,7 @@ final class OrderOperationalFactsAssembler
                 'status' => $this->text($base['checkout_status'] ?? null),
                 'fulfillment_method' => $this->nullableText($base['fulfillment_method'] ?? null),
                 'currency' => $this->text($base['currency'] ?? 'CLP'),
+                'orders_total' => $this->money($base['checkout_orders_total'] ?? $base['total'] ?? null),
                 'product_subtotal' => $this->money($base['product_subtotal'] ?? $base['total_amount'] ?? null),
                 'platform_fee' => $this->money($base['platform_fee'] ?? '0.00'),
                 'delivery_fee' => $this->money($base['delivery_fee'] ?? '0.00'),

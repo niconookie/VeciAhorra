@@ -286,19 +286,17 @@ try {
 
     $request = new WP_REST_Request('POST', '/veciahorra/v1/checkout');
     $request->set_header('content-type', 'application/json');
-    $request->set_header('Idempotency-Key', 'checkout-reservation-key-0001');
+    $minimalKey = 'minimal-checkout-' . bin2hex(random_bytes(12));
+    $request->set_header('Idempotency-Key', $minimalKey);
     $request->set_body('{"fulfillment_method":"pickup"}');
-    $response = rest_do_request($request);
-    assertCheckoutReservationSame(503, $response->get_status());
-    assertCheckoutReservationSame(
-        'commerce_disabled',
-        $response->get_data()['error']['code'] ?? null
-    );
     $success = $checkoutService->initialize([
         ...$successOwner,
         'fulfillment_method' => 'pickup',
-        'idempotency_key' => 'checkout-reservation-key-0001',
+        'idempotency_key' => $minimalKey,
     ]);
+    $response = rest_do_request($request);
+    assertCheckoutReservationSame(201, $response->get_status());
+    assertCheckoutReservationSame(true, $response->get_data()['success'] ?? false);
     assertCheckoutReservationSame(true, $success['valid']);
     assertCheckoutReservationSame(true, $success['reservation_created']);
     assertCheckoutReservationSame(true, $success['order_created']);

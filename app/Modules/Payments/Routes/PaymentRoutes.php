@@ -300,6 +300,7 @@ final class PaymentRoutes
             ? 200
             : match ($result['error']['code'] ?? '') {
                 'validation_error' => 422,
+                'commerce_disabled', 'webpay_production_disabled', 'payment_temporarily_unavailable' => 503,
                 'resource_not_found', 'payment_not_found' => 404,
                 'idempotency_conflict', 'state_conflict' => 409,
                 default => 500,

@@ -138,6 +138,7 @@ final class PaymentSessionService
         string $idempotencyKey,
         array $ownerInput
     ): array {
+        \VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration::assertCheckoutCreationAvailable();
         if (! Checkout::validPublicId($checkoutPublicId)) {
             throw new InvalidArgumentException('El checkout_id no es valido.');
         }
@@ -333,6 +334,10 @@ final class PaymentSessionService
             return $this->publicData($owned, (string) $owned['checkout_public_id'], $reused, true);
         }
 
+        \VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration::assertCheckoutCreationAvailable();
+        if ($this->gateway instanceof \VeciAhorra\Modules\Payments\Gateway\WebpayPaymentGateway) {
+            $this->gateway->assertCreationAvailable();
+        }
         $claimOwner = bin2hex(random_bytes(24));
         $now = current_time('mysql');
         $leaseExpiresAt = (new DateTimeImmutable($now, wp_timezone()))

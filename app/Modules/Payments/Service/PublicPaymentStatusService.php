@@ -98,6 +98,10 @@ final class PublicPaymentStatusService
             return $this->state('payment_approved');
         }
 
+        if (($row['session_status'] ?? null) === 'create_ambiguous') {
+            return $this->state('manual_review');
+        }
+
         $returnStatus = $row['return_result_status'] ?? null;
         if ($returnStatus === 'timed_out') { return $this->state('payment_expired'); }
         if ($returnStatus === 'aborted') { return $this->state('payment_cancelled'); }
@@ -141,7 +145,7 @@ final class PublicPaymentStatusService
 
         return match ($row['session_status'] ?? 'pending') {
             'ready' => $this->ready($row),
-            'create_ambiguous' => $this->state('payment_verifying'),
+            'create_ambiguous' => $this->state('manual_review'),
             'create_failed' => $this->state('failed'),
             'expired', 'cancelled' => $this->state('payment_expired'),
             'create_retryable' => $this->state('payment_expired'),

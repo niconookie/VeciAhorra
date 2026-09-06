@@ -11,6 +11,36 @@ final class PaymentGatewayConfiguration
     public const GATEWAY_MOCK = 'mock';
     public const GATEWAY_WEBPAY = 'webpay';
 
+    /** Creation authority only; existing returns and reconciliation do not use it. */
+    public static function assertCheckoutCreationAvailable(): void
+    {
+        if (! (new \VeciAhorra\Core\LaunchGate())->commerceEnabled()) {
+            throw new \VeciAhorra\Exceptions\ConflictException(
+                \VeciAhorra\Core\LaunchGate::COMMERCE_MESSAGE, 'commerce_disabled'
+            );
+        }
+        try {
+            $gateway = self::gateway();
+            if ($gateway === self::GATEWAY_MOCK) {
+                if (wp_get_environment_type() === 'production') {
+                    throw new InvalidArgumentException('Mock is not available in production.');
+                }
+                return;
+            }
+            if (strtolower(trim((string) self::productionEnvironmentValue('VECIAHORRA_WEBPAY_ENVIRONMENT'))) === 'production'
+                && self::productionEnvironmentValue('VECIAHORRA_WEBPAY_PRODUCTION_ENABLED') !== '1') {
+                throw new \VeciAhorra\Exceptions\ConflictException(
+                    'El pago se encuentra temporalmente no disponible.', 'payment_temporarily_unavailable'
+                );
+            }
+            self::webpay();
+        } catch (InvalidArgumentException) {
+            throw new \VeciAhorra\Exceptions\ConflictException(
+                'El pago se encuentra temporalmente no disponible.', 'payment_temporarily_unavailable'
+            );
+        }
+    }
+
     public static function gateway(): string
     {
         $deploymentEnvironment = self::productionEnvironmentValue(
