@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Payments\BusinessCompletion\Service;
 
 use Throwable;
+use VeciAhorra\Modules\Reservations\Repository\ReservationRepository;
 use VeciAhorra\Modules\Checkout\Models\Checkout;
 use VeciAhorra\Modules\Checkout\Repository\CheckoutOrderRepository;
 use VeciAhorra\Modules\Checkout\Repository\CheckoutRepository;
@@ -23,6 +24,8 @@ use VeciAhorra\Modules\Payments\Support\PaymentConfirmationFingerprint;
 
 final class BusinessCompletionProcessor implements BusinessCompletionAttemptProcessorInterface
 {
+    private const REPLAY_ORDER_STATUSES = ['paid', 'delivered'];
+
     public function __construct(
         private readonly BusinessCompletionRepository $completions = new BusinessCompletionRepository(),
         private readonly PaymentReconciliationRepository $reconciliations = new PaymentReconciliationRepository(),
@@ -30,7 +33,8 @@ final class BusinessCompletionProcessor implements BusinessCompletionAttemptProc
         private readonly CheckoutOrderRepository $checkoutOrders = new CheckoutOrderRepository(),
         private readonly PaymentSessionRepository $sessions = new PaymentSessionRepository(),
         private readonly PaymentRepository $payments = new PaymentRepository(),
-        private readonly OrderRepository $orders = new OrderRepository()
+        private readonly OrderRepository $orders = new OrderRepository(),
+        private readonly ReservationRepository $reservations = new ReservationRepository()
     ) {
     }
 
@@ -49,8 +53,13 @@ final class BusinessCompletionProcessor implements BusinessCompletionAttemptProc
             }
             $key = hash('sha256', 'business-completion-v1|' . $reconciliationId . '|' . $reconciliation->financialResult()->fingerprint());
             $now = current_time('mysql', true);
-            $completion = $this->completions->ensure($reconciliationId, $key, $now);
+            $completion = $this->completions->findByReconciliation($reconciliationId)
+                ?? $this->completions->ensure($reconciliationId, $key, $now);
+            if (! hash_equals($key, (string) ($completion['idempotency_key'] ?? ''))) {
+                throw new BusinessCompletionFailure('payment_identity_conflict', BusinessCompletionResult::MANUAL_REVIEW);
+            }
             if (($completion['status'] ?? null) === 'completed') {
+                $this->verifyConsumedReplay($reconciliation, $completion);
                 return new BusinessCompletionResult(BusinessCompletionResult::ALREADY_COMPLETED, 'already_completed', $reconciliationId, (int) $completion['id'], (int) $completion['payment_id']);
             }
             if (in_array($completion['status'] ?? null, ['manual_review', 'permanent_failure'], true)) {
@@ -105,6 +114,7 @@ final class BusinessCompletionProcessor implements BusinessCompletionAttemptProc
                 $orders = $this->orders->findManyForUpdate($orderIds);
                 $this->validateOrders($checkout, $orders, $orderIds);
                 $payment = $this->payments->findByReconciliationIdForUpdate($reconciliation->id());
+                $activeReservationIds = $this->lockReservations($reconciliation, $checkout, $session, $orders, $orderIds, $payment);
                 if ($payment === null) {
                     $paymentId = $this->payments->create($this->paymentData($reconciliation, $checkout, $session, $now));
                     $payment = $this->payments->find($paymentId);
@@ -155,6 +165,8 @@ final class BusinessCompletionProcessor implements BusinessCompletionAttemptProc
                 if ($reserved !== []) {
                     $this->orders->markPaid($reserved, $now);
                 }
+                // Stock was deducted when reserved. Consume only the reservation rows.
+                $this->reservations->markConsumed($activeReservationIds, $now);
                 $completedAt = current_time('mysql', true);
                 if (! $this->completions->complete($completionId, $workerId, $version, $paymentId, $completedAt)) {
                     throw new BusinessCompletionFailure('lease_lost', BusinessCompletionResult::LEASE_LOST);
@@ -179,6 +191,96 @@ final class BusinessCompletionProcessor implements BusinessCompletionAttemptProc
         }
     }
 
+
+    /** Lock and validate the exact reservation set before any payment writes. */
+    private function lockReservations(
+        PaymentReconciliation $reconciliation,
+        array $checkout,
+        array $session,
+        array $orders,
+        array $orderIds,
+        ?array $payment,
+        bool $replay = false
+    ): array {
+        $rows = $this->reservations->findByOrderIdsForUpdate($orderIds);
+        if (! $this->reservations->matchOrderItems($rows, $orderIds)) {
+            throw new BusinessCompletionFailure('order_set_mismatch', BusinessCompletionResult::MANUAL_REVIEW);
+        }
+        $byId = array_column($orders, null, 'id');
+        $covered = [];
+        $active = [];
+        $hasConsumed = false;
+        foreach ($rows as $row) {
+            $orderId = (int) $row['order_id'];
+            $order = $byId[$orderId] ?? null;
+            if ($order === null || (int) $row['minimarket_id'] !== (int) $order['minimarket_id']
+                || (int) $row['quantity'] <= 0 || (int) $row['inventory_id'] <= 0
+                || (int) $row['product_id'] <= 0 || (int) $row['id'] <= 0) {
+                throw new BusinessCompletionFailure('order_set_mismatch', BusinessCompletionResult::MANUAL_REVIEW);
+            }
+            $covered[$orderId] = true;
+            if (($row['released_at'] ?? null) !== null) {
+                throw new BusinessCompletionFailure('order_state_conflict', BusinessCompletionResult::MANUAL_REVIEW);
+            }
+            if (($row['status'] ?? null) === 'active' && ! $replay && $order['status'] === 'reserved') {
+                $active[] = (int) $row['id'];
+            } elseif (($row['status'] ?? null) === 'consumed'
+                && in_array($order['status'], $replay ? self::REPLAY_ORDER_STATUSES : ['paid'], true)) {
+                $hasConsumed = true;
+            } else {
+                throw new BusinessCompletionFailure('order_state_conflict', BusinessCompletionResult::MANUAL_REVIEW);
+            }
+        }
+        $coveredIds = array_keys($covered);
+        sort($coveredIds, SORT_NUMERIC);
+        if ($coveredIds !== $orderIds || count(array_unique($active)) !== count($active)) {
+            throw new BusinessCompletionFailure('order_set_mismatch', BusinessCompletionResult::MANUAL_REVIEW);
+        }
+        if ($hasConsumed || $replay) {
+            if ($payment === null || ($payment['status'] ?? null) !== 'paid'
+                || ($session['status'] ?? null) !== PaymentSession::STATUS_CONFIRMED
+                || (int) ($session['payment_id'] ?? 0) !== (int) $payment['id']) {
+                throw new BusinessCompletionFailure('payment_identity_conflict', BusinessCompletionResult::MANUAL_REVIEW);
+            }
+            $this->validatePayment($payment, $reconciliation, $checkout, $session);
+            $paidOrderIds = $this->payments->findOrderIdsForUpdate((int) $payment['id']);
+            sort($paidOrderIds, SORT_NUMERIC);
+            if ($paidOrderIds !== $orderIds) {
+                throw new BusinessCompletionFailure('payment_identity_conflict', BusinessCompletionResult::MANUAL_REVIEW);
+            }
+        }
+        return $active;
+    }
+
+    /** Completed historical records are checked, never repaired by replay. */
+    private function verifyConsumedReplay(PaymentReconciliation $reconciliation, array $completion): void
+    {
+        $this->completions->transaction(function () use ($reconciliation, $completion): void {
+            $origin = $reconciliation->origin();
+            $checkout = $this->checkouts->findByPublicIdForUpdate($origin->originResourceId());
+            $session = $this->sessions->findByPublicIdForUpdate($origin->paymentAttemptId());
+            if ($checkout === null || $session === null
+                || (int) $session['checkout_id'] !== (int) $checkout['id']) {
+                throw new BusinessCompletionFailure('authority_relationship_mismatch', BusinessCompletionResult::MANUAL_REVIEW);
+            }
+            $this->validateAuthorities($reconciliation, $checkout, $session);
+            if ($origin->origin() !== DurablePaymentOrigin::ORIGIN_VECIAHORRA
+                || $origin->gatewayId() !== $session['provider']
+                || (int) $completion['reconciliation_id'] !== $reconciliation->id()) {
+                throw new BusinessCompletionFailure('authority_relationship_mismatch', BusinessCompletionResult::MANUAL_REVIEW);
+            }
+            $orderIds = $this->checkoutOrders->findOrderIds((int) $checkout['id'], true);
+            sort($orderIds, SORT_NUMERIC);
+            $orders = $this->orders->findManyForUpdate($orderIds);
+            $this->validateOrders($checkout, $orders, $orderIds, true);
+            $payment = $this->payments->findByReconciliationIdForUpdate($reconciliation->id());
+            if ($payment === null || (int) $payment['id'] !== (int) $completion['payment_id']) {
+                throw new BusinessCompletionFailure('payment_identity_conflict', BusinessCompletionResult::MANUAL_REVIEW);
+            }
+            $this->lockReservations($reconciliation, $checkout, $session, $orders, $orderIds, $payment, true);
+        });
+    }
+
     private function validateAuthorities(PaymentReconciliation $r, array $checkout, array $session): void
     {
         $financial = $r->financialResult();
@@ -198,14 +300,14 @@ final class BusinessCompletionProcessor implements BusinessCompletionAttemptProc
         }
     }
 
-    private function validateOrders(array $checkout, array $orders, array $expectedIds): void
+    private function validateOrders(array $checkout, array $orders, array $expectedIds, bool $replay = false): void
     {
         if (array_map('intval', array_column($orders, 'id')) !== $expectedIds) {
             throw new BusinessCompletionFailure('order_set_mismatch', BusinessCompletionResult::MANUAL_REVIEW);
         }
         $total = 0;
         foreach ($orders as $order) {
-            if (! in_array($order['status'] ?? null, ['reserved', 'paid'], true)) {
+            if (! in_array($order['status'] ?? null, $replay ? self::REPLAY_ORDER_STATUSES : ['reserved', 'paid'], true)) {
                 throw new BusinessCompletionFailure('order_state_conflict', BusinessCompletionResult::MANUAL_REVIEW);
             }
             if (($checkout['owner_type'] ?? null) === 'user' && (int) $order['customer_id'] !== (int) $checkout['user_id']) {
