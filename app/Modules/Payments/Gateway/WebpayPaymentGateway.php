@@ -14,7 +14,8 @@ use VeciAhorra\Modules\Payments\Models\PaymentConfirmationResult;
 final class WebpayPaymentGateway implements
     PaymentGatewayInterface,
     PaymentConfirmationGatewayInterface,
-    WebpayReturnGatewayInterface
+    WebpayReturnGatewayInterface,
+    RefundGatewayInterface
 {
     private const PROVIDER = 'webpay_plus';
     private const PAYMENT_HOSTS = [
@@ -156,6 +157,30 @@ final class WebpayPaymentGateway implements
         }
 
         return $this->commitResult($response);
+    }
+
+    public function refund(#[\SensitiveParameter] string $token, int $amount): RefundResult
+    {
+        try {
+            $this->assertToken($token);
+            if ($amount <= 0) return new RefundResult('refund_failed');
+            $response = $this->transaction()->refund($token, $amount);
+            $type = $response->getType();
+            $code = $response->getResponseCode();
+            if ($type === 'REVERSED' && ($code === null || $code === 0)) {
+                return new RefundResult('refunded', true);
+            }
+            if ($type === 'NULLIFIED' && $code === 0 && $response->getNullifiedAmount() === $amount) {
+                return new RefundResult('refunded');
+            }
+            if ($type === 'NULLIFIED' && is_int($code) && $code < 0
+                && ($response->getNullifiedAmount() === null || $response->getNullifiedAmount() === 0)) {
+                return new RefundResult('refund_failed');
+            }
+        } catch (Throwable) {
+            // Do not retain an SDK exception: its request URL can contain the token.
+        }
+        return new RefundResult('refund_uncertain');
     }
 
     private function statusResult(

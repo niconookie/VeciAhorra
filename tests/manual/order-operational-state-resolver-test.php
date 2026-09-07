@@ -7,7 +7,7 @@ use VeciAhorra\Modules\Orders\Domain\Operational\OperationalStateCatalog;
 use VeciAhorra\Modules\Orders\Domain\Operational\OrderOperationalFacts;
 use VeciAhorra\Modules\Orders\Domain\Operational\OrderOperationalStateResolver;
 
-require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
+require_once (getenv('VA_PROOF_PLUGIN_ROOT')?:dirname(__DIR__, 2)) . '/vendor/autoload.php';
 
 $assertions = 0;
 $assert = static function (bool $condition, string $message) use (&$assertions): void {
@@ -359,3 +359,14 @@ try {
 }
 
 echo 'PASS order-operational-state-resolver-test assertions=' . $assertions . PHP_EOL;
+
+$f = $paidDelivery();
+$f['order']['status'] = 'cancelled';
+$f['deliveries'][0]['status'] = 'return_closed';
+$f['delivery_tracking'][] = ['id'=>999,'delivery_id'=>$f['deliveries'][0]['id'],'event'=>'cancel_and_refund','created_at'=>$observedAt];
+$closed = $resolve($f);
+$assert($closed['primary_state'] === 'cancelled', 'Confirmed return is resolved cancellation.');
+$assert($closed['dimensions']['delivery'] === 'return_closed', 'Closed return recognized.');
+$f['delivery_tracking'] = [];
+$assert($resolve($f)['primary_state'] !== 'cancelled', 'No cancellation without financial tracking.');
+echo "PASS refund-operational assertions=3\n";

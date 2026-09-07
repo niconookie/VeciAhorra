@@ -12,6 +12,10 @@ define('ABSPATH',rtrim($wpRoot,'/\\').'/');define('WPINC','wp-includes');define(
 define('WP_DEBUG',false);define('WP_DEBUG_DISPLAY',false);define('WP_MEMORY_LIMIT','128M');define('WP_MAX_MEMORY_LIMIT','256M');
 define('DAY_IN_SECONDS',86400);define('KB_IN_BYTES',1024);define('MB_IN_BYTES',1048576);define('GB_IN_BYTES',1073741824);
 define('DB_CHARSET','utf8mb4');define('DB_COLLATE','');
+define('VA_PLUGIN_URL','http://127.0.0.1/test-plugin/');
+function wp_enqueue_script(...$args){}
+function get_home_url($blog=null,$path='',$scheme=null){return 'http://127.0.0.1/'.$path;}
+function wp_create_nonce($action){return 'test-nonce';}
 function get_userdata($id){return $id>0?(object)['ID'=>$id]:false;}
 function wp_cache_get(...$args){return false;}function wp_cache_set(...$args){return true;}
 function is_user_logged_in():bool{return ($GLOBALS['identity']['id']??0)>0;}
@@ -29,7 +33,7 @@ function wp_remote_get($url,$args=[]){
 }
 function wp_remote_retrieve_response_code($r):int{return (int)$r['response']['code'];}
 function wp_remote_retrieve_body($r):string{return $r['body'];}
-foreach(['compat.php','plugin.php','load.php','class-wp-error.php','functions.php','formatting.php','shortcodes.php','media.php','class-wpdb.php'] as $f)require ABSPATH.WPINC.'/'.$f;
+foreach(['compat.php','plugin.php','load.php','class-wp-error.php','functions.php','formatting.php','kses.php','shortcodes.php','media.php','class-wpdb.php'] as $f)require ABSPATH.WPINC.'/'.$f;
 if(getenv('VA_PROOF_COMPOSER')==='1')require $plugin.'/vendor/autoload.php';
 else spl_autoload_register(static function($class)use($plugin){if(str_starts_with($class,'VeciAhorra\\')){$path=$plugin.'/app/'.str_replace('\\','/',substr($class,11)).'.php';if(is_file($path))require $path;}});
 use VeciAhorra\Modules\Couriers\Service\CourierDeliveryService;
@@ -101,6 +105,7 @@ try {
     (new \VeciAhorra\Database\Migrations\AddDeliveryEvidenceConfirmation())->up();
     (new \VeciAhorra\Database\Migrations\CreateDeliveryProof())->up();
     (new \VeciAhorra\Database\Migrations\CreateDeliveryReturns())->up();
+    (new \VeciAhorra\Database\Migrations\CreateReturnRefunds())->up();
     (new \VeciAhorra\Database\Migrations\CreateDeliveryReturns())->up();
     $now=current_time('mysql',true);
     foreach ([1,2,3] as $zone) insertRow('service_zones',['id'=>$zone,'commune'=>'Commune','name'=>'Zone '.$zone,'status'=>$zone===3?'inactive':'active','created_at'=>$now,'updated_at'=>$now]);
@@ -228,7 +233,8 @@ try {
     }
     require ABSPATH.WPINC.'/utf8.php';
     add_filter('pre_option_blog_charset',static fn()=>'UTF-8');
-    identity('admin',4001);ob_start();(new \VeciAhorra\Modules\Couriers\Returns\ReturnAdmin())->render();$html=ob_get_clean();check(str_contains($html,'private internal note')&&!str_contains($html,'<button')&&!str_contains($html,'code_hash'),'ADMIN_READ_ONLY_INCIDENT');
+    add_filter('pre_option_permalink_structure',static fn()=>'0');
+    identity('admin',4001);ob_start();(new \VeciAhorra\Modules\Couriers\Returns\ReturnAdmin())->render();$html=ob_get_clean();check(str_contains($html,'private internal note')&&str_contains($html,'data-return-refund')&&!str_contains($html,'code_hash'),'ADMIN_INCIDENT_WITH_AUTHORIZED_REFUND');
     identity('customer');ob_start();(new \VeciAhorra\Modules\Couriers\Returns\ReturnAdmin())->render();check(ob_get_clean()==='','ADMIN_VIEW_AUTHORIZED_ONLY');
     echo "RETURN_FLOW=PASS ASSERTIONS={$assertions}\n";
 } finally {

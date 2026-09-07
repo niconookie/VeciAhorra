@@ -320,7 +320,7 @@ final class OrderAdminReadRepository extends Repository implements OrderAdminRea
             "SELECT 'delivery_tracking', d.order_id,
              JSON_OBJECT('id',dt.id,'delivery_id',dt.delivery_id,'event',dt.event,'created_at',dt.created_at)
              FROM {$deliveries} d JOIN {$tracking} dt ON dt.delivery_id=d.id
-             WHERE d.order_id IN ({$in}) AND dt.event IN ('assigned','picked_up','delivered')",
+             WHERE d.order_id IN ({$in}) AND dt.event IN ('assigned','picked_up','delivered','cancel_and_refund')",
         ];
 
         return [implode(' UNION ALL ', $parts), array_merge(...array_fill(0, count($parts), $ids))];

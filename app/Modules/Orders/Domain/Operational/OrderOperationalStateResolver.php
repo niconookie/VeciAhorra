@@ -48,6 +48,17 @@ final class OrderOperationalStateResolver
         );
     }
 
+    private function closedRefund(array $facts): bool
+    {
+        if (($facts['order']['status'] ?? null) !== 'cancelled' || count($facts['deliveries']) !== 1
+            || ($facts['deliveries'][0]['status'] ?? null) !== 'return_closed') return false;
+        foreach ($facts['delivery_tracking'] as $event) {
+            if (($event['event'] ?? null) === 'cancel_and_refund'
+                && (int)($event['delivery_id'] ?? 0) === (int)$facts['deliveries'][0]['id']) return true;
+        }
+        return false;
+    }
+
     private function normalize(array $facts): array
     {
         foreach (['order_items', 'checkout_order_links', 'reservations', 'payment_attempts', 'payment_order_links', 'business_order_links', 'deliveries', 'delivery_tracking', 'read_failures'] as $key) {
@@ -179,13 +190,14 @@ final class OrderOperationalStateResolver
         }
         $status = (string) ($facts['deliveries'][0]['status'] ?? '');
 
-        return in_array($status, ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'return_pending', 'returned_to_store'], true)
+        return in_array($status, ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'return_pending', 'returned_to_store', 'return_closed'], true)
             ? $status
             : 'unknown';
     }
 
     private function fulfillmentState(array $facts, string $processing, string $delivery): string
     {
+        if ($this->closedRefund($facts)) return 'failed';
         if(in_array($delivery,['return_pending','returned_to_store'],true))return 'manual_review';
         $completion = (string) ($facts['fulfillment_completion']['status'] ?? '');
         if ($completion === 'manual_review') {
@@ -224,6 +236,7 @@ final class OrderOperationalStateResolver
         if ($this->hasBlockingError($findings)) {
             return 'inconsistent';
         }
+        if ($this->closedRefund($facts)) return 'cancelled';
         if ($dimensions['fulfillment'] === 'completed') {
             return 'fulfilled';
         }
@@ -258,6 +271,7 @@ final class OrderOperationalStateResolver
         if (in_array('manual_review', [$dimensions['financial'], $dimensions['processing'], $dimensions['fulfillment']], true)) {
             return 'manual_review';
         }
+        if ($this->closedRefund($facts)) return 'cancelled';
         if (in_array('failed', [$dimensions['processing'], $dimensions['fulfillment']], true)) {
             return 'failed';
         }
@@ -312,7 +326,7 @@ final class OrderOperationalStateResolver
             'order_status_unknown' => ! in_array($status, ['reserved', 'paid', 'delivered', 'cancelled', 'return_pending', 'incident_review'], true),
             'paid_without_financial_evidence' => in_array($status, ['paid', 'delivered', 'return_pending', 'incident_review'], true) && $dimensions['financial'] !== 'approved',
             'approved_without_business_processing' => $dimensions['financial'] === 'approved' && ($facts['business_completion']['status'] ?? null) !== 'completed',
-            'business_completed_without_paid_order' => ($facts['business_completion']['status'] ?? null) === 'completed' && ! in_array($status, ['paid', 'delivered', 'return_pending', 'incident_review'], true),
+            'business_completed_without_paid_order' => !$this->closedRefund($facts) && ($facts['business_completion']['status'] ?? null) === 'completed' && ! in_array($status, ['paid', 'delivered', 'return_pending', 'incident_review'], true),
             'delivered_without_delivery_evidence' => $status === 'delivered' && ($facts['checkout']['fulfillment_method'] ?? null) === 'delivery' && $dimensions['delivery'] !== 'delivered',
             'delivery_completed_order_not_delivered' => $dimensions['delivery'] === 'delivered' && $status !== 'delivered',
             'pickup_has_delivery' => ($facts['checkout']['fulfillment_method'] ?? null) === 'pickup' && $facts['deliveries'] !== [],
@@ -321,7 +335,7 @@ final class OrderOperationalStateResolver
                 && (($facts['delivery_completion']['status'] ?? null) !== 'not_required'
                     || (($facts['fulfillment_completion']['status'] ?? null) === 'completed' && $dimensions['fulfillment'] !== 'completed')),
             'delivery_integrity_mismatch' => $this->deliveryIntegrityMismatch($facts) || count($facts['deliveries']) > 1,
-            'fulfillment_completed_without_branch' => ($facts['fulfillment_completion']['status'] ?? null) === 'completed' && $dimensions['fulfillment'] !== 'completed',
+            'fulfillment_completed_without_branch' => !$this->closedRefund($facts) && ($facts['fulfillment_completion']['status'] ?? null) === 'completed' && $dimensions['fulfillment'] !== 'completed',
             'reservation_items_mismatch' => $this->reservationItemsMismatch($facts),
             'active_reservation_after_terminal_release' => $this->any($facts['reservations'], static fn (array $r): bool => ($r['status'] ?? null) === 'active' && ($r['terminal_release_evidence'] ?? false) === true),
             'reservations_active_after_payment' => $dimensions['reservations'] === 'active' && (($facts['payment']['status'] ?? null) === 'paid' || ($facts['business_completion']['status'] ?? null) === 'completed'),
@@ -440,7 +454,7 @@ final class OrderOperationalStateResolver
             $this->event($events, 'delivery_created', $delivery['created_at'] ?? null, 100, 'delivery', $delivery['id'] ?? null, 'Delivery creada');
         }
         foreach ($facts['delivery_tracking'] as $tracking) {
-            if (in_array($tracking['event'] ?? null, ['assigned', 'picked_up', 'delivered'], true)) {
+            if (in_array($tracking['event'] ?? null, ['assigned', 'picked_up', 'delivered', 'cancel_and_refund'], true)) {
                 $this->event($events, 'delivery_event', $tracking['created_at'] ?? null, 110, 'tracking', $tracking['id'] ?? null, 'Hito de entrega: ' . $tracking['event']);
             }
         }

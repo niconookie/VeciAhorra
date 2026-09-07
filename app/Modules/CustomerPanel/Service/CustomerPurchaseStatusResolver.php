@@ -38,7 +38,7 @@ final class CustomerPurchaseStatusResolver
             || ($payment !== null && ! in_array($payment['status'] ?? null, ['pending', 'paid'], true))
             || ($deliveryCompletion !== null && ! in_array($deliveryCompletion, ['pending', 'processing', 'completed', 'not_required', 'retryable', 'permanent_failure', 'manual_review'], true))
             || ($fulfillmentCompletion !== null && ! in_array($fulfillmentCompletion, ['pending', 'processing', 'completed', 'retryable', 'permanent_failure', 'manual_review'], true))
-            || array_diff($deliveries, ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'return_pending', 'returned_to_store']) !== []
+            || array_diff($deliveries, ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'return_pending', 'returned_to_store', 'return_closed']) !== []
         ) {
             return $this->status('under_review');
         }
@@ -71,6 +71,11 @@ final class CustomerPurchaseStatusResolver
                 || $business !== 'completed')
         ) {
             return $this->status('under_review');
+        }
+        if (in_array('return_closed',$deliveries,true)) {
+            $allClosed=count(array_filter($deliveries,static fn(string $s):bool=>$s==='return_closed'))===count($deliveries);
+            return $this->status($allClosed && ($context['refund_status']??null)==='refunded'?'refunded':
+                ((!$allClosed && ($context['refund_status']??null)==='partially_refunded')?'partially_refunded':'under_review'));
         }
         if(in_array('return_pending',$deliveries,true))return $this->status('return_pending');
         if(in_array('returned_to_store',$deliveries,true))return $this->status('returned_to_store');
@@ -125,6 +130,8 @@ final class CustomerPurchaseStatusResolver
     private function status(string $code): CustomerPurchaseVisibleStatus
     {
         [$label, $message] = match ($code) {
+            'refunded' => ['Devolución confirmada', 'Se confirmó la devolución completa de esta compra'],
+            'partially_refunded' => ['Devolución parcial confirmada', 'Se devolvieron los productos de los pedidos resueltos; los demás pedidos conservan su estado'],
             'return_pending' => ['No fue posible completar la entrega', 'El pedido está siendo devuelto al minimarket'],
             'returned_to_store' => ['No fue posible completar la entrega', 'El pedido fue devuelto y está pendiente de revisión'],
             'pending_payment' => ['Pendiente de pago', 'Tu compra aún no registra un pago confirmado.'],

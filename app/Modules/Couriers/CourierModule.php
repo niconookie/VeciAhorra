@@ -18,6 +18,7 @@ final class CourierModule
         add_action('rest_api_init',[new CourierRoutes(),'register']);
         add_action('rest_api_init',[new \VeciAhorra\Modules\Couriers\Returns\ReturnRoutes(),'register']);
         (new \VeciAhorra\Modules\Couriers\Returns\ReturnAdmin())->register();
+        add_action('rest_api_init',[new \VeciAhorra\Modules\Couriers\Returns\ReturnRefundRoutes(),'register']);
         (new CourierAdminPage())->register();
         add_shortcode(self::SHORTCODE,[$this,'render']);
     }

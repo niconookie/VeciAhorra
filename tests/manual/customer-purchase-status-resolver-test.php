@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 use VeciAhorra\Modules\CustomerPanel\Service\CustomerPurchaseStatusResolver;
 
-require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
+require_once (getenv('VA_PROOF_PLUGIN_ROOT')?:dirname(__DIR__, 2)) . '/vendor/autoload.php';
 
 function assertPurchaseStatus(string $expected, array $context): void
 {
+    $GLOBALS['status_assertions']=($GLOBALS['status_assertions']??0)+1;
     $actual = (new CustomerPurchaseStatusResolver())->resolve($context)->code;
     if ($actual !== $expected) {
         throw new RuntimeException("Esperado {$expected}; recibido {$actual}");
@@ -54,3 +55,8 @@ if (str_contains($source, 'Listo para retiro')) {
 }
 
 echo "PASS customer-purchase-status-resolver-test\n";
+
+assertPurchaseStatus('refunded', array_replace($logistics, ['refund_status'=>'refunded','deliveries'=>[['status'=>'return_closed']]]));
+assertPurchaseStatus('partially_refunded', array_replace($logistics, ['refund_status'=>'partially_refunded','deliveries'=>[['status'=>'return_closed'],['status'=>'delivered']]]));
+assertPurchaseStatus('under_review', array_replace($logistics, ['refund_status'=>'none','deliveries'=>[['status'=>'return_closed']]]));
+echo "PASS customer-status assertions=".$GLOBALS['status_assertions']."\n";

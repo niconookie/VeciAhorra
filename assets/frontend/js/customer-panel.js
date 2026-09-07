@@ -768,7 +768,8 @@
         var deliveryStatus = element('p', 'va-customer-panel__delivery-status');
         deliveryStatus.append(renderStatusBadge({code: detail.delivery.status, label: detail.delivery.label}));
         deliverySection.append(visualHeading('h3', 'Entrega', 'delivery'), deliveryStatus);
-        (detail.delivery_returns || []).forEach(function(info){var section=element('section');section.append(element('h3','',info.message),element('p','',info.detail));deliverySection.append(section);});
+        (detail.return_refunds || []).forEach(function(info){var section=element('section');section.append(element('h3','',info.message+' · Pedido #'+info.order_id),element('p','',(info.status==='refunded'?'Monto devuelto: ':'Monto solicitado: ')+info.total_refund+' CLP'),element('p','','Productos: '+info.product_refund+' CLP · Despacho: '+info.delivery_fee_refund+' CLP · Plataforma: '+info.platform_fee_refund+' CLP'));if(info.confirmed_at)section.append(element('p','','Confirmación: '+info.confirmed_at+' UTC'));deliverySection.append(section);});
+        (detail.delivery_returns || []).filter(function(info){return !(detail.return_refunds || []).some(function(refund){return refund.order_id===info.order_id;});}).forEach(function(info){var section=element('section');section.append(element('h3','',info.message),element('p','',info.detail));deliverySection.append(section);});
             (detail.delivery_proofs || []).forEach(function(proof) {
             var section=element('div','va-customer-panel__delivery-proof');
             section.append(element('p','','Entrega #'+proof.delivery_id));

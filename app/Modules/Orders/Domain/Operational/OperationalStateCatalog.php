@@ -13,7 +13,7 @@ final class OperationalStateCatalog
     public const RESERVATION = ['active', 'consumed', 'expired', 'released', 'mixed', 'missing', 'unknown', 'inconsistent'];
     public const PROCESSING = ['not_required', 'pending', 'processing', 'retry_wait', 'completed', 'failed', 'manual_review', 'unknown', 'inconsistent'];
     public const FULFILLMENT = ['not_started', 'pending', 'in_progress', 'completed', 'failed', 'manual_review', 'unknown', 'inconsistent'];
-    public const DELIVERY = ['not_applicable', 'not_started', 'pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'return_pending', 'returned_to_store', 'unknown', 'inconsistent'];
+    public const DELIVERY = ['not_applicable', 'not_started', 'pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'return_pending', 'returned_to_store', 'return_closed', 'unknown', 'inconsistent'];
     public const PAYMENT_SESSION = ['absent', 'pending', 'create_processing', 'create_retryable', 'create_ambiguous', 'create_failed', 'ready', 'confirmed', 'expired', 'cancelled', 'unknown'];
     public const PRIMARY = ['inconsistent', 'manual_review', 'failed', 'completed', 'in_fulfillment', 'fulfillment_pending', 'post_payment_processing', 'confirmed', 'payment_rejected', 'payment_in_progress', 'cancelled', 'expired', 'reserved', 'unknown'];
     public const CONSISTENCY = ['consistent', 'warning', 'degraded', 'inconsistent', 'unknown'];

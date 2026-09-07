@@ -96,6 +96,7 @@ final class CustomerPanelService
         foreach($projection['deliveries'] as $delivery){
             if(in_array($delivery['status'],['return_pending','returned_to_store'],true))$detail['delivery_returns'][]=['order_id'=>(int)$delivery['order_id'],'message'=>'No fue posible completar la entrega','detail'=>$delivery['status']==='return_pending'?'El pedido está siendo devuelto al minimarket':'El pedido fue devuelto y está pendiente de revisión'];
         }
+        $detail['return_refunds'] = (new \VeciAhorra\Modules\Couriers\Returns\ReturnRefundCustomer())->forCheckout((int)$projection['checkout']['id']);
         $detail['delivery_proofs'] = [];
         $proofs = new \VeciAhorra\Modules\Couriers\Evidence\DeliveryProofService();
         foreach ($projection['deliveries'] as $delivery) {
@@ -149,6 +150,7 @@ final class CustomerPanelService
         $context = [
             'inconsistent' => $inconsistent,
             'checkout_status' => (string) $checkout['status'],
+            'refund_status' => (string) ($checkout['refund_status'] ?? 'none'),
             'fulfillment_method' => $checkout['fulfillment_method'],
             'attempt' => $attempt,
             'payment' => $payment,
@@ -189,6 +191,12 @@ final class CustomerPanelService
                 || ! in_array($order['status'], ['reserved', 'paid', 'delivered', 'cancelled', 'return_pending', 'incident_review'], true)
             ) {
                 return true;
+            }
+            if ($order['status']==='cancelled' && ($payment['status']??null)==='paid') {
+                global $wpdb;
+                $p=$wpdb->prefix.\VeciAhorra\Core\Config::TABLE_PREFIX;
+                $confirmed=$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$p}return_refunds WHERE order_id=%d AND checkout_id=%d AND status='refunded'",$order['id'],$checkout['id']));
+                if ((int)$confirmed!==1 || $wpdb->last_error!=='') return true;
             }
             $orderTotal = $this->add($orderTotal, (string) $order['total']);
             if ($items !== []) {
@@ -286,7 +294,7 @@ final class CustomerPanelService
                 || ($businessOrderIdsByBusiness === null
                     ? $this->query->businessOrderIds((int) $attempt['business_id'])
                     : ($businessOrderIdsByBusiness[(int) $attempt['business_id']] ?? [])) !== $orderIds
-                || array_diff(array_column($orders, 'status'), ['paid', 'delivered', 'return_pending', 'incident_review']) !== []
+                || array_diff(array_column($orders, 'status'), ['paid', 'delivered', 'return_pending', 'incident_review', 'cancelled']) !== []
             ) {
                 return true;
             }
@@ -312,7 +320,7 @@ final class CustomerPanelService
                 || (int) $delivery['customer_id'] !== $userId
                 || (int) ($delivery['minimarket_id'] ?? 0)
                     !== (int) ($ordersById[(int) $delivery['order_id']]['minimarket_id'] ?? 0)
-                || ! in_array($delivery['status'], ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'return_pending', 'returned_to_store'], true)
+                || ! in_array($delivery['status'], ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'return_pending', 'returned_to_store', 'return_closed'], true)
             ) {
                 return true;
             }
