@@ -21,7 +21,18 @@ final class CourierRoutes
     public function detail(WP_REST_Request $r):WP_REST_Response{$d=$this->service->detail((int)$r['id'],(int)$this->courier()['id']);return $d===null?$this->error('delivery_not_found',404):$this->ok($d);}
     public function accept(WP_REST_Request $r):WP_REST_Response{return $this->mutate(fn()=>$this->service->accept((int)$r['id'],(int)$this->courier()['id'],$this->version($r)));}
     public function pickedUp(WP_REST_Request $r):WP_REST_Response{return $this->mutate(fn()=>$this->service->transition((int)$r['id'],(int)$this->courier()['id'],'picked_up',$this->version($r)));}
-    public function delivered(WP_REST_Request $r):WP_REST_Response{return $this->mutate(fn()=>$this->service->transition((int)$r['id'],(int)$this->courier()['id'],'delivered',$this->version($r)));}
+    public function delivered(WP_REST_Request $r): WP_REST_Response
+    {
+        return $this->mutate(function() use($r):array {
+            $upload=$r->get_file_params()['photo']??[];
+            if($upload!==[]&&(!is_string($upload['tmp_name']??null)||!is_uploaded_file($upload['tmp_name'])))throw new \DomainException('photo_invalid');
+            foreach(['recipient_visible','recipient_consent'] as $field)if(!in_array($r[$field]??'0',['0','1',0,1,false,true],true))throw new \DomainException('invalid_consent');
+            return (new \VeciAhorra\Modules\Couriers\Evidence\DeliveryProofService())->confirm(
+                (int)$r['id'],$this->version($r),(string)($r['otp']??''),$upload,
+                in_array($r['recipient_visible']??'0',['1',1,true],true),in_array($r['recipient_consent']??'0',['1',1,true],true)
+            );
+        });
+    }
     private function version(WP_REST_Request $r): int
     {
         $value = $r['expected_version'] ?? null;

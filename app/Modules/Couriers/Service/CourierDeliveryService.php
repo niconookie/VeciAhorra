@@ -55,6 +55,7 @@ final class CourierDeliveryService
     }
     private function operate(int $id, ?int $nextCourier, string $target, string $code, string $actorType, int $actorId, ?string $reason, ?int $version, string $from): array
     {
+        if ($target === 'delivered') throw new DomainException('delivery_photo_otp_required');
         $snapshot = $this->repository->find($id) ?? throw new \OutOfBoundsException('delivery_not_found');
         if ($actorId <= 0 || ($nextCourier !== null && $nextCourier <= 0) || ($version !== null && $version < 0)) throw new DomainException('invalid_delivery_command');
         return (new CheckoutRepository())->transaction(function () use ($id,$nextCourier,$target,$code,$actorType,$actorId,$reason,$version,$from,$snapshot): array {
@@ -84,7 +85,7 @@ final class CourierDeliveryService
             if ($code==='admin_reassigned' && (int)$current['courier_id']===$nextCourier) throw new DomainException('different_courier_required');
             $now = current_time('mysql',true);
             $this->repository->change($current,$target,$nextCourier,$now,in_array($target,['assigned','picked_up'],true));
-            if ($target==='delivered') $this->repository->markOrderDelivered((int)$current['order_id'],$now);
+            if ($target==='picked_up') (new \VeciAhorra\Modules\Couriers\Evidence\DeliveryProofRepository())->issue($id,(int)$current['transition_version']+1,$now);
             $this->repository->audit($current,$target,$nextCourier,$actorType,$actorId,$code,$reason,$now);
             return $this->result($id);
         });

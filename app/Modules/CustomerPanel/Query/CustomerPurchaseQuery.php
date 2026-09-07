@@ -203,7 +203,7 @@ final class CustomerPurchaseQuery extends Repository
         $placeholders = implode(', ', array_fill(0, count($orderIds), '%d'));
 
         return $this->db()->get_results($this->db()->prepare(sprintf(
-            'SELECT order_id, customer_id, minimarket_id, status, created_at'
+            'SELECT id, order_id, customer_id, minimarket_id, status, created_at'
             . ' FROM %s WHERE order_id IN (%s) ORDER BY order_id ASC',
             $this->table('deliveries'),
             $placeholders

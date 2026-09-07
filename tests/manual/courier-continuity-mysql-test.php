@@ -23,6 +23,7 @@ function is_multisite(): bool { return false; }
 function is_wp_error($value): bool { return $value instanceof WP_Error; }
 function mbstring_binary_safe_encoding(): void {}
 function reset_mbstring_encoding(): void {}
+function wp_salt($scheme = 'auth'): string { return hash_hmac('sha256',$scheme,'isolated-continuity-test-only'); }
 function current_time($type, $gmt = false): string { return gmdate('Y-m-d H:i:s'); }
 function wp_get_environment_type(): string { return 'local'; }
 function get_option($name, $default = false) { return $default; }
@@ -139,6 +140,7 @@ try {
         sql('ALTER TABLE t_va_'.$schema->name().' AUTO_INCREMENT=1001');
     }
 
+    (new VeciAhorra\Database\Migrations\CreateDeliveryProof())->up();
     $migration = new VeciAhorra\Database\Migrations\AddCourierContinuity();
     $migration->up(); $migration->up();
     check(true,'fresh_idempotent_migration');
@@ -206,16 +208,9 @@ try {
     $beforeCourier=row('couriers',1001);
     rejected(fn()=>(new CourierRepository())->transition(1001,'inactive',$now),'suspension_picked_up_conflict');
     check(row('couriers',1001)===$beforeCourier && row('deliveries',$pending['delivery'])['status']==='assigned' && countEvents($pending['delivery'])===1,'suspension_conflict_preserves_all');
-    failTracking($id);failure(fn()=>$service->transition($id,1001,'delivered',7),'delivery_tracking_failure');
-    check(row('deliveries',$id)['status']==='picked_up' && row('orders',$a['order'])['status']==='paid' && countEvents($id)===7,'delivery_order_tracking_rollback');clearFailure();
-    sql("UPDATE t_va_orders SET status='cancelled' WHERE id={$a['order']}");
-    failure(fn()=>$service->transition($id,1001,'delivered',7),'order_zero_update_failure');
-    check(row('deliveries',$id)['status']==='picked_up' && version($id)===7 && countEvents($id)===7,'ORDER_ZERO_ROLLBACK');
-    sql("UPDATE t_va_orders SET status='paid' WHERE id={$a['order']}");
-    check($service->transition($id,1001,'delivered',7)['status']==='delivered' && row('orders',$a['order'])['status']==='delivered' && countEvents($id)===8,'delivery_order_tracking_commit');
-    $service->transition($id,1001,'delivered',7);check(countEvents($id)===8,'delivery_replay_once');
-    sql("UPDATE t_va_orders SET status='paid' WHERE id={$a['order']}");
-    rejected(fn()=>$service->transition($id,1001,'delivered',7),'incoherent_delivery_replay_rejected');
+    rejected(fn()=>$service->transition($id,1001,'delivered',7),'legacy_delivery_requires_photo_otp');
+    // Fixture setup only: the new proof suite tests the real completed transition.
+    sql("UPDATE t_va_deliveries SET status='delivered' WHERE id={$id}");
     sql("UPDATE t_va_orders SET status='delivered' WHERE id={$a['order']}");
     $pending2=fixture();$service->accept($pending2['delivery'],1001,0);
     failTracking($pending2['delivery']);failure(fn()=>(new CourierRepository())->transition(1001,'inactive',$now),'suspension_tracking_failure');

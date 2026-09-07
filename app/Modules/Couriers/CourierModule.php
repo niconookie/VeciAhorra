@@ -13,6 +13,7 @@ final class CourierModule
     public const SHORTCODE='veciahorra_courier_panel';
     public function register():void
     {
+        (new \VeciAhorra\Modules\Couriers\Evidence\DeliveryProofController())->register();
         add_action('init',[CourierRole::class,'register']);
         add_action('rest_api_init',[new CourierRoutes(),'register']);
         (new CourierAdminPage())->register();

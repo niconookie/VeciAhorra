@@ -23,6 +23,7 @@ final class CourierAdminPage
         foreach($this->repository->all() as $c){$users=get_users(['meta_key'=>CourierRole::META_KEY,'meta_value'=>(string)$c['id'],'number'=>2]);echo '<tr><td>'.(int)$c['id'].'</td><td>'.esc_html($c['display_name']).'</td><td>'.esc_html($c['phone'].' '.$c['email']).'</td><td>'.esc_html($c['status']).'</td><td>'.esc_html($this->zoneLabel($c)).'</td><td>'.esc_html($users[0]->user_login??'—').'</td><td>'.$this->action((int)$c['id'],$c['status']==='approved'?'inactive':'approved').'</td></tr>';}
         echo '</tbody></table>';
         $this->deliveries();
+        $this->evidence();
         echo '<h2>Crear o editar</h2><form method="post">';wp_nonce_field('veciahorra_courier_admin');
         echo '<label>Zona <select name="service_zone_id" required><option value="">Seleccionar zona activa</option>';
         foreach ((new \VeciAhorra\Modules\Sectorization\ServiceZoneRepository())->active() as $zone) {
@@ -79,6 +80,14 @@ final class CourierAdminPage
         $userId=absint($_POST['user_id']??0);if($userId>0){if(!get_userdata($userId))throw new \InvalidArgumentException('Usuario inexistente.');$other=get_users(['meta_key'=>CourierRole::META_KEY,'meta_value'=>(string)$saved,'exclude'=>[$userId],'number'=>1]);if($other!==[])throw new \DomainException('Courier ya asociado.');update_user_meta($userId,CourierRole::META_KEY,$saved);(new \WP_User($userId))->set_role(CourierRole::ROLE);
             if ((int)get_user_meta($userId,CourierRole::META_KEY,true)!==$saved || !user_can($userId,CourierRole::CAPABILITY)) throw new \RuntimeException('Courier association failed.');
         }
+    }
+    private function evidence(): void
+    {
+        echo '<h2>Comprobantes de entrega</h2><table class="widefat"><tr><th>Entrega</th><th>Estado de evidencia</th><th>Comprobante</th></tr>';
+        foreach ((new \VeciAhorra\Modules\Couriers\Evidence\DeliveryProofRepository())->completed() as $row) {
+            echo '<tr><td>#'.(int)$row['delivery_id'].'</td><td>Confirmada</td><td><a target="_blank" rel="noopener" href="'.esc_url(\VeciAhorra\Modules\Couriers\Evidence\DeliveryProofService::url((int)$row['delivery_id'])).'">Ver comprobante de entrega</a></td></tr>';
+        }
+        echo '</table>';
     }
     private function deliveries(): void
     {

@@ -91,7 +91,14 @@ final class CustomerPanelService
             throw new RecordNotFoundException('La compra no está disponible.');
         }
 
-        return $this->detailDto($projection)->toArray();
+        $detail = $this->detailDto($projection)->toArray();
+        $detail['delivery_proofs'] = [];
+        $proofs = new \VeciAhorra\Modules\Couriers\Evidence\DeliveryProofService();
+        foreach ($projection['deliveries'] as $delivery) {
+            $proof = $proofs->customer((int)$delivery['id']);
+            if ($proof !== null) $detail['delivery_proofs'][] = $proof;
+        }
+        return $detail;
     }
 
     /** @return array<string, mixed>|null */

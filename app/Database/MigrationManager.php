@@ -133,6 +133,7 @@ final class MigrationManager
             new AddCheckoutFeesFoundation(),
             new \VeciAhorra\Database\Migrations\AddCourierTerritory(),
             new \VeciAhorra\Database\Migrations\AddCourierContinuity(),
+            new \VeciAhorra\Database\Migrations\CreateDeliveryProof(),
         ];
     }
 }

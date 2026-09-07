@@ -768,6 +768,22 @@
         var deliveryStatus = element('p', 'va-customer-panel__delivery-status');
         deliveryStatus.append(renderStatusBadge({code: detail.delivery.status, label: detail.delivery.label}));
         deliverySection.append(visualHeading('h3', 'Entrega', 'delivery'), deliveryStatus);
+        (detail.delivery_proofs || []).forEach(function(proof) {
+            var section=element('div','va-customer-panel__delivery-proof');
+            section.append(element('p','','Entrega #'+proof.delivery_id));
+            if (typeof proof.otp==='string' && /^[0-9]{6}$/.test(proof.otp)) {
+                var otp=element('p','','Código de entrega: '+proof.otp);
+                section.append(otp,element('p','','Compártelo con el repartidor sólo al recibir los productos.'));
+                var expires=Date.parse(proof.otp_expires_at);
+                function hideExpired(){if(!Number.isFinite(expires)||Date.now()>=expires)otp.textContent='El código ya no está vigente. Actualiza el detalle.';}
+                hideExpired();window.setTimeout(hideExpired,Math.max(0,expires-Date.now()));
+            }
+            if (typeof proof.evidence_url==='string') {
+                var proofUrl=new URL(proof.evidence_url,window.location.href);
+                if(proofUrl.origin===window.location.origin){var link=element('a','','Ver comprobante de entrega');link.href=proofUrl.href;link.target='_blank';link.rel='noopener';section.append(link);}
+            }
+            deliverySection.append(section);
+        });
         timelineSection = renderTimeline(detail.timeline, state.config);
         headingRow.append(heading, back);
         overview.append(header, summarySection);
