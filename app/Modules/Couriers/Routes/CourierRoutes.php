@@ -15,8 +15,8 @@ final class CourierRoutes
     }
     public function permission():bool|WP_Error{return $this->context->resolve()!==null?true:new WP_Error('courier_forbidden','Courier no autorizado.',['status'=>403]);}
     private function courier():array{return $this->context->resolve()??throw new \RuntimeException('Courier no autorizado.');}
-    public function me():WP_REST_Response{$c=$this->courier();return $this->ok(['id'=>(int)$c['id'],'display_name'=>$c['display_name'],'phone'=>$c['phone'],'email'=>$c['email'],'status'=>$c['status']]);}
-    public function available():WP_REST_Response{return $this->ok($this->service->available());}
+    public function me():WP_REST_Response{$c=$this->courier();return $this->ok(['id'=>(int)$c['id'],'display_name'=>$c['display_name'],'phone'=>$c['phone'],'email'=>$c['email'],'status'=>$c['status'],'service_zone_id'=>(int)$c['service_zone_id'],'service_zone_name'=>$c['service_zone_name']]);}
+    public function available():WP_REST_Response{return $this->ok($this->service->available((int)$this->courier()['id']));}
     public function owned():WP_REST_Response{return $this->ok($this->service->owned((int)$this->courier()['id']));}
     public function detail(WP_REST_Request $r):WP_REST_Response{$d=$this->service->detail((int)$r['id'],(int)$this->courier()['id']);return $d===null?$this->error('delivery_not_found',404):$this->ok($d);}
     public function accept(WP_REST_Request $r):WP_REST_Response{return $this->mutate(fn()=>$this->service->accept((int)$r['id'],(int)$this->courier()['id']));}

@@ -34,10 +34,13 @@ try{
     update_user_meta($ua,CourierRole::META_KEY,$ca);update_user_meta($ub,CourierRole::META_KEY,$cb);
     $customer=wp_create_user("r_customer_{$n}",wp_generate_password(24),"r_customer_{$n}@example.test");rAssert(is_int($customer),'Cliente no creado.');$users[]=$customer;
     $store=rInsert($p.'stores',['business_name'=>'Retiro '.$n,'legal_name'=>'Retiro','owner_name'=>'Owner','rut'=>'R-'.$n,'email'=>'store'.$n.'@example.test','phone'=>'+5622222222','mobile'=>null,'address'=>'Calle Retiro 10','commune'=>'Santiago','city'=>'Santiago','region'=>'RM','status'=>'active','onboarding_status'=>'complete','approved_at'=>$now,'created_at'=>$now,'updated_at'=>$now],$ids);
-    $order=rInsert($p.'orders',['customer_id'=>$customer,'minimarket_id'=>$store,'total'=>'1000.00','status'=>'paid','store_fulfillment_status'=>'ready_for_pickup','store_confirmed_at'=>$now,'store_preparation_started_at'=>$now,'store_ready_for_pickup_at'=>$now,'reservation_expires_at'=>$future,'created_at'=>$now,'updated_at'=>$now],$ids);
-    $checkout=rInsert($p.'checkouts',['public_id'=>'chk_'.rtrim(strtr(base64_encode(random_bytes(32)),'+/','-_'),'='),'owner_type'=>'user','user_id'=>$customer,'session_id'=>null,'status'=>'payment_completed','fulfillment_method'=>'delivery','delivery_recipient_name'=>'Cliente Uno','delivery_contact_phone'=>'+56944444444','delivery_address_line1'=>'Calle Entrega 20','delivery_commune'=>'Providencia','delivery_reference'=>'Casa azul','delivery_notes'=>'Tocar timbre','currency'=>'CLP','total_amount'=>'1000.00','created_at'=>$now,'updated_at'=>$now,'expires_at'=>$future],$ids);
+    $zone=rInsert($p.'service_zones',['commune'=>'Santiago','name'=>'Courier '.$n,'status'=>'active','created_at'=>$now,'updated_at'=>$now],$ids);
+    rInsert($p.'store_service_zones',['zone_id'=>$zone,'store_id'=>$store,'assigned_by'=>$ua,'assigned_at'=>$now],$ids);
+    foreach([$ca,$cb] as $courierId)$wpdb->update($p.'couriers',['service_zone_id'=>$zone],['id'=>$courierId]);
+    $order=rInsert($p.'orders',['service_zone_id'=>$zone,'customer_id'=>$customer,'minimarket_id'=>$store,'total'=>'1000.00','status'=>'paid','store_fulfillment_status'=>'ready_for_pickup','store_confirmed_at'=>$now,'store_preparation_started_at'=>$now,'store_ready_for_pickup_at'=>$now,'reservation_expires_at'=>$future,'created_at'=>$now,'updated_at'=>$now],$ids);
+    $checkout=rInsert($p.'checkouts',['service_zone_id'=>$zone,'public_id'=>'chk_'.rtrim(strtr(base64_encode(random_bytes(32)),'+/','-_'),'='),'owner_type'=>'user','user_id'=>$customer,'session_id'=>null,'status'=>'payment_completed','fulfillment_method'=>'delivery','delivery_recipient_name'=>'Cliente Uno','delivery_contact_phone'=>'+56944444444','delivery_address_line1'=>'Calle Entrega 20','delivery_commune'=>'Providencia','delivery_reference'=>'Casa azul','delivery_notes'=>'Tocar timbre','currency'=>'CLP','total_amount'=>'1000.00','created_at'=>$now,'updated_at'=>$now,'expires_at'=>$future],$ids);
     rInsert($p.'checkout_orders',['checkout_id'=>$checkout,'order_id'=>$order,'created_at'=>$now],$ids);
-    $delivery=rInsert($p.'deliveries',['order_id'=>$order,'customer_id'=>$customer,'minimarket_id'=>$store,'courier_id'=>null,'status'=>'pending','delivery_recipient_name'=>'Cliente Uno','delivery_contact_phone'=>'+56944444444','delivery_address_line1'=>'Calle Entrega 20','delivery_commune'=>'Providencia','delivery_reference'=>'Casa azul','delivery_notes'=>'Tocar timbre','created_at'=>$now,'updated_at'=>$now],$ids);
+    $delivery=rInsert($p.'deliveries',['service_zone_id'=>$zone,'order_id'=>$order,'customer_id'=>$customer,'minimarket_id'=>$store,'courier_id'=>null,'status'=>'pending','delivery_recipient_name'=>'Cliente Uno','delivery_contact_phone'=>'+56944444444','delivery_address_line1'=>'Calle Entrega 20','delivery_commune'=>'Providencia','delivery_reference'=>'Casa azul','delivery_notes'=>'Tocar timbre','created_at'=>$now,'updated_at'=>$now],$ids);
 
     rAssert(get_role(CourierRole::ROLE)?->has_cap(CourierRole::CAPABILITY)===true,'R01 role/capability');
     rAssert((new CourierRepository())->isApproved(['status'=>'approved','approved_at'=>null])&&! (new CourierRepository())->isApproved(['approved_at'=>$now,'is_approved'=>1]),'R02 autoridad status');
@@ -64,7 +67,7 @@ try{
 }finally{
     wp_set_current_user(0);
     foreach($ids[$p.'deliveries']??[] as $deliveryId)$wpdb->delete($p.'delivery_tracking',['delivery_id'=>$deliveryId]);
-    foreach([$p.'deliveries',$p.'checkout_orders',$p.'checkouts',$p.'orders',$p.'couriers',$p.'stores'] as $table){foreach(array_reverse($ids[$table]??[]) as $id)$wpdb->delete($table,['id'=>$id]);}
+    foreach([$p.'deliveries',$p.'checkout_orders',$p.'checkouts',$p.'orders',$p.'couriers',$p.'store_service_zones',$p.'stores',$p.'service_zones'] as $table){foreach(array_reverse($ids[$table]??[]) as $id)$wpdb->delete($table,['id'=>$id]);}
     foreach(array_reverse($users) as $id)wp_delete_user($id);
     foreach($temporary as $table){rAssert(str_starts_with($table,$p.'r_clean_'.$n.'_'),'Target temporal invalido.');$wpdb->query('DROP TABLE IF EXISTS `'.esc_sql($table).'`');}
 }

@@ -21,6 +21,7 @@ final class OrderSchema implements TableInterface
     {
         $table
             ->id()
+            ->bigIntegerUnsigned('service_zone_id')->nullable()->defaultNull()
             ->bigIntegerUnsigned('customer_id')
             ->bigIntegerUnsigned('minimarket_id')
             ->decimal('total', 10, 2)

@@ -18,6 +18,7 @@ final class CheckoutSchema implements TableInterface
     {
         $table
             ->id()
+            ->bigIntegerUnsigned('service_zone_id')->nullable()->defaultNull()
             ->string('public_id', 64)
             ->string('owner_type', 16)
             ->bigIntegerUnsigned('user_id')->nullable()

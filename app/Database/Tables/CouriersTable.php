@@ -14,6 +14,7 @@ final class CouriersTable implements TableInterface
     public function define(TableBuilder $table): void
     {
         $table->id()
+            ->bigIntegerUnsigned('service_zone_id')->nullable()->defaultNull()
             ->string('display_name', 150)
             ->string('phone', 30)
             ->string('email', 150)->nullable()

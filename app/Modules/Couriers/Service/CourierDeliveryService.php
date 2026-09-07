@@ -8,14 +8,16 @@ use VeciAhorra\Modules\Couriers\Repository\CourierDeliveryRepository;
 final class CourierDeliveryService
 {
     public function __construct(private CourierDeliveryRepository $repository = new CourierDeliveryRepository()) {}
-    public function available(): array { return array_map([$this,'publicData'],$this->repository->available()); }
+    public function available(int $courierId): array { return array_map([$this,'publicData'],$this->repository->available($courierId)); }
     public function owned(int $courierId): array { return array_map([$this,'publicData'],$this->repository->owned($courierId)); }
     public function detail(int $id,int $courierId): ?array { $row=$this->repository->findOwned($id,$courierId); return $row===null?null:$this->publicData($row); }
     public function accept(int $id,int $courierId): array
     {
+        return (new \VeciAhorra\Modules\Checkout\Repository\CheckoutRepository())->transaction(function () use ($id, $courierId): array {
+        $this->repository->assertCourierTerritory($id, $courierId);
         $candidate=$this->repository->find($id);
         if($candidate===null) throw new \OutOfBoundsException('delivery_not_found');
-        if($this->repository->findAvailable($id)===null){
+        if($this->repository->findAvailable($id,$courierId)===null){
             if((int)($candidate['courier_id']??0)===$courierId&&($candidate['status']??null)==='assigned')return $this->publicData($candidate);
             throw new DomainException(($candidate['courier_id']??null)!==null?'delivery_assignment_conflict':'delivery_not_available');
         }
@@ -23,6 +25,7 @@ final class CourierDeliveryService
         $current=$this->repository->find($id);
         if((int)($current['courier_id']??0)===$courierId && ($current['status']??null)==='assigned') return $this->publicData($current);
         throw new DomainException(($current['courier_id']??null)!==null?'delivery_assignment_conflict':'delivery_not_available');
+        });
     }
     public function transition(int $id,int $courierId,string $target): array
     {
@@ -43,7 +46,7 @@ final class CourierDeliveryService
     }
     public function publicData(array $r): array
     {
-        return ['id'=>(int)$r['id'],'order_id'=>(int)$r['order_id'],'status'=>(string)$r['status'],'created_at'=>$r['created_at'],'updated_at'=>$r['updated_at'],
+        return ['service_zone_id'=>(int)$r['service_zone_id'],'id'=>(int)$r['id'],'order_id'=>(int)$r['order_id'],'status'=>(string)$r['status'],'created_at'=>$r['created_at'],'updated_at'=>$r['updated_at'],
             'minimarket'=>['name'=>$r['minimarket'],'address'=>$r['pickup_address'],'commune'=>$r['pickup_commune'],'phone'=>$r['pickup_phone']],
             'delivery'=>['recipient_name'=>$r['delivery_recipient_name'],'contact_phone'=>$r['delivery_contact_phone'],'address_line1'=>$r['delivery_address_line1'],'commune'=>$r['delivery_commune'],'reference'=>$r['delivery_reference'],'notes'=>$r['delivery_notes']]];
     }

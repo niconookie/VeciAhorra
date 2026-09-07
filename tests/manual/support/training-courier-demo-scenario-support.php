@@ -166,7 +166,7 @@ function vaCourierDemoCourierProjection(array $rows, int $courierId): array
 {
     $repository = new CourierDeliveryRepository();
     $fixtureIds = array_map(static fn(array $row): int => (int) $row['delivery_id'], $rows);
-    $available = array_values(array_filter($repository->available(), static fn(array $row): bool => in_array((int) $row['id'], $fixtureIds, true)));
+    $available = array_values(array_filter($repository->available($courierId), static fn(array $row): bool => in_array((int) $row['id'], $fixtureIds, true)));
     $owned = array_values(array_filter($repository->owned($courierId), static fn(array $row): bool => in_array((int) $row['id'], $fixtureIds, true)));
     $assigned = array_values(array_filter($owned, static fn(array $row): bool => $row['status'] === 'assigned'));
     $inProgress = array_values(array_filter($owned, static fn(array $row): bool => $row['status'] === 'picked_up'));

@@ -13,6 +13,10 @@ final class CourierContext
         $id = filter_var(get_user_meta(get_current_user_id(), CourierRole::META_KEY, true), FILTER_VALIDATE_INT);
         if (! is_int($id) || $id <= 0) return null;
         $courier = $this->repository->find($id);
-        return $courier !== null && $this->repository->isApproved($courier) ? $courier : null;
+        if ($courier === null || ! $this->repository->isApproved($courier)) return null;
+        $zone = (new \VeciAhorra\Modules\Sectorization\ServiceZoneRepository())->findActive((int) ($courier['service_zone_id'] ?? 0));
+        if ($zone === null) return null;
+        $courier['service_zone_name'] = $zone['name'];
+        return $courier;
     }
 }

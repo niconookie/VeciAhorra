@@ -21,6 +21,7 @@ final class DeliverySchema implements TableInterface
     {
         $table
             ->id()
+            ->bigIntegerUnsigned('service_zone_id')->nullable()->defaultNull()
             ->bigIntegerUnsigned('order_id')
             ->bigIntegerUnsigned('customer_id')
             ->bigIntegerUnsigned('minimarket_id')
@@ -40,6 +41,7 @@ final class DeliverySchema implements TableInterface
             ->index('customer_id', 'deliveries_customer_id_index')
             ->index('minimarket_id', 'deliveries_minimarket_id_index')
             ->index('courier_id', 'deliveries_courier_id_index')
-            ->index('status', 'deliveries_status_index');
+            ->index('status', 'deliveries_status_index')
+            ->index(['service_zone_id', 'status', 'courier_id'], 'deliveries_zone_available_index');
     }
 }

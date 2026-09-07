@@ -61,6 +61,9 @@ final class CourierRepository extends Repository
         if (! (($status === 'approved' && in_array($from, ['pending','inactive'], true)) || ($status === 'inactive' && in_array($from, ['pending','approved'], true)))) {
             throw new \DomainException('Transicion Courier invalida.');
         }
+        if ($status === 'approved') {
+            (new \VeciAhorra\Modules\Sectorization\TerritorialAuthority())->activeZone((int) ($current['service_zone_id'] ?? 0), true);
+        }
         $data = ['status'=>$status, 'updated_at'=>$now];
         if ($status === 'approved') $data['approved_at'] = $now;
         if ($this->db()->update($this->table(self::TABLE), $data, ['id'=>$id]) === false) throw new \RuntimeException('No fue posible cambiar Courier.');

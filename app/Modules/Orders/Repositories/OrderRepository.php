@@ -36,6 +36,17 @@ class OrderRepository extends Repository
         'updated_at',
     ];
 
+    /** Freeze once, only while attaching a reserved Order to its new Checkout. */
+    public function freezeServiceZone(int $id, int $zoneId): void
+    {
+        if ($zoneId <= 0) throw new \InvalidArgumentException('service_zone_required');
+        $result = $this->db()->query($this->db()->prepare(
+            "UPDATE {$this->table(self::ORDERS_TABLE)} SET service_zone_id=%d WHERE id=%d AND status='reserved' AND service_zone_id IS NULL",
+            $zoneId, $id
+        ));
+        if ($result !== 1) throw new PersistenceException('order_zone_snapshot_conflict');
+    }
+
     public function create(array $order): int
     {
         $result = $this->db()->insert(

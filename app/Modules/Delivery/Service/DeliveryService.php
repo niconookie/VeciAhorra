@@ -75,8 +75,21 @@ final class DeliveryService
             );
         }
 
+        $checkout = (new \VeciAhorra\Modules\Delivery\Completion\Repository\DeliveryCompletionRepository())->checkoutForOrder($orderId);
+        $zoneId = (int) ($order['service_zone_id'] ?? 0);
+        if ($zoneId <= 0 || $zoneId !== (int) ($checkout['service_zone_id'] ?? 0)
+            || ($checkout['fulfillment_method'] ?? null) !== 'delivery') {
+            throw new InvalidArgumentException('delivery_zone_snapshot_invalid');
+        }
+        (new \VeciAhorra\Modules\Sectorization\TerritorialAuthority())->storeInZone($zoneId, (int) $order['minimarket_id']);
+        $snapshot = [];
+        foreach (['delivery_recipient_name','delivery_contact_phone','delivery_address_line1','delivery_commune','delivery_reference','delivery_notes'] as $field) {
+            $snapshot[$field] = $checkout[$field] ?? null;
+        }
         $now = current_time('mysql');
         $deliveryId = $this->repository->create([
+            ...$snapshot,
+            'service_zone_id' => $zoneId,
             'order_id' => $orderId,
             'customer_id' => (int) $order['customer_id'],
             'minimarket_id' => (int) $order['minimarket_id'],
@@ -113,6 +126,9 @@ final class DeliveryService
             );
         }
 
+        if ($status === Delivery::STATUS_ASSIGNED) {
+            throw new DomainException('Use courier assignment with territorial validation.');
+        }
         $currentStatus = (string) $delivery['status'];
         $allowedNextStatuses = self::TRANSITIONS[$currentStatus] ?? [];
 
@@ -163,48 +179,7 @@ final class DeliveryService
      */
     public function assignCourier(int $deliveryId, int $courierId): array
     {
-        $delivery = $this->repository->find($deliveryId);
-
-        if ($delivery === null) {
-            throw new RecordNotFoundException('Delivery not found.');
-        }
-
-        if (isset($delivery['courier_id']) && $delivery['courier_id'] !== null) {
-            throw new DomainException('Delivery already assigned.');
-        }
-
-        if ((string) $delivery['status'] !== Delivery::STATUS_PENDING) {
-            throw new DomainException(
-                'Delivery cannot be assigned in current state.'
-            );
-        }
-
-        $courier = $this->courierRepository->find($courierId);
-
-        if ($courier === null) {
-            throw new RecordNotFoundException('Courier not found.');
-        }
-
-        if (! $this->courierRepository->isApproved($courier)) {
-            throw new InvalidArgumentException('Courier is not approved.');
-        }
-
-        $this->repository->assignCourier(
-            $deliveryId,
-            $courierId,
-            current_time('mysql')
-        );
-        $this->trackingService->recordTracking(
-            $deliveryId,
-            null,
-            null,
-            Delivery::STATUS_ASSIGNED
-        );
-
-        return $this->repository->find($deliveryId)
-            ?? throw new RuntimeException(
-                'No fue posible recuperar la entrega asignada.'
-            );
+        return (new \VeciAhorra\Modules\Couriers\Service\CourierDeliveryService())->accept($deliveryId, $courierId);
     }
 
     /**

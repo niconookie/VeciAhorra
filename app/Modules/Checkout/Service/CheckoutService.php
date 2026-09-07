@@ -199,7 +199,7 @@ final class CheckoutService
             'reservation_created' => true,
             'order_created' => true,
             'expires_at' => $expiresAt,
-            'orders' => $orders,
+            'orders' => $this->orderRepository->findMany(array_column($orders, 'id')),
             'reservations' => $reservations,
             'summary' => $validation['summary'],
             'checkout' => $checkout,
@@ -236,6 +236,9 @@ final class CheckoutService
                 );
             }
 
+            $zoneId = (new \VeciAhorra\Modules\Sectorization\CurrentSector())->id();
+            $territory = new \VeciAhorra\Modules\Sectorization\TerritorialAuthority();
+            $territory->activeZone($zoneId, true);
             $totalCents = 0;
             $expiresAt = null;
 
@@ -313,6 +316,10 @@ final class CheckoutService
                 throw new ConflictException('La suma del snapshot financiero no coincide.', 'state_conflict');
             }
 
+            foreach ($orders as $order) {
+                $territory->storeInZone($zoneId, (int) $order['minimarket_id'], true);
+                $this->orderRepository->freezeServiceZone((int) $order['id'], $zoneId);
+            }
             $now = current_time('mysql');
             $key = isset($ownerInput['idempotency_key'])
                 ? $this->idempotencyService->key((string) $ownerInput['idempotency_key'])
@@ -320,6 +327,7 @@ final class CheckoutService
             $ownerKey = $this->ownerKey($owner);
             $fingerprint = hash('sha256', (string) wp_json_encode([
                 'operation' => 'checkout.create.v2',
+                'service_zone_id' => $zoneId,
                 'owner_key' => $ownerKey,
                 'fulfillment_method' => $method,
                 'delivery' => $this->deliverySnapshot($ownerInput, $method),
@@ -334,6 +342,7 @@ final class CheckoutService
             $snapshot = $this->deliverySnapshot($ownerInput, $method);
             $id = $this->checkoutRepository->create([
                 'public_id' => Checkout::publicId(),
+                'service_zone_id' => $zoneId,
                 'owner_type' => $owner['owner_type'],
                 'user_id' => $owner['user_id'],
                 'session_id' => $owner['session_id'],

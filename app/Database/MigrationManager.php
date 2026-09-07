@@ -131,6 +131,7 @@ final class MigrationManager
             new CreateStoreOnboardingActivationSessionFoundation(),
             new CreateStoreOnboardingRateLimitFoundation(),
             new AddCheckoutFeesFoundation(),
+            new \VeciAhorra\Database\Migrations\AddCourierTerritory(),
         ];
     }
 }

@@ -90,6 +90,16 @@ final class DeliveryCompletionProcessor implements DeliveryCompletionAttemptProc
                     }
                     $orderId = (int) $order['id'];
                     $checkout = $this->completions->checkoutForOrder($orderId);
+                    $zoneId = (int) ($order['service_zone_id'] ?? 0);
+                    if ($zoneId <= 0 || $zoneId !== (int) ($checkout['service_zone_id'] ?? 0)
+                        || ($checkout['fulfillment_method'] ?? null) !== 'delivery') {
+                        throw new DeliveryCompletionFailure('delivery_zone_snapshot_invalid', DeliveryCompletionResult::MANUAL_REVIEW);
+                    }
+                    try {
+                        (new \VeciAhorra\Modules\Sectorization\TerritorialAuthority())->storeInZone($zoneId, (int) $order['minimarket_id'], true);
+                    } catch (\DomainException) {
+                        throw new DeliveryCompletionFailure('delivery_store_zone_invalid', DeliveryCompletionResult::MANUAL_REVIEW);
+                    }
                     $required = ['delivery_recipient_name','delivery_contact_phone','delivery_address_line1','delivery_commune'];
                     if ($checkout === null || array_filter($required, static fn(string $field): bool => trim((string) ($checkout[$field] ?? '')) === '') !== []) {
                         throw new DeliveryCompletionFailure('delivery_snapshot_invalid', DeliveryCompletionResult::MANUAL_REVIEW);
@@ -98,6 +108,7 @@ final class DeliveryCompletionProcessor implements DeliveryCompletionAttemptProc
                     if ($delivery === null) {
                         $deliveryId = $this->deliveries->create([
                             'order_id' => $orderId,
+                            'service_zone_id' => $zoneId,
                             'customer_id' => (int) $order['customer_id'],
                             'minimarket_id' => (int) $order['minimarket_id'],
                             'courier_id' => null,
@@ -114,6 +125,7 @@ final class DeliveryCompletionProcessor implements DeliveryCompletionAttemptProc
                         $delivery = $this->deliveries->find($deliveryId);
                     }
                     if ($delivery === null
+                        || (int) ($delivery['service_zone_id'] ?? 0) !== $zoneId
                         || (int) $delivery['order_id'] !== $orderId
                         || (int) $delivery['customer_id'] !== (int) $order['customer_id']
                         || (int) $delivery['minimarket_id'] !== (int) $order['minimarket_id']

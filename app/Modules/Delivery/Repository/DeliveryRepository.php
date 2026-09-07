@@ -16,6 +16,7 @@ final class DeliveryRepository extends Repository
 
     private const FIELDS = [
         'order_id',
+        'service_zone_id',
         'customer_id',
         'minimarket_id',
         'courier_id',
