@@ -21,6 +21,7 @@ final class DeliverySchema implements TableInterface
     {
         $table
             ->id()
+            ->bigIntegerUnsigned('transition_version')->default('0')
             ->bigIntegerUnsigned('service_zone_id')->nullable()->defaultNull()
             ->bigIntegerUnsigned('order_id')
             ->bigIntegerUnsigned('customer_id')

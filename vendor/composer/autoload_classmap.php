@@ -251,6 +251,7 @@ return array(
     'VeciAhorra\\Database\\Installer' => $baseDir . '/app/Database/Installer.php',
     'VeciAhorra\\Database\\MigrationManager' => $baseDir . '/app/Database/MigrationManager.php',
     'VeciAhorra\\Database\\Migrations\\AddCheckoutFeesFoundation' => $baseDir . '/app/Database/Migrations/AddCheckoutFeesFoundation.php',
+    'VeciAhorra\\Database\\Migrations\\AddCourierContinuity' => $baseDir . '/app/Database/Migrations/AddCourierContinuity.php',
     'VeciAhorra\\Database\\Migrations\\AddCourierTerritory' => $baseDir . '/app/Database/Migrations/AddCourierTerritory.php',
     'VeciAhorra\\Database\\Migrations\\AddDurableWebpayCreateState' => $baseDir . '/app/Database/Migrations/AddDurableWebpayCreateState.php',
     'VeciAhorra\\Database\\Migrations\\AddStoreFulfillmentState' => $baseDir . '/app/Database/Migrations/AddStoreFulfillmentState.php',

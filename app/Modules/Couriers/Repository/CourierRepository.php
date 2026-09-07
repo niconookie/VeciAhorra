@@ -53,8 +53,18 @@ final class CourierRepository extends Repository
         return $id;
     }
 
+    /** Internal write under the suspension service's Courier lock and transaction. */
+    public function setInactive(int $id, string $from, string $now): void
+    {
+        if ($this->db()->update($this->table(self::TABLE), ['status'=>'inactive','updated_at'=>$now], ['id'=>$id,'status'=>$from]) !== 1) throw new \RuntimeException('courier_suspension_failed');
+    }
+
     public function transition(int $id, string $status, string $now): void
     {
+        if ($status === 'inactive') {
+            (new \VeciAhorra\Modules\Couriers\Service\CourierDeliveryService())->suspend($id,$now);
+            return;
+        }
         $current = $this->find($id) ?? throw new \RuntimeException('Courier inexistente.');
         $from = (string) $current['status'];
         if ($from === $status) return;

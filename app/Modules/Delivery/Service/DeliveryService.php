@@ -18,22 +18,6 @@ use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
  */
 final class DeliveryService
 {
-    private const TRANSITIONS = [
-        Delivery::STATUS_PENDING => [
-            Delivery::STATUS_ASSIGNED,
-            Delivery::STATUS_CANCELLED,
-        ],
-        Delivery::STATUS_ASSIGNED => [
-            Delivery::STATUS_PICKED_UP,
-            Delivery::STATUS_CANCELLED,
-        ],
-        Delivery::STATUS_PICKED_UP => [
-            Delivery::STATUS_DELIVERED,
-        ],
-        Delivery::STATUS_DELIVERED => [],
-        Delivery::STATUS_CANCELLED => [],
-    ];
-
     public function __construct(
         private DeliveryRepository $repository,
         private OrderRepository $orderRepository,
@@ -112,74 +96,19 @@ final class DeliveryService
     /**
      * @return array<string, mixed>
      */
-    public function updateStatus(int $deliveryId, string $status): array
+    public function updateStatus(int $deliveryId, string $status, int $version = -1): array
     {
-        $delivery = $this->repository->find($deliveryId);
-
-        if ($delivery === null) {
-            throw new RecordNotFoundException('Delivery not found.');
-        }
-
-        if (! in_array($status, Delivery::allowedStatuses(), true)) {
-            throw new InvalidArgumentException(
-                'Invalid delivery status.'
-            );
-        }
-
-        if ($status === Delivery::STATUS_ASSIGNED) {
-            throw new DomainException('Use courier assignment with territorial validation.');
-        }
-        $currentStatus = (string) $delivery['status'];
-        $allowedNextStatuses = self::TRANSITIONS[$currentStatus] ?? [];
-
-        if (! in_array($status, $allowedNextStatuses, true)) {
-            throw new DomainException(
-                'Invalid delivery state transition.'
-            );
-        }
-
-        $now = current_time('mysql');
-
-        if ($status === Delivery::STATUS_DELIVERED) {
-            $this->orderRepository->markDelivered(
-                (int) $delivery['order_id'],
-                $now
-            );
-        }
-
-        $this->repository->updateStatus($deliveryId, $status, $now);
-
-        if (
-            in_array(
-                $status,
-                [
-                    Delivery::STATUS_ASSIGNED,
-                    Delivery::STATUS_PICKED_UP,
-                    Delivery::STATUS_DELIVERED,
-                ],
-                true
-            )
-        ) {
-            $this->trackingService->recordTracking(
-                $deliveryId,
-                null,
-                null,
-                $status
-            );
-        }
-
-        return $this->repository->find($deliveryId)
-            ?? throw new RuntimeException(
-                'No fue posible recuperar la entrega actualizada.'
-            );
+        return (new \VeciAhorra\Modules\Couriers\Service\CourierDeliveryService())->adminTransition($deliveryId,$status,$version);
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function assignCourier(int $deliveryId, int $courierId): array
+    public function assignCourier(int $deliveryId, int $courierId, ?int $version = null, ?string $reason = null): array
     {
-        return (new \VeciAhorra\Modules\Couriers\Service\CourierDeliveryService())->accept($deliveryId, $courierId);
+        $service = new \VeciAhorra\Modules\Couriers\Service\CourierDeliveryService();
+        if ($reason !== null) return $service->adminChange($deliveryId,$courierId > 0 ? $courierId : null,$reason,$version ?? -1);
+        return $service->adminAssign($deliveryId,$courierId,$version);
     }
 
     /**

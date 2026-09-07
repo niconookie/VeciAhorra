@@ -33,6 +33,7 @@ final class DeliveryTrackingService
         ?float $longitude,
         string $event
     ): array {
+        if ($event !== 'location_update') throw new DomainException('Use atomic delivery transitions.');
         $delivery = $this->deliveryRepository->find($deliveryId);
 
         if ($delivery === null) {

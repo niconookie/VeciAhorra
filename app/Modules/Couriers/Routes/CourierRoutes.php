@@ -11,7 +11,7 @@ final class CourierRoutes
     public function __construct(private CourierContext $context=new CourierContext(),private CourierDeliveryService $service=new CourierDeliveryService()){}
     public function register():void
     {
-        foreach([['/courier/me','GET','me'],['/courier/deliveries/available','GET','available'],['/courier/deliveries','GET','owned'],['/courier/deliveries/(?P<id>\d+)','GET','detail'],['/courier/deliveries/(?P<id>\d+)/accept','POST','accept'],['/courier/deliveries/(?P<id>\d+)/picked-up','POST','pickedUp'],['/courier/deliveries/(?P<id>\d+)/delivered','POST','delivered']] as [$path,$method,$callback]) register_rest_route('veciahorra/v1',$path,['methods'=>$method,'callback'=>[$this,$callback],'permission_callback'=>[$this,'permission']]);
+        foreach([['/courier/me','GET','me'],['/courier/deliveries/available','GET','available'],['/courier/deliveries','GET','owned'],['/courier/deliveries/(?P<id>\d+)','GET','detail'],['/courier/deliveries/(?P<id>\d+)/accept','POST','accept'],['/courier/deliveries/(?P<id>\d+)/picked-up','POST','pickedUp'],['/courier/deliveries/(?P<id>\d+)/delivered','POST','delivered'],['/courier/deliveries/(?P<id>\d+)/abandon','POST','abandon']] as [$path,$method,$callback]) register_rest_route('veciahorra/v1',$path,['methods'=>$method,'callback'=>[$this,$callback],'permission_callback'=>[$this,'permission']]);
     }
     public function permission():bool|WP_Error{return $this->context->resolve()!==null?true:new WP_Error('courier_forbidden','Courier no autorizado.',['status'=>403]);}
     private function courier():array{return $this->context->resolve()??throw new \RuntimeException('Courier no autorizado.');}
@@ -19,9 +19,19 @@ final class CourierRoutes
     public function available():WP_REST_Response{return $this->ok($this->service->available((int)$this->courier()['id']));}
     public function owned():WP_REST_Response{return $this->ok($this->service->owned((int)$this->courier()['id']));}
     public function detail(WP_REST_Request $r):WP_REST_Response{$d=$this->service->detail((int)$r['id'],(int)$this->courier()['id']);return $d===null?$this->error('delivery_not_found',404):$this->ok($d);}
-    public function accept(WP_REST_Request $r):WP_REST_Response{return $this->mutate(fn()=>$this->service->accept((int)$r['id'],(int)$this->courier()['id']));}
-    public function pickedUp(WP_REST_Request $r):WP_REST_Response{return $this->mutate(fn()=>$this->service->transition((int)$r['id'],(int)$this->courier()['id'],'picked_up'));}
-    public function delivered(WP_REST_Request $r):WP_REST_Response{return $this->mutate(fn()=>$this->service->transition((int)$r['id'],(int)$this->courier()['id'],'delivered'));}
+    public function accept(WP_REST_Request $r):WP_REST_Response{return $this->mutate(fn()=>$this->service->accept((int)$r['id'],(int)$this->courier()['id'],$this->version($r)));}
+    public function pickedUp(WP_REST_Request $r):WP_REST_Response{return $this->mutate(fn()=>$this->service->transition((int)$r['id'],(int)$this->courier()['id'],'picked_up',$this->version($r)));}
+    public function delivered(WP_REST_Request $r):WP_REST_Response{return $this->mutate(fn()=>$this->service->transition((int)$r['id'],(int)$this->courier()['id'],'delivered',$this->version($r)));}
+    private function version(WP_REST_Request $r): int
+    {
+        $value = $r['expected_version'] ?? null;
+        if (filter_var($value,FILTER_VALIDATE_INT,['options'=>['min_range'=>0]]) === false || $value === null) throw new \DomainException('expected_version_required');
+        return (int)$value;
+    }
+    public function abandon(WP_REST_Request $r): WP_REST_Response
+    {
+        return $this->mutate(fn()=>$this->service->abandon((int)$r['id'],(int)$this->courier()['id'],(string)($r['reason']??''),$this->version($r)));
+    }
     private function mutate(callable $cb):WP_REST_Response{try{return $this->ok($cb());}catch(\OutOfBoundsException){return $this->error('delivery_not_found',404);}catch(\DomainException $e){return $this->error($e->getMessage(),409);}catch(\Throwable){return $this->error('internal_error',500);}}
     private function ok(mixed $data):WP_REST_Response{return new WP_REST_Response(['success'=>true,'data'=>$data],200);}
     private function error(string $code,int $status):WP_REST_Response{return new WP_REST_Response(['success'=>false,'error'=>['code'=>$code,'message'=>'No fue posible completar la operacion.']],$status);}

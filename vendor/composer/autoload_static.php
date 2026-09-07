@@ -321,6 +321,7 @@ class ComposerStaticInit82175e0df2c9cb76839979e7207e74c4
         'VeciAhorra\\Database\\Installer' => __DIR__ . '/../..' . '/app/Database/Installer.php',
         'VeciAhorra\\Database\\MigrationManager' => __DIR__ . '/../..' . '/app/Database/MigrationManager.php',
         'VeciAhorra\\Database\\Migrations\\AddCheckoutFeesFoundation' => __DIR__ . '/../..' . '/app/Database/Migrations/AddCheckoutFeesFoundation.php',
+        'VeciAhorra\\Database\\Migrations\\AddCourierContinuity' => __DIR__ . '/../..' . '/app/Database/Migrations/AddCourierContinuity.php',
         'VeciAhorra\\Database\\Migrations\\AddCourierTerritory' => __DIR__ . '/../..' . '/app/Database/Migrations/AddCourierTerritory.php',
         'VeciAhorra\\Database\\Migrations\\AddDurableWebpayCreateState' => __DIR__ . '/../..' . '/app/Database/Migrations/AddDurableWebpayCreateState.php',
         'VeciAhorra\\Database\\Migrations\\AddStoreFulfillmentState' => __DIR__ . '/../..' . '/app/Database/Migrations/AddStoreFulfillmentState.php',

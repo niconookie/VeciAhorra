@@ -74,7 +74,8 @@ final class DeliveryController
                 'success' => true,
                 'data' => $this->service->updateStatus(
                     $id,
-                    (string) ($payload['status'] ?? '')
+                    (string) ($payload['status'] ?? ''),
+                    $this->version($payload)
                 ),
             ];
         } catch (Throwable $exception) {
@@ -89,7 +90,9 @@ final class DeliveryController
                 'success' => true,
                 'data' => $this->service->assignCourier(
                     $id,
-                    (int) ($payload['courier_id'] ?? 0)
+                    (int) ($payload['courier_id'] ?? 0),
+                    $this->version($payload),
+                    array_key_exists('reason',$payload) ? (string)$payload['reason'] : null
                 ),
             ];
         } catch (Throwable $exception) {
@@ -132,7 +135,7 @@ final class DeliveryController
 
     private function translateException(Throwable $exception): array
     {
-        if ($exception instanceof RecordNotFoundException) {
+        if ($exception instanceof RecordNotFoundException || $exception instanceof \OutOfBoundsException) {
             return [
                 'success' => false,
                 'error' => [
@@ -184,7 +187,13 @@ final class DeliveryController
         ];
     }
 
-    private function notFoundCode(RecordNotFoundException $exception): string
+    private function version(array $payload): int
+    {
+        $value = $payload['expected_version'] ?? null;
+        if ($value === null || filter_var($value,FILTER_VALIDATE_INT,['options'=>['min_range'=>0]]) === false) throw new InvalidArgumentException('expected_version_required');
+        return (int)$value;
+    }
+    private function notFoundCode(\Throwable $exception): string
     {
         return match ($exception->getMessage()) {
             'Courier not found.' => 'courier_not_found',
