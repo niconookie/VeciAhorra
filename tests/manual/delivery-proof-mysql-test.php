@@ -55,7 +55,7 @@ if($race){
         $slow=new class extends PrivateDeliveryStorage {public function move(array $file):void{parent::move($file);echo "LOCKED=1\n";flush();usleep(1200000);}};
         $s=new DeliveryProofService(new DeliveryProofRepository(),new \VeciAhorra\Modules\Couriers\Repository\CourierDeliveryRepository(),$slow);
     }else{echo "STARTED=1\n";flush();}
-    $s->confirm($id,2,(string)$code,['tmp_name'=>$run.'/input.jpg','error'=>0],false,false);
+    $s->confirm($id,2,(string)$code,['tmp_name'=>$run.'/input.jpg','error'=>0],false,false,true);
     echo "RESULT=delivered\n";exit;
 }
 $assertions=0;
@@ -89,6 +89,8 @@ try {
     }
 
     (new \VeciAhorra\Database\Migrations\CreateDeliveryProof())->up();
+    (new \VeciAhorra\Database\Migrations\AddDeliveryEvidenceConfirmation())->up();
+    (new \VeciAhorra\Database\Migrations\AddDeliveryEvidenceConfirmation())->up();
     (new \VeciAhorra\Database\Migrations\CreateDeliveryProof())->up();
     $now=current_time('mysql',true);
     foreach ([1,2,3] as $zone) insertRow('service_zones',['id'=>$zone,'commune'=>'Commune','name'=>'Zone '.$zone,'status'=>$zone===3?'inactive':'active','created_at'=>$now,'updated_at'=>$now]);
@@ -111,6 +113,44 @@ try {
     $bytes=file_get_contents($run.'/input.jpg');$exif="Exif\0\0II".pack('vVv',42,8,1).pack('vvVv',0x112,3,1,6)."\0\0".pack('V',0);
     file_put_contents($run.'/input.jpg',substr($bytes,0,2)."\xff\xe1".pack('n',strlen($exif)+2).$exif.substr($bytes,2));
     $upload=['tmp_name'=>$run.'/input.jpg','error'=>UPLOAD_ERR_OK,'name'=>'untrusted.jpg','type'=>'ignored'];
+    // Native multipart HTTP exercises is_uploaded_file and the productive route/service.
+    $httpConfig=[ABSPATH,$plugin,$run,$database,$GLOBALS['proofSecret'],getenv('VA_TERRITORY_DB_USER')?:'root',getenv('VA_TERRITORY_DB_PASSWORD')?:''];
+    file_put_contents($run.'/upload.php','<?php $proofTestConfig='.var_export($httpConfig,true).';require '.var_export(__DIR__.'/delivery-choice-http-fixture.php',true).';');
+    function postPhoto(int $id,array $fields,string $query=''):array{
+        $curl=curl_init(content_url('/upload.php?id=').$id.$query);
+        curl_setopt_array($curl,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_PROXY=>'',CURLOPT_TIMEOUT=>20,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$fields]);
+        $body=curl_exec($curl);$status=curl_getinfo($curl,CURLINFO_RESPONSE_CODE);curl_close($curl);
+        return [$status,json_decode((string)$body,true)];
+    }
+    $httpFixture=picked();$httpId=$httpFixture['delivery'];$httpCode=ownerCode($httpId);
+    $fields=['expected_version'=>'2','otp'=>$httpCode,'photo'=>new CURLFile($run.'/input.jpg','image/jpeg','camera.jpg')];
+    foreach([null,'0','false','true','2','1x',' 1'] as $value){
+        $attempt=$fields;if($value!==null)$attempt['courier_confirmation']=$value;
+        [$status,$data]=postPhoto($httpId,$attempt);
+        check($status===409&&($data['error']['code']??'')==='courier_confirmation_required','HTTP_CONFIRMATION_REJECTED');
+    }
+    foreach([[$fields,'&courier_confirmation=1'],[array_merge($fields,['courier_confirmation[]'=>'1']),'']] as [$attempt,$query]){
+        [$status,$data]=postPhoto($httpId,$attempt,$query);
+        check($status===409&&($data['error']['code']??'')==='courier_confirmation_required','HTTP_CONFIRMATION_QUERY_ARRAY_REJECTED');
+    }
+    assertUnchanged($httpFixture,0,'http_confirmation_no_writes');
+    [$status,$data]=postPhoto($httpId,['expected_version'=>'2','otp'=>$httpCode,'courier_confirmation'=>'1']);
+    check($status===409&&($data['error']['code']??'')==='photo_required','HTTP_PHOTO_REQUIRED');
+    [$status,$data]=postPhoto($httpId,array_merge($fields,['courier_confirmation'=>'1']));
+    check($status===200&&($data['data']['status']??'')==='delivered','HTTP_CAMERA_ACCEPTED');
+    $savedFixture=picked();$savedId=$savedFixture['delivery'];$savedCode=ownerCode($savedId);
+    [$status,$data]=postPhoto($savedId,['expected_version'=>'2','otp'=>$savedCode,'courier_confirmation'=>'1','photo'=>new CURLFile($run.'/input.png','image/png','previously-saved.png')]);
+    check($status===200&&($data['data']['status']??'')==='delivered','HTTP_SAVED_ACCEPTED_SAME_ROUTE');
+    check($repo->evidence($savedId)['courier_confirmed_at']!==null&&$repo->evidence($httpId)['courier_confirmed_at']!==null,'HTTP_CONFIRMATION_PERSISTED');
+    unlink($run.'/upload.php');
+    // Remove only the two disposable completed fixtures to keep baseline file counts.
+    foreach([$httpId,$savedId] as $completedId){unlink($storage->path($repo->evidence($completedId)['storage_key']));}
+    // Additive upgrade preserves historical NULL without fabricating an attestation.
+    sql('UPDATE t_va_delivery_evidence SET courier_confirmed_at=NULL WHERE delivery_id='.$httpId);
+    sql('ALTER TABLE t_va_delivery_evidence DROP COLUMN courier_confirmed_at');
+    (new \VeciAhorra\Database\Migrations\AddDeliveryEvidenceConfirmation())->up();
+    (new \VeciAhorra\Database\Migrations\AddDeliveryEvidenceConfirmation())->up();
+    check($repo->evidence($httpId)['courier_confirmed_at']===null,'historical_confirmation_not_backfilled');
     check((new VeciAhorra\Database\Migrations\CreateDeliveryProof())->up()===null,'migration_idempotent');
     $a=picked();$id=$a['delivery'];$code=ownerCode($id);$otp=$repo->otp($id);
     check(preg_match('/^[0-9]{6}$/D',$code)===1,'six_digits');
@@ -120,64 +160,71 @@ try {
     check($proof->customer($id)===null,'courier_cannot_read_otp');
     $projected=(new \VeciAhorra\Modules\CustomerPanel\Query\CustomerPurchaseQuery())->deliveries([$a['order']]);
     check((int)$projected[0]['id']===$id,'customer_runtime_query_delivery_identity');
-    rejected(fn()=>$proof->confirm($id,2,$code,[],false,false),'PHOTO_REQUIRED');
-    rejected(fn()=>$proof->confirm($id,2,$code,$upload,true,false),'consent_required');
+    rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false),'CONFIRMATION_OMITTED');
+    rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false,false),'CONFIRMATION_FALSE');
+    assertUnchanged($a,0,'confirmation_no_writes');
+    rejected(fn()=>$proof->confirm($id,2,'',$upload,false,false,true),'OTP_MISSING');
+    check((int)$repo->otp($id)['attempts']===1,'missing_otp_counted');
+    sql("UPDATE t_va_delivery_otps SET attempts=0 WHERE delivery_id={$id}");
+    rejected(fn()=>$proof->confirm($id,2,$code,[],false,false,true),'PHOTO_REQUIRED');
+    rejected(fn()=>$proof->confirm($id,2,$code,$upload,true,false,true),'consent_required');
     $wrong=$code==='000000'?'000001':'000000';
-    rejected(fn()=>$proof->confirm($id,2,$wrong,$upload,false,false),'OTP_WRONG_REJECTED');
+    rejected(fn()=>$proof->confirm($id,2,$wrong,$upload,false,false,true),'OTP_WRONG_REJECTED');
     check((int)$repo->otp($id)['attempts']===1&&nfiles()===0,'wrong_otp_atomic_attempt_no_file');
-    for($i=0;$i<4;$i++)rejected(fn()=>$proof->confirm($id,2,$wrong,$upload,false,false),'wrong_attempt');
-    rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false),'fifth_attempt_locked');
+    for($i=0;$i<4;$i++)rejected(fn()=>$proof->confirm($id,2,$wrong,$upload,false,false,true),'wrong_attempt');
+    rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false,true),'fifth_attempt_locked');
     check((int)$repo->otp($id)['attempts']===5,'attempt_cap');
     identity('customer');check($proof->customer($id)['otp']===null,'locked_otp_hidden');identity('courier',2001);
     assertUnchanged($a,0,'locked_no_close');
     $a=picked();$id=$a['delivery'];$code=ownerCode($id);
     sql("UPDATE t_va_delivery_otps SET expires_at='2000-01-01 00:00:00' WHERE delivery_id={$id}");
-    rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false),'expired_rejected');
+    rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false,true),'expired_rejected');
     identity('customer');check($proof->customer($id)['otp']===null,'expired_otp_hidden');identity('courier',2001);
     $a=picked();$id=$a['delivery'];$code=ownerCode($id);
     sql("UPDATE t_va_delivery_otps SET consumed_at=created_at WHERE delivery_id={$id}");
-    rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false),'consumed_not_delivered_rejected');
+    rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false,true),'consumed_not_delivered_rejected');
     $a=picked();$id=$a['delivery'];$code=ownerCode($id);
-    identity('courier',2002,1002);rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false),'other_courier');
+    identity('courier',2002,1002);rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false,true),'other_courier');
     identity('courier',2001);sql("UPDATE t_va_couriers SET status='inactive' WHERE id=1001");
-    rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false),'suspended_courier');
+    rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false,true),'suspended_courier');
     sql("UPDATE t_va_couriers SET status='approved' WHERE id=1001");
-    rejected(fn()=>$proof->confirm($id,1,$code,$upload,false,false),'obsolete_version');
+    rejected(fn()=>$proof->confirm($id,1,$code,$upload,false,false,true),'obsolete_version');
     file_put_contents($run.'/fake.jpg','this is not an image');
-    rejected(fn()=>$proof->confirm($id,2,$code,['tmp_name'=>$run.'/fake.jpg','error'=>0],false,false),'renamed_fake_rejected');
+    rejected(fn()=>$proof->confirm($id,2,$code,['tmp_name'=>$run.'/fake.jpg','error'=>0],false,false,true),'renamed_fake_rejected');
     $large=fopen($run.'/large.jpg','w');ftruncate($large,8*1024*1024+1);fclose($large);
-    rejected(fn()=>$proof->confirm($id,2,$code,['tmp_name'=>$run.'/large.jpg','error'=>0],false,false),'over_8mb_rejected');
+    rejected(fn()=>$proof->confirm($id,2,$code,['tmp_name'=>$run.'/large.jpg','error'=>0],false,false,true),'over_8mb_rejected');
     rejected(fn()=>$storage->path('../input.jpg'),'PATH_TRAVERSAL');
     rejected(fn()=>$storage->path(str_repeat('a',64).'.jpg/../input.jpg'),'path_suffix_rejected');
-    sql('START TRANSACTION');rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false),'nested_transaction_closed');sql('ROLLBACK');
+    sql('START TRANSACTION');rejected(fn()=>$proof->confirm($id,2,$code,$upload,false,false,true),'nested_transaction_closed');sql('ROLLBACK');
     $files=nfiles();
     foreach(['tracking'=>'delivery_tracking','order'=>'orders','otp'=>'delivery_otps','evidence'=>'delivery_evidence'] as $kind=>$table){
         $operation=$kind==='tracking'?'INSERT':'UPDATE';
         sql("CREATE TRIGGER proof_fail BEFORE {$operation} ON t_va_{$table} FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected write failure'");
-        failWrite(fn()=>$proof->confirm($id,2,$code,$upload,false,false),'injected_'.$kind);
+        failWrite(fn()=>$proof->confirm($id,2,$code,$upload,false,false,true),'injected_'.$kind);
         assertUnchanged($a,$files,'ATOMIC_ROLLBACK_'.$kind);
         sql('DROP TRIGGER proof_fail');
     }
     $brokenStorage=new class extends PrivateDeliveryStorage {public function move(array $file):void{unlink($this->path($file['temp']));parent::move($file);}};
     $broken=new DeliveryProofService(new DeliveryProofRepository(),new VeciAhorra\Modules\Couriers\Repository\CourierDeliveryRepository(),$brokenStorage);
-    failWrite(fn()=>$broken->confirm($id,2,$code,$upload,false,false),'native_move_failure');
+    failWrite(fn()=>$broken->confirm($id,2,$code,$upload,false,false,true),'native_move_failure');
     assertUnchanged($a,$files,'move_rollback');
     sql("UPDATE t_va_orders SET status='cancelled' WHERE id={$a['order']}");
-    failWrite(fn()=>$proof->confirm($id,2,$code,$upload,false,false),'order_zero');
+    failWrite(fn()=>$proof->confirm($id,2,$code,$upload,false,false,true),'order_zero');
     check(row('deliveries',$id)['status']==='picked_up'&&$repo->evidence($id)===null&&nfiles()===$files,'order_zero_compensates');
     sql("UPDATE t_va_orders SET status='paid' WHERE id={$a['order']}");
-    check($proof->confirm($id,2,$code,$upload,false,false)['status']==='delivered','valid_photo_otp_delivery');
+    check($proof->confirm($id,2,$code,$upload,false,false,true)['status']==='delivered','valid_photo_otp_delivery');
     $e=$repo->evidence($id);$path=$storage->path($e['storage_key']);$size=getimagesize($path);
     check($e['status']==='completed'&&$repo->otp($id)['consumed_at']!==null&&row('orders',$a['order'])['status']==='delivered'&&countEvents($id)===3,'delivery_order_otp_evidence_tracking_committed');
+    check($e['courier_confirmed_at']===$e['created_at']&&$e['courier_confirmed_at']!==null,'confirmation_persisted');
     check($e['consented_at']===null&&(int)$e['recipient_visible']===0,'recipient_optional');
     check($size[0]===800&&$size[1]===1600&&$size['mime']==='image/jpeg','orientation_and_1600_limit');
     check(!str_contains(file_get_contents($path),"Exif\0\0")&&!str_contains(file_get_contents($path),'http://ns.adobe.com'),'metadata_removed');
     check(hash_file('sha256',$path)===$e['sha256']&&preg_match('/^[a-f0-9]{64}\.jpg$/D',$e['storage_key'])===1,'random_name_sha256');
     $http=wp_remote_get(content_url('/veciahorra-private-delivery/').$e['storage_key']);
     check(wp_remote_retrieve_response_code($http)===403&&!str_contains(wp_remote_retrieve_body($http),substr(file_get_contents($path),0,12)),'DIRECT_HTTP_BLOCKED');
-    $count=nfiles();check($proof->confirm($id,2,'',[],false,false)['status']==='delivered','same_identity_replay');
+    $count=nfiles();check($proof->confirm($id,2,'',[],false,false,true)['status']==='delivered','same_identity_replay');
     check(nfiles()===$count&&countEvents($id)===3,'replay_no_duplicate_file_evidence_tracking');
-    rejected(fn()=>$proof->confirm($id,3,'',[],false,false),'replay_wrong_version');
+    rejected(fn()=>$proof->confirm($id,3,'',[],false,false,true),'replay_wrong_version');
     rejected(fn()=>$courier->transition($id,1001,'delivered',2),'legacy_courier_delivery_closed');
     identity('admin');rejected(fn()=>$courier->adminTransition($id,'delivered',2),'admin_delivery_bypass_closed');
     check(is_file($proof->download($id)['path']),'admin_read');
@@ -208,7 +255,7 @@ try {
     unlink($run.'/download.php');
     foreach(['png','webp'] as $type){
         $b=picked();$bcode=ownerCode($b['delivery']);
-        check($proof->confirm($b['delivery'],2,$bcode,['tmp_name'=>$run.'/input.'.$type,'error'=>0],true,true)['status']==='delivered','decode_'.$type);
+        check($proof->confirm($b['delivery'],2,$bcode,['tmp_name'=>$run.'/input.'.$type,'error'=>0],true,true,true)['status']==='delivered','decode_'.$type);
         check($repo->evidence($b['delivery'])['consented_at']!==null,'visible_consent_timestamp_'.$type);
     }
     $bare=picked();rejected(fn()=>$courier->transition($bare['delivery'],1001,'delivered',2),'PHOTO_BYPASS_CLOSED');

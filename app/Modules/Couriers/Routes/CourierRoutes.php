@@ -24,12 +24,14 @@ final class CourierRoutes
     public function delivered(WP_REST_Request $r): WP_REST_Response
     {
         return $this->mutate(function() use($r):array {
+            if(($r->get_body_params()['courier_confirmation']??null)!=='1')throw new \DomainException('courier_confirmation_required');
             $upload=$r->get_file_params()['photo']??[];
             if($upload!==[]&&(!is_string($upload['tmp_name']??null)||!is_uploaded_file($upload['tmp_name'])))throw new \DomainException('photo_invalid');
             foreach(['recipient_visible','recipient_consent'] as $field)if(!in_array($r[$field]??'0',['0','1',0,1,false,true],true))throw new \DomainException('invalid_consent');
             return (new \VeciAhorra\Modules\Couriers\Evidence\DeliveryProofService())->confirm(
                 (int)$r['id'],$this->version($r),(string)($r['otp']??''),$upload,
-                in_array($r['recipient_visible']??'0',['1',1,true],true),in_array($r['recipient_consent']??'0',['1',1,true],true)
+                in_array($r['recipient_visible']??'0',['1',1,true],true),in_array($r['recipient_consent']??'0',['1',1,true],true),
+                true
             );
         });
     }

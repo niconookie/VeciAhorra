@@ -17,29 +17,57 @@ async function testDeliveryProofPanel(source) {
     check(html.includes('accept="image/jpeg,image/png,image/webp"')&&html.includes('capture="environment"'),'image_accept_capture');
     check(html.includes('pattern="[0-9]{6}"')&&html.includes('autocomplete="off"'),'six_digit_otp_field');
     check(!html.includes('data-action="delivered"'),'old_bypass_button_absent');
-    var consent={checked:false,required:false},visible={checked:true},label={hidden:true},button={disabled:false};
-    var form={elements:{photo:{files:[{size:200}]},otp:{value:'001234'},recipient_visible:visible,recipient_consent:consent},
+    check(html.includes('Tomar fotografía')&&html.includes('Seleccionar fotografía del dispositivo'),'explicit_choices');
+    check(/name="photo_saved"[^>]*accept="image\/jpeg,image\/png,image\/webp"/.test(html)&&!/name="photo_saved"[^>]*(capture|multiple)/.test(html)&&!html.includes(' multiple'),'saved_picker_no_capture_single');
+    check(html.includes('name="courier_confirmation" type="checkbox" required')&&html.includes('Confirmo que esta fotografía corresponde a los productos entregados en este pedido'),'confirmation_rendered');
+    var consent={checked:false,required:false},visible={checked:true},label={hidden:true},button={disabled:false},selection={textContent:''},confirmation={checked:false};
+    var camera={name:'photo_camera',files:[],value:''},saved={name:'photo_saved',files:[],value:''};
+    var form={elements:{photo_camera:camera,photo_saved:saved,courier_confirmation:confirmation,otp:{value:'001234'},recipient_visible:visible,recipient_consent:consent},
         closest:function(selector){return selector==='[data-id]'?{dataset:{id:'1002',version:'2'}}:form;},
-        querySelector:function(selector){return selector==='button'?button:label;},checkValidity:function(){return !visible.checked||consent.checked;},reportValidity:function(){}};
+        querySelector:function(selector){return selector==='button'?button:selector==='[data-photo-selection]'?selection:label;},checkValidity:function(){return confirmation.checked&&(!visible.checked||consent.checked)&&/^[0-9]{6}$/.test(this.elements.otp.value);},reportValidity:function(){}};
+    camera.closest=saved.closest=function(){return form;};
+    function choose(input,file){input.files=file?[file]:[];input.value=file?file.name:'';handlers.change({target:input});}
+    var event={target:form,preventDefault:function(){}};
+    confirmation.checked=true;handlers.submit(event);await flush();check(fetches.length===0,'no_photo_no_upload');
+    var cameraFile={size:200,name:'camera.jpg'},savedFile={size:300,name:'saved.png'};
+    choose(camera,cameraFile);check(!confirmation.checked&&selection.textContent.includes('camera.jpg'),'selection_name_and_new_confirmation');
+    handlers.submit(event);await flush();check(fetches.length===0,'no_confirmation_no_upload');
+    confirmation.checked=true;
     handlers.change({target:{name:'recipient_visible',checked:true,closest:function(){return form;}}});
     check(consent.required&&!label.hidden,'visible_requires_consent');
-    var event={target:form,preventDefault:function(){}};
     handlers.submit(event);await flush();check(fetches.length===0,'no_consent_no_upload');
     consent.checked=true;var before=gets;handlers.submit(event);await flush();
     check(fetches.length===1&&fetches[0].options.body.values.otp==='001234','leading_zero_otp_preserved');
     var request=fetches[0];
-    check(request.options.body.values.photo===form.elements.photo.files[0]&&request.options.body.values.expected_version==='2','photo_revision_multipart');
+    check(request.options.body.values.photo===cameraFile&&request.options.body.values.expected_version==='2','camera_photo_revision_multipart');
+    check(request.options.body.values.courier_confirmation==='1','confirmation_payload');
     check(request.options.body.values.recipient_visible==='1'&&request.options.body.values.recipient_consent==='1','consent_payload');
     check(request.options.credentials==='same-origin'&&request.options.headers['X-WP-Nonce']==='test_nonce'&&!('Content-Type' in request.options.headers),'cookie_nonce_boundary');
     check(!request.url.includes('001234')&&gets===before+3,'otp_not_url_and_refresh');
+    choose(saved,savedFile);check(camera.value===''&&!confirmation.checked&&selection.textContent.includes('saved.png'),'saved_replaces_camera');
+    choose(camera,null);check(form.deliveryPhoto===savedFile,'cancel_preserves_last_selection');
+    confirmation.checked=true;handlers.submit(event);await flush();
+    check(fetches[1].url===request.url&&fetches[1].options.body.values.photo===savedFile&&Object.keys(fetches[1].options.body.values).filter(function(k){return k.indexOf('photo')>=0;}).join(',')==='photo','SAME_BACKEND_SAVED');
+    choose(camera,cameraFile);check(saved.value===''&&!confirmation.checked,'camera_replaces_saved');
+    confirmation.checked=true;handlers.submit(event);await flush();
+    check(fetches[2].url===request.url&&fetches[2].options.body.values.photo===cameraFile,'SAME_BACKEND_CAMERA');
+    form.elements.otp.value='';var otpCount=fetches.length;handlers.submit(event);await flush();check(fetches.length===otpCount,'otp_still_required');
     fail=true;form.elements.otp.value='001234';handlers.submit(event);await flush();
     check(form.elements.otp.value===''&&!button.disabled&&!nodes['[data-va-courier-message]'].textContent.includes('001234'),'safe_error_retry');
-    form.elements.photo.files[0].size=8*1024*1024+1;var count=fetches.length;handlers.submit(event);await flush();check(fetches.length===count,'oversize_no_upload');
+    cameraFile.size=8*1024*1024+1;var count=fetches.length;handlers.submit(event);await flush();check(fetches.length===count,'oversize_no_upload');
     return {DELIVERY_PROOF_PANEL:'PASS',ASSERTIONS:assertions,WEB_CERTIFICATION:false};
 }
 if(typeof module!=='undefined'&&require.main===module){
     testDeliveryProofPanel(require('fs').readFileSync(require('path').join(__dirname,'../../assets/frontend/js/courier-panel.js'),'utf8'))
-      .then(function(r){console.log(JSON.stringify(r));console.log(JSON.stringify(testCustomerDeliveryProof(require('fs').readFileSync(require('path').join(__dirname,'../../assets/frontend/js/customer-panel.js'),'utf8'))));}).catch(function(e){console.error(e);process.exitCode=1;});
+      .then(async function(r){console.log(JSON.stringify(r));console.log(JSON.stringify(testCustomerDeliveryProof(require('fs').readFileSync(require('path').join(__dirname,'../../assets/frontend/js/customer-panel.js'),'utf8'))));console.log(JSON.stringify(await testDeliveryChoiceMutations(require('fs').readFileSync(require('path').join(__dirname,'../../assets/frontend/js/courier-panel.js'),'utf8'))));}).catch(function(e){console.error(e);process.exitCode=1;});
+}
+
+async function testDeliveryChoiceMutations(source) {
+    var old="card.dataset.id+'/delivered'",replacement="card.dataset.id+(file.name==='saved.png'?'/upload-saved':'/delivered')";
+    if(source.split(old).length!==2)throw new Error('nonunique_path_mutation');
+    try{await testDeliveryProofPanel(source.replace(old,replacement));}
+    catch(error){if(error.message==='SAME_BACKEND_SAVED')return {UPLOAD_PATH_MUTATION:'DETECTED',RESTORED:'in_memory_only'};throw error;}
+    throw new Error('separate_upload_path_not_detected');
 }
 
 function testCustomerDeliveryProof(source) {

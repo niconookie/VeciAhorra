@@ -10,8 +10,9 @@ use VeciAhorra\Modules\Couriers\Repository\CourierDeliveryRepository;
 final class DeliveryProofService
 {
     public function __construct(private DeliveryProofRepository $proof=new DeliveryProofRepository(),private CourierDeliveryRepository $deliveries=new CourierDeliveryRepository(),private PrivateDeliveryStorage $storage=new PrivateDeliveryStorage()){}
-    public function confirm(int $id,int $version,string $code,array $upload,bool $visible,bool $consent): array
+    public function confirm(int $id,int $version,string $code,array $upload,bool $visible,bool $consent,bool $confirmed=false): array
     {
+        if(!$confirmed)throw new DomainException('courier_confirmation_required');
         global $wpdb;
         if ((int)$wpdb->get_var('SELECT @@in_transaction') !== 0) throw new DomainException('delivery_requires_own_transaction');
         $courier=(new CourierContext())->resolve()??throw new DomainException('courier_forbidden');
@@ -40,7 +41,7 @@ final class DeliveryProofService
                 }
                 $this->proof->pending(['delivery_id'=>$id,'courier_id'=>$courierId,'actor_user_id'=>$userId,'expected_version'=>$version,
                     'storage_key'=>$file['final'],'sha256'=>$file['sha256'],'status'=>'pending','recipient_visible'=>$visible?1:0,
-                    'consented_at'=>$visible&&$consent?$now:null,'created_at'=>$now]);
+                    'consented_at'=>$visible&&$consent?$now:null,'courier_confirmed_at'=>$now,'created_at'=>$now]);
                 $this->storage->move($file);$moved=true;
                 $this->deliveries->change($row,'delivered',$courierId,$now);
                 $this->deliveries->markOrderDelivered((int)$row['order_id'],$now);

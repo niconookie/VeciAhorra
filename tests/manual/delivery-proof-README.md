@@ -22,7 +22,20 @@ do not expose it. Delivered, expired and locked codes are hidden.
 Photos are mandatory on a new confirmation. The Courier declares whether the
 recipient is visible and records explicit consent if so. There is no face/content
 recognition; the UI instructs the Courier to photograph the delivered products.
-The mobile capture attribute prefers the camera but does not prevent gallery use.
+Two explicit file pickers offer camera capture and saved-device selection. The
+saved picker has no capture restriction. Both replace the same in-memory photo
+and submit one `photo` through the existing delivered operation. Cancelling a
+picker preserves the last selection. A new selection resets the product
+confirmation checkbox and displays its filename using textContent.
+
+The Courier must affirm that the photo corresponds to this order's delivered
+products. Multipart `courier_confirmation` must be exactly the string `1` in the
+request body; query-only values, arrays and other strings are rejected. The domain
+service also requires an affirmative boolean, including coherent retries. The
+evidence stores only `courier_confirmed_at` (UTC) alongside its existing actor.
+The additive migration leaves historical rows NULL, without backfill. This time
+records the declaration, never the camera capture time. Filenames and EXIF/GPS
+are not proof of when the image was taken.
 
 Native image content, decoder support and the actual 8 MiB size limit are checked.
 The WordPress editor applies EXIF orientation, bounds the image to 1600 px and
@@ -56,7 +69,8 @@ paths/storage keys never appear in public API data. No editing/deletion UI exist
 ## Interfaces and contract
 
 Courier POST /courier/deliveries/{id}/delivered uses multipart fields:
-expected_version, otp, photo, recipient_visible (0/1), recipient_consent (0/1).
+expected_version, otp, photo, courier_confirmation (1), recipient_visible (0/1),
+recipient_consent (0/1).
 Courier identity comes exclusively from WordPress. A coherent completed replay
 requires the same actor and original expected_version. Missing/expired/locked OTP,
 invalid photo or operational failure leaves the delivery picked_up. Exceptional
@@ -79,9 +93,15 @@ its real Composer loader. SQL-trigger failures, actual rename failure and
 overlapping processes exercise compensation, atomicity and idempotency.
 
 VA_PROOF_MUTATIONS=1 python tests/manual/delivery-proof-mutations.py detects
-OTP, photo bypass, authorization, transaction, privacy and compensation mutants,
+OTP, photo bypass, domain/HTTP confirmation, authorization, transaction, privacy and compensation mutants,
 restoring exact bytes in finally. Native HTTP streaming uses explicitly simulated
 identities; it is not WordPress login/browser certification.
+The disposable multipart HTTP fixture calls the real route, permission callback,
+WP_REST_Request, uploaded-file check and image/transaction service; authentication
+is simulated. It accepts camera/saved filenames through one route and rejects
+missing/manipulated confirmation. The JS suite also kills an in-memory mutation
+that sends saved photos to a different endpoint. No physical mobile camera or
+desktop browser is certified by these DOM/network doubles.
 
 delivery-proof-panel-test.js exercises Courier multipart/consent behavior and the
 customer proof section in V8/Node with DOM/network doubles. The continuity suite

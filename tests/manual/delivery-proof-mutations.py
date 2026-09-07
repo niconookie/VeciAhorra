@@ -8,7 +8,10 @@ service=root/'app/Modules/Couriers/Evidence/DeliveryProofService.php'
 storage=root/'app/Modules/Couriers/Evidence/PrivateDeliveryStorage.php'
 courier=root/'app/Modules/Couriers/Service/CourierDeliveryService.php'
 mutations=[
- ('otp',service,[("if(!(new DeliveryOtp())->matches($otp,$code)){","if(false){")],'FAIL OTP_WRONG_REJECTED'),
+ ('confirmation_service',service,[("if(!$confirmed)throw new DomainException('courier_confirmation_required');","/* mutation: omitted domain confirmation */")],'FAIL CONFIRMATION_OMITTED'),
+ ('confirmation_http',root/'app/Modules/Couriers/Routes/CourierRoutes.php',[("if(($r->get_body_params()['courier_confirmation']??null)!=='1')throw new \\DomainException('courier_confirmation_required');","/* mutation: omitted HTTP confirmation */")],'FAIL HTTP_CONFIRMATION_REJECTED'),
+
+ ('otp',service,[("if(!(new DeliveryOtp())->matches($otp,$code)){","if(false){")],'FAIL OTP_MISSING'),
  ('photo',courier,[("if ($target === 'delivered') throw new DomainException('delivery_photo_otp_required');","if (false) throw new DomainException('delivery_photo_otp_required');")],'FAIL legacy_courier_delivery_closed'),
  ('authorization',service,[("if(!is_user_logged_in()||(!current_user_can('manage_options')&&(!$this->customerSession()||!$this->proof->owned($id,get_current_user_id()))))","if(false)")],'FAIL READ_AUTHORIZATION_customer'),
  ('transaction',service,[
@@ -31,4 +34,4 @@ for name,path,replacements,expected in mutations:
   if p.returncode==0 or expected not in output or 'DISPOSABLE_DATABASE_REMOVED=yes TEMP_FILES_REMOVED=yes' not in output:raise RuntimeError(name+': unrelated or undetected\n'+output)
   print('MUTATION='+name+' DETECTED=yes')
  finally:path.write_bytes(original)
-print('PROOF_MUTATIONS=PASS DETECTED=6/6 RESTORED=yes')
+print('PROOF_MUTATIONS=PASS DETECTED=8/8 RESTORED=yes')
