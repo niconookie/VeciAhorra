@@ -135,6 +135,7 @@ final class MigrationManager
             new \VeciAhorra\Database\Migrations\AddCourierContinuity(),
             new \VeciAhorra\Database\Migrations\CreateDeliveryProof(),
             new \VeciAhorra\Database\Migrations\AddDeliveryEvidenceConfirmation(),
+            new \VeciAhorra\Database\Migrations\CreateDeliveryReturns(),
         ];
     }
 }

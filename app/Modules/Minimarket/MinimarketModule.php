@@ -60,6 +60,7 @@ final class MinimarketModule
             'restUrl' => esc_url_raw(rest_url('veciahorra/v1/minimarket/')),
             'nonce' => wp_create_nonce('wp_rest'),
         ]) . ';', 'before');
+        wp_enqueue_script('veciahorra-store-returns',VA_PLUGIN_URL.'assets/frontend/js/store-returns.js',['veciahorra-minimarket'],Config::PLUGIN_VERSION,true);
         ob_start(); require VA_PLUGIN_PATH . 'app/Modules/Minimarket/Views/panel.php'; return (string) ob_get_clean();
     }
 

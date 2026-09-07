@@ -60,6 +60,7 @@ final class CourierDeliveryService
         if ($actorId <= 0 || ($nextCourier !== null && $nextCourier <= 0) || ($version !== null && $version < 0)) throw new DomainException('invalid_delivery_command');
         return (new CheckoutRepository())->transaction(function () use ($id,$nextCourier,$target,$code,$actorType,$actorId,$reason,$version,$from,$snapshot): array {
             $this->repository->lockCouriers([$snapshot['courier_id'],$nextCourier,$actorType==='courier'?$actorId:0]);
+            if($nextCourier!==null&&$target==='assigned'&&$this->repository->hasReturnCustody($nextCourier))throw new DomainException('courier_has_return_custody');
             $current = $this->repository->lock($id);
             if ($current['courier_id'] !== $snapshot['courier_id']) throw new DomainException('delivery_assignment_conflict');
             $authority = $nextCourier ?? ($actorType==='courier'?$actorId:(int)$current['courier_id']);

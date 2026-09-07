@@ -179,13 +179,14 @@ final class OrderOperationalStateResolver
         }
         $status = (string) ($facts['deliveries'][0]['status'] ?? '');
 
-        return in_array($status, ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled'], true)
+        return in_array($status, ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'return_pending', 'returned_to_store'], true)
             ? $status
             : 'unknown';
     }
 
     private function fulfillmentState(array $facts, string $processing, string $delivery): string
     {
+        if(in_array($delivery,['return_pending','returned_to_store'],true))return 'manual_review';
         $completion = (string) ($facts['fulfillment_completion']['status'] ?? '');
         if ($completion === 'manual_review') {
             return 'manual_review';
@@ -276,7 +277,7 @@ final class OrderOperationalStateResolver
             return 'confirmed';
         }
         if ($facts['historical_profile'] !== 'none'
-            && in_array($facts['order']['status'] ?? null, ['paid', 'delivered'], true)
+            && in_array($facts['order']['status'] ?? null, ['paid', 'delivered', 'return_pending', 'incident_review'], true)
         ) {
             return 'confirmed';
         }
@@ -308,10 +309,10 @@ final class OrderOperationalStateResolver
         $status = $order['status'] ?? null;
         $historical = $facts['historical_profile'] !== 'none';
         $rules = [
-            'order_status_unknown' => ! in_array($status, ['reserved', 'paid', 'delivered', 'cancelled'], true),
-            'paid_without_financial_evidence' => in_array($status, ['paid', 'delivered'], true) && $dimensions['financial'] !== 'approved',
+            'order_status_unknown' => ! in_array($status, ['reserved', 'paid', 'delivered', 'cancelled', 'return_pending', 'incident_review'], true),
+            'paid_without_financial_evidence' => in_array($status, ['paid', 'delivered', 'return_pending', 'incident_review'], true) && $dimensions['financial'] !== 'approved',
             'approved_without_business_processing' => $dimensions['financial'] === 'approved' && ($facts['business_completion']['status'] ?? null) !== 'completed',
-            'business_completed_without_paid_order' => ($facts['business_completion']['status'] ?? null) === 'completed' && ! in_array($status, ['paid', 'delivered'], true),
+            'business_completed_without_paid_order' => ($facts['business_completion']['status'] ?? null) === 'completed' && ! in_array($status, ['paid', 'delivered', 'return_pending', 'incident_review'], true),
             'delivered_without_delivery_evidence' => $status === 'delivered' && ($facts['checkout']['fulfillment_method'] ?? null) === 'delivery' && $dimensions['delivery'] !== 'delivered',
             'delivery_completed_order_not_delivered' => $dimensions['delivery'] === 'delivered' && $status !== 'delivered',
             'pickup_has_delivery' => ($facts['checkout']['fulfillment_method'] ?? null) === 'pickup' && $facts['deliveries'] !== [],
@@ -326,7 +327,7 @@ final class OrderOperationalStateResolver
             'reservations_active_after_payment' => $dimensions['reservations'] === 'active' && (($facts['payment']['status'] ?? null) === 'paid' || ($facts['business_completion']['status'] ?? null) === 'completed'),
             'reservations_consumed_without_approval' => $dimensions['reservations'] === 'consumed'
                 && $dimensions['financial'] !== 'approved'
-                && ! ($historical && in_array($status, ['paid', 'delivered'], true)),
+                && ! ($historical && in_array($status, ['paid', 'delivered', 'return_pending', 'incident_review'], true)),
             'reservation_terminal_mixed' => $dimensions['reservations'] === 'mixed' && count(array_intersect($this->reservationStatuses($facts), ['released', 'expired', 'consumed'])) > 1,
             'stock_double_terminal_evidence' => $this->any($facts['reservations'], static fn (array $r): bool => ($r['consumed_evidence'] ?? false) && ($r['restored_evidence'] ?? false)),
             'order_item_subtotal_mismatch' => $this->itemSubtotalMismatch($facts),

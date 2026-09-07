@@ -768,7 +768,8 @@
         var deliveryStatus = element('p', 'va-customer-panel__delivery-status');
         deliveryStatus.append(renderStatusBadge({code: detail.delivery.status, label: detail.delivery.label}));
         deliverySection.append(visualHeading('h3', 'Entrega', 'delivery'), deliveryStatus);
-        (detail.delivery_proofs || []).forEach(function(proof) {
+        (detail.delivery_returns || []).forEach(function(info){var section=element('section');section.append(element('h3','',info.message),element('p','',info.detail));deliverySection.append(section);});
+            (detail.delivery_proofs || []).forEach(function(proof) {
             var section=element('div','va-customer-panel__delivery-proof');
             section.append(element('p','','Entrega #'+proof.delivery_id));
             if (typeof proof.otp==='string' && /^[0-9]{6}$/.test(proof.otp)) {

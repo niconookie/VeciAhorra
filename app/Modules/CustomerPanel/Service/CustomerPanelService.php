@@ -92,6 +92,10 @@ final class CustomerPanelService
         }
 
         $detail = $this->detailDto($projection)->toArray();
+        $detail['delivery_returns'] = [];
+        foreach($projection['deliveries'] as $delivery){
+            if(in_array($delivery['status'],['return_pending','returned_to_store'],true))$detail['delivery_returns'][]=['order_id'=>(int)$delivery['order_id'],'message'=>'No fue posible completar la entrega','detail'=>$delivery['status']==='return_pending'?'El pedido está siendo devuelto al minimarket':'El pedido fue devuelto y está pendiente de revisión'];
+        }
         $detail['delivery_proofs'] = [];
         $proofs = new \VeciAhorra\Modules\Couriers\Evidence\DeliveryProofService();
         foreach ($projection['deliveries'] as $delivery) {
@@ -182,7 +186,7 @@ final class CustomerPanelService
         $orderTotal = '0.00';
         foreach ($orders as $order) {
             if ((int) $order['customer_id'] !== $userId
-                || ! in_array($order['status'], ['reserved', 'paid', 'delivered', 'cancelled'], true)
+                || ! in_array($order['status'], ['reserved', 'paid', 'delivered', 'cancelled', 'return_pending', 'incident_review'], true)
             ) {
                 return true;
             }
@@ -282,7 +286,7 @@ final class CustomerPanelService
                 || ($businessOrderIdsByBusiness === null
                     ? $this->query->businessOrderIds((int) $attempt['business_id'])
                     : ($businessOrderIdsByBusiness[(int) $attempt['business_id']] ?? [])) !== $orderIds
-                || array_diff(array_column($orders, 'status'), ['paid', 'delivered']) !== []
+                || array_diff(array_column($orders, 'status'), ['paid', 'delivered', 'return_pending', 'incident_review']) !== []
             ) {
                 return true;
             }
@@ -308,7 +312,7 @@ final class CustomerPanelService
                 || (int) $delivery['customer_id'] !== $userId
                 || (int) ($delivery['minimarket_id'] ?? 0)
                     !== (int) ($ordersById[(int) $delivery['order_id']]['minimarket_id'] ?? 0)
-                || ! in_array($delivery['status'], ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled'], true)
+                || ! in_array($delivery['status'], ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'return_pending', 'returned_to_store'], true)
             ) {
                 return true;
             }

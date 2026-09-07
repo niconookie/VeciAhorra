@@ -23,7 +23,7 @@ async function testDeliveryProofPanel(source) {
     var consent={checked:false,required:false},visible={checked:true},label={hidden:true},button={disabled:false},selection={textContent:''},confirmation={checked:false};
     var camera={name:'photo_camera',files:[],value:''},saved={name:'photo_saved',files:[],value:''};
     var form={elements:{photo_camera:camera,photo_saved:saved,courier_confirmation:confirmation,otp:{value:'001234'},recipient_visible:visible,recipient_consent:consent},
-        closest:function(selector){return selector==='[data-id]'?{dataset:{id:'1002',version:'2'}}:form;},
+        closest:function(selector){if(selector==='[data-return-delivery]')return null;return selector==='[data-id]'?{dataset:{id:'1002',version:'2'}}:form;},
         querySelector:function(selector){return selector==='button'?button:selector==='[data-photo-selection]'?selection:label;},checkValidity:function(){return confirmation.checked&&(!visible.checked||consent.checked)&&/^[0-9]{6}$/.test(this.elements.otp.value);},reportValidity:function(){}};
     camera.closest=saved.closest=function(){return form;};
     function choose(input,file){input.files=file?[file]:[];input.value=file?file.name:'';handlers.change({target:input});}

@@ -38,7 +38,7 @@ final class CustomerPurchaseStatusResolver
             || ($payment !== null && ! in_array($payment['status'] ?? null, ['pending', 'paid'], true))
             || ($deliveryCompletion !== null && ! in_array($deliveryCompletion, ['pending', 'processing', 'completed', 'not_required', 'retryable', 'permanent_failure', 'manual_review'], true))
             || ($fulfillmentCompletion !== null && ! in_array($fulfillmentCompletion, ['pending', 'processing', 'completed', 'retryable', 'permanent_failure', 'manual_review'], true))
-            || array_diff($deliveries, ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled']) !== []
+            || array_diff($deliveries, ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'return_pending', 'returned_to_store']) !== []
         ) {
             return $this->status('under_review');
         }
@@ -72,6 +72,8 @@ final class CustomerPurchaseStatusResolver
         ) {
             return $this->status('under_review');
         }
+        if(in_array('return_pending',$deliveries,true))return $this->status('return_pending');
+        if(in_array('returned_to_store',$deliveries,true))return $this->status('returned_to_store');
         if (in_array('cancelled', $deliveries, true)) {
             return count(array_filter($deliveries, static fn (string $s): bool => $s === 'cancelled')) === count($deliveries)
                 ? $this->status('cancelled')
@@ -123,6 +125,8 @@ final class CustomerPurchaseStatusResolver
     private function status(string $code): CustomerPurchaseVisibleStatus
     {
         [$label, $message] = match ($code) {
+            'return_pending' => ['No fue posible completar la entrega', 'El pedido está siendo devuelto al minimarket'],
+            'returned_to_store' => ['No fue posible completar la entrega', 'El pedido fue devuelto y está pendiente de revisión'],
             'pending_payment' => ['Pendiente de pago', 'Tu compra aún no registra un pago confirmado.'],
             'processing_payment' => ['Procesando pago', 'Estamos confirmando el resultado de tu pago.'],
             'payment_rejected' => ['Pago rechazado', 'El pago no fue aprobado.'],

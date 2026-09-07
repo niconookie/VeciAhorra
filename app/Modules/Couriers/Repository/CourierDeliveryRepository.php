@@ -37,8 +37,15 @@ final class CourierDeliveryRepository extends Repository
             . ' WHERE sz.store_id=d.minimarket_id AND sz.zone_id=d.service_zone_id)', $courierId
         );
     }
+    public function hasReturnCustody(int $courierId): bool
+    {
+        $id=$this->db()->get_var($this->db()->prepare("SELECT id FROM {$this->table('deliveries')} WHERE courier_id=%d AND status='return_pending' LIMIT 1",$courierId));
+        if($this->db()->last_error!=='')throw new PersistenceException('return_custody_read_failed');
+        return $id!==null;
+    }
     public function available(int $courierId): array
     {
+        if($this->hasReturnCustody($courierId))return [];
         return $this->db()->get_results($this->projection() . " WHERE d.status='pending' AND d.courier_id IS NULL AND "
             . $this->complete() . ' AND ' . $this->territory($courierId) . ' ORDER BY d.id ASC', ARRAY_A);
     }
