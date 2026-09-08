@@ -2,7 +2,8 @@
 
 declare(strict_types=1);
 
-require dirname(__DIR__, 2) . '/vendor/autoload.php';
+$pluginRoot=getenv('VA_PROOF_PLUGIN_ROOT') ?: dirname(__DIR__, 2);
+require $pluginRoot . '/vendor/autoload.php';
 
 use VeciAhorra\Database\Builder\TableBuilder;
 use VeciAhorra\Database\Schemas\InventorySchema;
@@ -37,11 +38,11 @@ foreach([
 try{$service->update(['entity'=>'store','id'=>'999','expected'=>'0','enabled'=>'1']);throw new RuntimeException('missing accepted');}catch(RecordNotFoundException){$assert(true,'missing rejected');}
 $repository->rows['store'][10]=1;
 try{$service->update(['entity'=>'store','id'=>'10','expected'=>'0','enabled'=>'1']);throw new RuntimeException('stale accepted');}catch(ConflictException){$assert(true,'stale rejected');}
-$admin=file_get_contents(dirname(__DIR__,2).'/app/Modules/Checkout/Admin/DeliveryFlagSettingsPage.php');
+$admin=file_get_contents($pluginRoot.'/app/Modules/Checkout/Admin/DeliveryFlagSettingsPage.php');
 $assert(is_string($admin)&&str_contains($admin,"REQUEST_METHOD")&&str_contains($admin,"'POST'"),'POST guard');
 $assert(str_contains($admin,"current_user_can('manage_options')"),'capability guard');
 $assert(str_contains($admin,"check_admin_referer('veciahorra_delivery_flag_save')"),'nonce guard');
-$feesAdmin=file_get_contents(dirname(__DIR__,2).'/app/Modules/Checkout/Admin/CheckoutFeeSettingsPage.php');
+$feesAdmin=file_get_contents($pluginRoot.'/app/Modules/Checkout/Admin/CheckoutFeeSettingsPage.php');
 $assert(is_string($feesAdmin)&&str_contains($feesAdmin,'REQUEST_METHOD')&&str_contains($feesAdmin,"'POST'"),'fee settings POST guard');
 $assert(str_contains($feesAdmin,"current_user_can('manage_options')")&&str_contains($feesAdmin,"check_admin_referer('veciahorra_checkout_fees_save')"),'fee settings authorization');
 

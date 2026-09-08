@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Checkout\Service;
 
 use Throwable;
+use VeciAhorra\Modules\Cart\Service\CartAggregate;
 use VeciAhorra\Modules\Cart\Service\CartService;
 use VeciAhorra\Modules\Orders\Services\OrderService;
 use VeciAhorra\Modules\Orders\Repositories\OrderRepository;
@@ -60,6 +61,11 @@ final class CheckoutService
 
     public function validate(array $payload): array
     {
+        return (new CartAggregate())->inspect($payload,fn()=>$this->validateLocked($payload));
+    }
+
+    private function validateLocked(array $payload): array
+    {
         $validation = $this->validationService->validate($payload);
         if ($validation['valid']) {
             $this->fulfillmentPolicy->authorize(
@@ -73,9 +79,7 @@ final class CheckoutService
     public function initialize(array $payload): array
     {
         \VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration::assertCheckoutCreationAvailable();
-        return $this->checkoutRepository->transaction(
-            fn (): array => $this->initializeTransaction($payload)
-        );
+        return (new CartAggregate())->materialize($payload, fn (): array => $this->initializeTransaction($payload));
     }
 
     private function initializeTransaction(array $payload): array
@@ -168,7 +172,7 @@ final class CheckoutService
                 unset($reservation);
             }
 
-            $this->cartService->clearCart($payload);
+            (new CartAggregate())->consumeLines($payload);
         } catch (Throwable $exception) {
             try {
                 $this->orderService->cancelOrders(array_map(
@@ -213,6 +217,8 @@ final class CheckoutService
     ): array {
         \VeciAhorra\Modules\Payments\Gateway\PaymentGatewayConfiguration::assertCheckoutCreationAvailable();
         $callback = function () use ($ownerInput, $orderIds): array {
+            $origin=CartAggregate::context($ownerInput);
+            if($origin['status']!=='materializing')throw new \DomainException('cart_materializing_required');
             $owner = $this->idempotencyService->owner($ownerInput);
             $method = $this->method($ownerInput);
             $orderIds = array_values(array_unique(array_map('intval', $orderIds)));
@@ -342,6 +348,7 @@ final class CheckoutService
             $snapshot = $this->deliverySnapshot($ownerInput, $method);
             $id = $this->checkoutRepository->create([
                 'public_id' => Checkout::publicId(),
+                'source_cart_id' => (int)$origin['id'],
                 'service_zone_id' => $zoneId,
                 'owner_type' => $owner['owner_type'],
                 'user_id' => $owner['user_id'],

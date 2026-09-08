@@ -137,6 +137,8 @@ final class MigrationManager
             new \VeciAhorra\Database\Migrations\AddDeliveryEvidenceConfirmation(),
             new \VeciAhorra\Database\Migrations\CreateDeliveryReturns(),
             new \VeciAhorra\Database\Migrations\CreateReturnRefunds(),
+            new \VeciAhorra\Database\Migrations\CreateCartAggregates(),
+            new \VeciAhorra\Database\Migrations\CreatePickupProposals(),
         ];
     }
 }

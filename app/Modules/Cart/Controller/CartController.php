@@ -28,6 +28,7 @@ final class CartController
                 'data' => $cart['items'],
                 'total' => $cart['total'],
                 'summary' => $cart['summary'],
+                ...array_intersect_key($cart,array_flip(['cart_id','version','status','fulfillment_method','service_zone_id'])),
             ];
         } catch (Throwable $exception) {
             return $this->error($exception);
@@ -49,7 +50,10 @@ final class CartController
                 $reference['product_id']
             );
 
-            return ['success' => true, 'data' => $result];
+            return ['success' => true, 'data' => [
+                ...$result['result'],
+                'cart' => $result['cart'],
+            ]];
         } catch (Throwable $exception) {
             return $this->error($exception);
         }
@@ -61,7 +65,7 @@ final class CartController
         int $quantity
     ): array {
         return $this->execute(
-            fn (): bool => $this->service->updateQuantity(
+            fn (): array => $this->service->updateQuantity(
                 $owner,
                 $id,
                 $quantity
@@ -72,7 +76,7 @@ final class CartController
     public function delete(array $owner, int $id): array
     {
         return $this->execute(
-            fn (): bool => $this->service->removeItem($owner, $id)
+            fn (): array => $this->service->removeItem($owner, $id)
         );
     }
 
@@ -90,6 +94,8 @@ final class CartController
         }
     }
 
+    public function method(array $owner,string $method):array{return $this->execute(fn()=>$this->service->setMethod($owner,$method));}
+
     private function execute(callable $callback): array
     {
         try {
@@ -101,6 +107,7 @@ final class CartController
 
     private function error(Throwable $exception): array
     {
+        if($exception instanceof \DomainException)return ['success'=>false,'error'=>['code'=>'cart_conflict','message'=>'El carrito cambió. Recarga antes de continuar.']];
         if ($exception instanceof RecordNotFoundException) {
             return [
                 'success' => false,

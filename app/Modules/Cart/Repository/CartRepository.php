@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VeciAhorra\Modules\Cart\Repository;
 
 use VeciAhorra\Database\Repository;
+use VeciAhorra\Modules\Cart\Service\CartAggregate;
 use VeciAhorra\Exceptions\PersistenceException;
 
 final class CartRepository extends Repository
@@ -12,13 +13,14 @@ final class CartRepository extends Repository
     private const TABLE = 'cart_items';
 
     private const FIELDS = [
-        'session_id', 'user_id', 'inventory_id', 'product_id',
+        'cart_id', 'session_id', 'user_id', 'inventory_id', 'product_id',
         'minimarket_id', 'quantity', 'unit_price_snapshot',
         'created_at', 'updated_at',
     ];
 
     public function create(array $data): int
     {
+        $data['cart_id'] = CartAggregate::context($data)['id'];
         $result = $this->db()->insert(
             $this->table(self::TABLE),
             array_intersect_key($data, array_flip(self::FIELDS))
@@ -131,14 +133,15 @@ final class CartRepository extends Repository
             $this->db()->prepare(
                 sprintf(
                     'SELECT * FROM %s
-                     WHERE id = %%d AND %s = %s
+                     WHERE id = %%d AND %s = %s AND cart_id = %%d
                      LIMIT 1',
                     $this->table(self::TABLE),
                     $ownerField,
                     $placeholder
                 ),
                 $where['id'],
-                $where[$ownerField]
+                $where[$ownerField],
+                $where['cart_id']
             ),
             ARRAY_A
         );
@@ -169,7 +172,7 @@ final class CartRepository extends Repository
             );
         }
 
-        return $result > 0;
+        return $result > 0 || $this->findOwnedItem($id,$sessionId,$userId)!==null;
     }
 
     public function delete(
@@ -196,6 +199,7 @@ final class CartRepository extends Repository
         $where = $userId !== null
             ? ['user_id' => $userId]
             : ['session_id' => $sessionId];
+        $where['cart_id']=CartAggregate::context($where)['id'];
         $result = $this->db()->delete(
             $this->table(self::TABLE),
             $where
@@ -215,14 +219,14 @@ final class CartRepository extends Repository
     {
         $placeholder = is_int($value) ? '%d' : '%s';
         $sql = sprintf(
-            'SELECT * FROM %s WHERE %s = %s ORDER BY id ASC',
+            'SELECT * FROM %s WHERE %s = %s AND cart_id = %%d ORDER BY id ASC',
             $this->table(self::TABLE),
             $field,
             $placeholder
         );
 
         return $this->db()->get_results(
-            $this->db()->prepare($sql, $value),
+            $this->db()->prepare($sql, $value, CartAggregate::context([$field=>$value])['id']),
             ARRAY_A
         );
     }
@@ -260,7 +264,7 @@ final class CartRepository extends Repository
                AND inventory.product_id = cart.product_id
                AND inventory.minimarket_id = cart.minimarket_id
              LEFT JOIN %s AS stores ON stores.id = cart.minimarket_id
-             WHERE cart.%s = %s
+             WHERE cart.%s = %s AND cart.cart_id = %%d
              ORDER BY cart.id ASC',
             $this->table(self::TABLE),
             $this->table('products'),
@@ -271,7 +275,7 @@ final class CartRepository extends Repository
         );
 
         return $this->db()->get_results(
-            $this->db()->prepare($sql, $value),
+            $this->db()->prepare($sql, $value, CartAggregate::context([$field=>$value])['id']),
             ARRAY_A
         );
     }
@@ -286,14 +290,14 @@ final class CartRepository extends Repository
             'SELECT *
              FROM %s
              WHERE %s = %s
-               AND inventory_id = %%d
+               AND inventory_id = %%d AND cart_id = %%d
              LIMIT 1',
             $this->table(self::TABLE),
             $field,
             $ownerPlaceholder
         );
         $row = $this->db()->get_row(
-            $this->db()->prepare($sql, $owner, $inventoryId),
+            $this->db()->prepare($sql, $owner, $inventoryId, CartAggregate::context([$field=>$owner])['id']),
             ARRAY_A
         );
 
@@ -306,7 +310,7 @@ final class CartRepository extends Repository
         ?int $userId
     ): array {
         return $userId !== null
-            ? ['id' => $id, 'user_id' => $userId]
-            : ['id' => $id, 'session_id' => $sessionId];
+            ? ['id' => $id, 'user_id' => $userId, 'cart_id'=>CartAggregate::context(['user_id'=>$userId])['id']]
+            : ['id' => $id, 'session_id' => $sessionId, 'cart_id'=>CartAggregate::context(['session_id'=>$sessionId])['id']];
     }
 }

@@ -63,7 +63,7 @@
         return url.toString();
     }
 
-    function request(method, path, data, options) {
+    function transport(method, path, data, options) {
         var settings = options || {};
         var headers = new Headers(settings.headers || {});
         var requestOptions = {
@@ -122,6 +122,42 @@
                     data: null
                 };
             });
+    }
+
+    var cartSnapshot = null;
+    function capture(payload) {
+        var snapshot = payload && (payload.cart || (payload.data && payload.data.cart) || (payload.data && payload.data.deleted && payload.data.deleted.cart) || payload);
+        if (snapshot && typeof snapshot.cart_id === 'string' && Number.isInteger(snapshot.version)) {
+            if (Array.isArray(snapshot.data) && !snapshot.items) snapshot=Object.assign({},snapshot,{items:snapshot.data});
+            cartSnapshot = snapshot;
+            config.cartSnapshot = snapshot;
+            window.dispatchEvent(new CustomEvent('va:cart-snapshot', {detail:snapshot}));
+        }
+        return payload;
+    }
+    function request(method, path, data, options) {
+        var route = String(path).replace(/^\/+/, '');
+        var cartMutation = method !== 'GET' && (/^cart(?:\/|$)/.test(route) || /^sector\/current\//.test(route));
+        var checkout = method === 'POST' && /^checkout(?:\/validate)?$/.test(route);
+        options = Object.assign({}, options || {});
+        options.headers = Object.assign({}, options.headers || {});
+        if (config.cart && config.cart.sessionId) options.headers[config.cart.sessionHeader || 'X-Veciahorra-Cart-Session'] = config.cart.sessionId;
+        if ((cartMutation || checkout) && !cartSnapshot) {
+            return request('GET', '/cart', null, options).then(function () { return request(method, path, data, options); });
+        }
+        if (cartMutation || checkout) {
+            data = Object.assign({}, data || {}, {cart_id: cartSnapshot.cart_id});
+            data[checkout ? 'expected_cart_version' : 'expected_version'] = cartSnapshot.version;
+        }
+        return transport(method, path, data, options).then(capture).catch(function (error) {
+            if (error.status === 409 && (cartMutation || checkout)) {
+                return transport('GET', '/cart', null, options).then(capture).catch(function () {}).then(function () {
+                    error.message = 'El carrito cambio. Revisa los datos actualizados antes de continuar.';
+                    throw error;
+                });
+            }
+            throw error;
+        });
     }
 
     config.api = {

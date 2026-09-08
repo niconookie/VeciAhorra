@@ -354,8 +354,8 @@
         var minimum = config.checkout && config.checkout.minimumDeliveryAmount;
         var minimumUnits = typeof minimum === 'number' && Number.isSafeInteger(minimum) && minimum >= 0
             ? minimum
-            : 8000;
-        var minimumCents = minimumUnits * 100;
+            : null;
+        var minimumCents = minimumUnits === null ? null : minimumUnits * 100;
         var calculated = null;
         var visibleItems = [];
         var deliveryEligible = false;
@@ -663,14 +663,16 @@
             optionsRoot.replaceChildren(deliveryOption(
                 'pickup',
                 'Retiro en minimarket',
-                preferredMethod === 'pickup' || !deliveryEligible
+                preferredMethod !== 'delivery'
             ));
-            if (deliveryEligible) {
+            if (deliveryEligible || (authenticated && config.launch && config.launch.commerceEnabled)) {
                 optionsRoot.append(deliveryOption(
                     'delivery',
                     'Despacho',
                     preferredMethod === 'delivery'
                 ));
+            }
+            if (deliveryEligible) {
                 minimumMessage.hidden = true;
             } else {
                 minimumMessage.textContent = 'El despacho está disponible para compras desde ' + moneyFromCents(minimumCents) + '.';
@@ -696,7 +698,6 @@
             var previousMethod = selectedMethod();
             var changed = previousTotal !== result.totalCents
                 || previousSignature !== monetarySignature(result.items);
-            var forcedPickup = previousMethod === 'delivery' && !result.deliveryEligible;
 
             calculated = {
                 groups: result.groups,
@@ -709,14 +710,12 @@
             };
             visibleItems = result.items;
             renderGroups(calculated);
-            renderDelivery(calculated, forcedPickup ? 'pickup' : previousMethod);
+            renderDelivery(calculated, previousMethod);
             clearValidationMessages();
 
-            if (changed || forcedPickup) {
+            if (changed) {
                 status.hidden = false;
-                status.textContent = forcedPickup
-                    ? 'El total validado es inferior al mínimo requerido para despacho. El método de entrega cambió automáticamente a retiro.'
-                    : 'El carrito cambió mientras preparabas tu compra. Se actualizaron los valores antes de continuar.';
+                status.textContent = 'El carrito cambió mientras preparabas tu compra. Se actualizaron los valores antes de continuar.';
             }
 
             if (result.valid) {
@@ -884,7 +883,7 @@
             }
             if (!calculated.deliveryEligible && selectedMethod() !== 'pickup') {
                 invalidateValidation();
-                renderDelivery(calculated, 'pickup');
+                renderDelivery(calculated, selectedMethod());
                 showValidationErrors([{ message: 'El total validado requiere retiro. Valida nuevamente la compra.' }]);
                 return Promise.resolve(null);
             }
@@ -979,6 +978,7 @@
 
         function validateForm(showErrors) {
             var valid = calculated !== null && calculated.valid && calculated.groups.length > 0;
+            if (selectedMethod() === 'delivery' && !deliveryEligible) valid = false;
             if (deliveryEligible && selectedMethod() === null) {
                 valid = false;
             }
@@ -1059,7 +1059,7 @@
             calculated.deliveryEligible = cartSummary.delivery_eligible === true;
             visibleItems = items.slice();
             renderGroups(calculated);
-            renderDelivery(calculated, calculated.deliveryEligible ? null : 'pickup');
+            renderDelivery(calculated, config.cartSnapshot ? config.cartSnapshot.fulfillment_method : 'pickup');
             empty.hidden = true;
             content.hidden = false;
             if (!calculated.valid) {
@@ -1089,8 +1089,13 @@
                 validateForm(false);
             }
         });
+        window.addEventListener('va:pickup-accepted',function(){invalidateValidation();load();});
         form.addEventListener('change', function (event) {
             if (event.target.name === 'delivery_method') {
+                submit.disabled=true;
+                config.api.patch('/cart/method', {fulfillment_method:selectedMethod()}).then(function () {validateForm(false);}).catch(function (failure) {
+                    load().then(function () {status.hidden=false; status.textContent=failure.message;});
+                });
                 invalidateValidation();
                 updateDeliveryFields();
                 updateDeliverySummary();
@@ -1207,7 +1212,8 @@
             loading.hidden = false;
             pollPaymentStatus();
         } else {
-            load();
+            if (minimumCents === null) showError('No se pudo cargar la configuración de despacho. Recarga antes de continuar.');
+            else load();
         }
     }
 

@@ -51,6 +51,7 @@ $titleId = $instanceId . '-title';
             <strong><?php esc_html_e('Total a pagar', 'veciahorra'); ?></strong><strong data-va-cart-total></strong>
         </footer>
         <div class="va-public-cart__checkout">
+            <label>Modalidad solicitada <select data-va-cart-method><option value="pickup">Retiro en minimarket</option><option value="delivery">Despacho</option></select></label>
             <a class="va-button va-button--secondary" href="<?php echo esc_url($catalogUrl); ?>" data-va-cart-continue-shopping><?php esc_html_e('Seguir comprando', 'veciahorra'); ?></a>
             <?php if (! (new \VeciAhorra\Core\LaunchGate())->commerceEnabled()) : ?>
                 <span class="va-help-text" role="status" data-va-cart-checkout-unavailable>Disponible desde el 1 de septiembre</span>
@@ -62,4 +63,5 @@ $titleId = $instanceId . '-title';
         </div>
     </div>
     <p class="va-visually-hidden" role="status" aria-live="polite" aria-atomic="true" data-va-cart-status></p>
+    <?php require dirname(__DIR__, 2) . '/Cart/Proximity/Views/search.php'; ?>
 </section>

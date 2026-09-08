@@ -27,6 +27,7 @@
         var restUrl = String(root.dataset.restUrl || '').replace(/\/+$/, '') + '/';
         var restNonce = String(root.dataset.restNonce || '').trim();
         var sectorsLoaded = false;
+        var sectorCart = null;
 
         function restOptions(method, body) {
             var headers = {'Accept':'application/json'};
@@ -61,8 +62,10 @@
             sectorsLoaded = true;
             Promise.all([
                 window.fetch(restUrl + 'sectors', restOptions('GET')).then(json),
-                window.fetch(restUrl + 'sector/current', restOptions('GET')).then(json)
+                window.fetch(restUrl + 'sector/current', restOptions('GET')).then(json),
+                window.fetch(restUrl + 'cart', restOptions('GET')).then(json)
             ]).then(function (values) {
+                sectorCart=values[2];
                 var zones = values[0] && values[0].data || [];
                 var current = values[1] && values[1].data || null;
                 sectorSelect.replaceChildren(new Option('Selecciona una microzona', ''));
@@ -112,10 +115,10 @@
             sectorMessage.textContent = 'Actualizando microzona…';
             window.fetch(
                 restUrl + 'sector/current/' + encodeURIComponent(sectorSelect.value),
-                restOptions('POST', {sector_id: sectorSelect.value})
+                restOptions('POST', {cart_id:sectorCart && sectorCart.cart_id,expected_version:sectorCart && sectorCart.version})
             )
                 .then(json).then(function () { window.location.reload(); })
-                .catch(function (error) { sectorMessage.textContent = error.message; sectorSelect.disabled = false; });
+                .catch(function (error) { sectorMessage.textContent = error.message; sectorSelect.disabled = false; sectorsLoaded=false; loadSectors(); });
         });
         function updateSearchScope() {
             var services = searchScope.value === 'services';

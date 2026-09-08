@@ -75,6 +75,8 @@ final class CheckoutController
                     'message' => $exception->getMessage(),
                 ],
             ];
+        } catch (\DomainException) {
+            return ['success'=>false,'error'=>['code'=>'cart_conflict','message'=>'El carrito cambio. Recarga antes de continuar.']];
         } catch (Throwable) {
             return [
                 'success' => false,

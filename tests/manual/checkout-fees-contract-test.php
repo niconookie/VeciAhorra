@@ -9,7 +9,7 @@ if (! function_exists('get_option')) {
     function wp_json_encode(mixed $value, int $flags = 0): string|false { return json_encode($value, $flags); }
     function wp_salt(string $scheme = 'auth'): string { return 'checkout-fees-test-salt'; }
 }
-require dirname(__DIR__, 2) . '/vendor/autoload.php';
+require (getenv('VA_PROOF_PLUGIN_ROOT') ?: dirname(__DIR__, 2)) . '/vendor/autoload.php';
 
 use VeciAhorra\Database\Builder\TableBuilder;
 use VeciAhorra\Database\Schemas\CheckoutRefundSchema;

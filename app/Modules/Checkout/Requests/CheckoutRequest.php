@@ -18,12 +18,15 @@ final class CheckoutRequest
     /** @return array<string, mixed> */
     public function validated(): array
     {
-        $allowed = ['fulfillment_method', 'delivery'];
+        $allowed = ['fulfillment_method', 'delivery', 'cart_id', 'expected_cart_version'];
         if (array_diff(array_keys($this->input), $allowed) !== []) {
             throw new InvalidArgumentException(
                 'El request contiene campos no admitidos.'
             );
         }
+        $id=$this->input['cart_id']??null;$version=$this->input['expected_cart_version']??null;
+        if(!is_string($id)||preg_match('/^[a-f0-9]{48}$/D',$id)!==1||!is_int($version)||$version<1)throw new InvalidArgumentException('cart_id y expected_cart_version son obligatorios.');
+        $meta=['cart_id'=>$id,'expected_cart_version'=>$version];
         $method = $this->input['fulfillment_method'] ?? null;
         if (! is_string($method) || ! in_array($method, ['pickup', 'delivery'], true)) {
             throw new InvalidArgumentException('fulfillment_method no es valido.');
@@ -32,7 +35,7 @@ final class CheckoutRequest
             if (array_key_exists('delivery', $this->input)) {
                 throw new InvalidArgumentException('pickup no admite datos de despacho.');
             }
-            return ['fulfillment_method' => $method];
+            return [...$meta,'fulfillment_method' => $method];
         }
         $delivery = $this->input['delivery'] ?? null;
         $deliveryKeys = ['recipient_name', 'contact_phone', 'address_line1', 'commune', 'reference', 'notes'];
@@ -58,6 +61,6 @@ final class CheckoutRequest
         if (! preg_match('/^[+0-9][0-9\s()-]{6,19}$/D', (string) $clean['contact_phone'])) {
             throw new InvalidArgumentException('El telefono de despacho no es valido.');
         }
-        return ['fulfillment_method' => $method, 'delivery' => $clean];
+        return [...$meta,'fulfillment_method' => $method, 'delivery' => $clean];
     }
 }

@@ -24,6 +24,7 @@ final class CartRoutes
 
     public function register(): void
     {
+        register_rest_route(self::NAMESPACE,self::RESOURCE.'/method',['methods'=>'PATCH','callback'=>[$this,'method'],'permission_callback'=>[$this,'canAccessCart']]);
         register_rest_route(self::NAMESPACE, self::RESOURCE, [
             [
                 'methods' => WP_REST_Server::READABLE,
@@ -154,6 +155,13 @@ final class CartRoutes
             : $this->response($this->controller->clear($owner));
     }
 
+    public function method(WP_REST_Request $request):WP_REST_Response
+    {
+        $owner=$this->ownerOrError($request);if($owner instanceof WP_REST_Response)return $owner;
+        $body=$this->jsonObject($request);if($body instanceof WP_REST_Response)return $body;
+        return $this->response($this->controller->method($owner,is_string($body['fulfillment_method']??null)?$body['fulfillment_method']:''));
+    }
+
     public function canAccessCart(WP_REST_Request $request): bool
     {
         return true;
@@ -163,10 +171,12 @@ final class CartRoutes
     private function ownerOrError(
         WP_REST_Request $request
     ): array|WP_REST_Response {
+        $body=$request->get_json_params();
+        $version=is_array($body)?array_intersect_key($body,array_flip(['cart_id','expected_version'])):[];
         $userId = get_current_user_id();
 
         if ($userId > 0) {
-            return ['session_id' => null, 'user_id' => $userId];
+            return [...$version, 'session_id' => null, 'user_id' => $userId];
         }
 
         $sessionId = $request->get_query_params()['session_id'] ?? null;
@@ -177,14 +187,10 @@ final class CartRoutes
             );
         }
 
-        if (! is_string($sessionId) || trim($sessionId) === '') {
-            return $this->badRequest(
-                'cart_identity_required',
-                'El carrito requiere una identidad.'
-            );
-        }
+        if (!is_string($sessionId)||trim($sessionId)==='') $sessionId=(new \VeciAhorra\Modules\Frontend\Support\CartSession())->identifier();
 
         return [
+            ...$version,
             'session_id' => sanitize_text_field(trim($sessionId)),
             'user_id' => null,
         ];
@@ -258,6 +264,7 @@ final class CartRoutes
         $status = ($result['success'] ?? false) === true
             ? $successStatus
             : match ($result['error']['code'] ?? '') {
+                'cart_conflict' => 409,
                 'validation_error' => 422,
                 'cart_item_not_found' => 404,
                 default => 500,

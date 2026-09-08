@@ -195,6 +195,7 @@ final class FrontendAssets
         $this->enqueueDesignSystem();
         $this->enqueue();
         wp_enqueue_script(self::CART_SCRIPT_HANDLE);
+        $this->enqueuePickup();
     }
 
     public function enqueueCheckout(): void
@@ -206,6 +207,12 @@ final class FrontendAssets
         $this->enqueueDesignSystem();
         $this->enqueue();
         wp_enqueue_script(self::CHECKOUT_SCRIPT_HANDLE);
+        $this->enqueuePickup();
+    }
+
+    private function enqueuePickup(): void
+    {
+        wp_enqueue_script('veciahorra-pickup', VA_PLUGIN_URL . 'assets/frontend/js/veciahorra-pickup.js', [self::SCRIPT_HANDLE], $this->contentVersion('assets/frontend/js/veciahorra-pickup.js'), true);
     }
 
     public function enqueueCustomerPanel(bool $authenticated = false): void
@@ -346,6 +353,7 @@ final class FrontendAssets
                     ? ''
                     : ($this->cartSession ?? new CartSession())->identifier(),
             ],
+            'pickup' => ['googleBrowserKey' => $userId > 0 ? (new \VeciAhorra\Modules\Cart\Proximity\PickupSettings())->browserKey() : ''],
         ];
     }
 

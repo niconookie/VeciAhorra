@@ -3,7 +3,7 @@
  * Plugin Name: VeciAhorra
  * Plugin URI: https://veciahorra.cl
  * Description: Marketplace para múltiples minimarkets desarrollado sobre WordPress y WooCommerce.
- * Version: 0.3.22
+ * Version: 0.3.23
  * Requires at least: 6.7
  * Requires PHP: 8.2
  * Author: Nicolás Ávila
@@ -20,7 +20,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('VA_VERSION', '0.3.22');
+define('VA_VERSION', '0.3.23');
 define('VA_PLUGIN_FILE', __FILE__);
 define('VA_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('VA_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -70,6 +70,7 @@ VeciAhorra\Core\Bootstrap::boot();
 (new VeciAhorra\Modules\Minimarket\MinimarketModule())->register();
 (new VeciAhorra\Modules\Couriers\CourierModule())->register();
 (new VeciAhorra\Modules\Sectorization\SectorizationModule())->register();
+(new VeciAhorra\Modules\Cart\Proximity\PickupModule())->register();
 add_action('init', [VeciAhorra\Modules\ZonalAdmin\Identity\ZonalAdminRole::class, 'register']);
 $customerAccess = new VeciAhorra\Modules\CustomerAccess\CustomerAccessModule();
 (new VeciAhorra\Modules\ServiceProviders\ServiceProviderModule($customerAccess))->register();

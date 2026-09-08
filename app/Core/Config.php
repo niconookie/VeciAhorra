@@ -14,12 +14,12 @@ final class Config
     /**
      * Versión actual del plugin.
      */
-    public const PLUGIN_VERSION = '0.3.22';
+    public const PLUGIN_VERSION = '0.3.23';
 
     /**
      * Versión actual del esquema de base de datos.
      */
-    public const SCHEMA_VERSION = '0.39.0';
+    public const SCHEMA_VERSION = '0.40.0';
 
     /**
      * Alias temporal para compatibilidad con consumidores existentes.

@@ -15,8 +15,25 @@ final class CartService
     {
     }
 
+    public function addItem(array $owner,int $inventoryId,int $quantity,?int $expectedProductId=null):array
+    {return $this->mutate($owner,fn()=>$this->addItemLocked($owner,$inventoryId,$quantity,$expectedProductId));}
+    public function updateQuantity(array $owner,int $id,int $quantity):array
+    {return $this->mutate($owner,fn()=>$this->updateQuantityLocked($owner,$id,$quantity));}
+    public function removeItem(array $owner,int $id):array
+    {return $this->mutate($owner,fn()=>$this->removeItemLocked($owner,$id));}
+    public function clearCart(array $owner):array
+    {return $this->mutate($owner,fn()=>$this->clearCartLocked($owner));}
+    public function setMethod(array $owner,string $method):array
+    {return (new CartAggregate())->setMethod($owner,$method);}
+    public function getCart(array $owner):array
+    {return (new CartAggregate())->read($owner,fn()=>$this->getCartLocked($owner));}
+    public function getPublicCart(array $owner):array
+    {return (new CartAggregate())->read($owner,fn($cart)=>[...$this->getPublicCartLocked($owner),...CartAggregate::meta($cart)]);}
+    private function mutate(array $owner,callable $operation):array
+    {return (new CartAggregate())->mutate($owner,$operation,fn()=>$this->getPublicCart($owner));}
+
     /** @return array{id: int, created: bool} */
-    public function addItem(
+    private function addItemLocked(
         array $owner,
         int $inventoryId,
         int $quantity,
@@ -105,7 +122,7 @@ final class CartService
     }
 
     /** @return list<array<string, mixed>> */
-    public function getCart(array $owner): array
+    private function getCartLocked(array $owner): array
     {
         [$sessionId, $userId] = $this->owner($owner);
 
@@ -115,7 +132,7 @@ final class CartService
     }
 
     /** @return array{items: list<array<string, mixed>>, total: string} */
-    public function getPublicCart(array $owner): array
+    private function getPublicCartLocked(array $owner): array
     {
         [$sessionId, $userId] = $this->owner($owner);
         $items = $userId !== null
@@ -212,20 +229,29 @@ final class CartService
             'delivery_fee' => '0.00',
             'total' => '0.00',
             'currency' => 'CLP',
-            'fulfillment_method' => 'pickup',
+            'fulfillment_method' => CartAggregate::context($owner)['fulfillment_method'],
             'delivery_eligible' => false,
             'delivery_minimum_subtotal' => (new \VeciAhorra\Modules\Checkout\Service\CheckoutFeeConfiguration())->current()['delivery_minimum_subtotal_clp'] . '.00',
             'fee_policy_version' => \VeciAhorra\Modules\Checkout\Service\CheckoutFeeConfiguration::POLICY_VERSION,
         ] : (new CheckoutFeeCalculator())->calculate(intdiv($totalCents, 100), 'pickup', $deliveryEligible);
 
+        $method=CartAggregate::context($owner)['fulfillment_method'];
+        if($items!==[]&&$method==='delivery'&&$summary['delivery_eligible'])$summary=(new CheckoutFeeCalculator())->calculate(intdiv($totalCents,100),$method,true);
+        $summary['checkout_eligible']=$items!==[]&&($method==='pickup'||$summary['delivery_eligible']);
+        $summary['fulfillment_method']=$method;
+        $summary['pickup_search_eligible'] = get_current_user_id() > 0
+            && (new \VeciAhorra\Core\LaunchGate())->commerceEnabled()
+            && $items !== [] && $method === 'delivery'
+            && intdiv($totalCents, 100) < (new \VeciAhorra\Modules\Checkout\Service\CheckoutFeeConfiguration())->current()['delivery_minimum_subtotal_clp'];
+
         return [
             'items' => $items,
             'total' => $summary['product_subtotal'],
-            'summary' => $summary,
+            'summary' => [...$summary, 'selected_fulfillment_method'=>CartAggregate::context($owner)['fulfillment_method']],
         ];
     }
 
-    public function updateQuantity(
+    private function updateQuantityLocked(
         array $owner,
         int $id,
         int $quantity
@@ -269,7 +295,7 @@ final class CartService
         return true;
     }
 
-    public function removeItem(array $owner, int $id): bool
+    private function removeItemLocked(array $owner, int $id): bool
     {
         $this->assertPositive($id, 'id');
         [$sessionId, $userId] = $this->owner($owner);
@@ -285,7 +311,7 @@ final class CartService
         return true;
     }
 
-    public function clearCart(array $owner): int
+    private function clearCartLocked(array $owner): int
     {
         [$sessionId, $userId] = $this->owner($owner);
 

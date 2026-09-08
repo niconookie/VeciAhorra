@@ -242,6 +242,8 @@
             }
 
             items.forEach(function (item) { itemsBody.append(renderItem(item)); });
+            var methodSelect=root.querySelector('[data-va-cart-method]');
+            if(methodSelect)methodSelect.value=payload.fulfillment_method || 'pickup';
             productSubtotal.textContent = money(payload.summary.product_subtotal);
             platformFee.textContent = money(payload.summary.platform_fee);
             deliveryFee.textContent = money(payload.summary.delivery_fee);
@@ -263,6 +265,13 @@
             return apiRequest('get', '/cart').then(render).catch(showError);
         }
 
+        var methodSelect=root.querySelector('[data-va-cart-method]');
+        if(methodSelect)methodSelect.addEventListener('change',function(){
+            methodSelect.disabled=true;
+            config.api.patch('/cart/method',{fulfillment_method:methodSelect.value}).then(load).catch(showMutationError).finally(function(){methodSelect.disabled=false;});
+        });
+        window.addEventListener('va:pickup-accepted',load);
+
         function mutate(method, path, payload, message) {
             if (busy) {
                 return Promise.resolve(null);
@@ -275,6 +284,9 @@
                     announce(message);
                 })
                 .catch(function (requestError) {
+                    if(requestError.status===409 && config.cartSnapshot && config.cartSnapshot.items){
+                        render(Object.assign({},config.cartSnapshot,{data:config.cartSnapshot.items}));
+                    }
                     showMutationError(requestError);
                     announce(errorMessage(requestError));
                 })
